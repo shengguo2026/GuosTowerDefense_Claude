@@ -18,6 +18,11 @@ Needs [Node.js](https://nodejs.org) 20.19 or newer (LTS). The packaged build in 
 
 Progress and settings live in `user-data/` next to the game files, so copying the folder keeps them.
 
+In the current build, **Open the Lion level** shows the first level with a demo match the server plays by itself.
+Camera: drag (or one finger) to move, right-drag (or two-finger twist) to rotate and tilt, wheel (or pinch) to zoom,
+double-click (or double-tap) to focus. **F3**, or `?debug` in the address, shows frame rate, draw calls and triangles.
+Graphics quality is in Settings; Automatic picks Low on phones, Medium on tablets and High on PCs.
+
 ## Layout
 
 ```text

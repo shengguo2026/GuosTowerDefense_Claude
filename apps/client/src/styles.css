@@ -276,3 +276,252 @@ select:focus-visible {
     padding: 10px;
   }
 }
+
+.settings .field + .field {
+  margin-top: 14px;
+}
+
+/* ---- Level screen ---- */
+
+.level-screen {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.level-screen .world-canvas {
+  cursor: grab;
+}
+
+.level-screen .world-canvas:active {
+  cursor: grabbing;
+}
+
+.label-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.world-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  font-weight: 700;
+  will-change: transform;
+}
+
+.world-label.landmark {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 250, 240, 0.88);
+  color: var(--ink);
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(27, 36, 51, 0.25);
+}
+
+.world-label.route {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(27, 36, 51, 0.72);
+  color: #fff;
+  font-size: 12px;
+  border-left: 4px solid var(--route, #fff);
+}
+
+.level-hud {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.level-hud.top {
+  inset: 0 0 auto 0;
+  justify-content: space-between;
+  padding: max(12px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 0
+    max(16px, env(safe-area-inset-left));
+  pointer-events: none;
+}
+
+.level-hud.top > * {
+  pointer-events: auto;
+}
+
+.hud-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  min-width: 44px;
+  justify-content: center;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.hud-button span {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.level-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  font-size: 17px;
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--attacker);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.level-hud.bottom {
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: calc(100% - 32px);
+  padding: 8px 16px;
+  font-size: 14px;
+  gap: 16px;
+}
+
+.hold {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hold-bar {
+  display: inline-block;
+  width: 80px;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.hold-bar span {
+  display: block;
+  height: 100%;
+  background: #f2b705;
+}
+
+.result.attacker {
+  color: var(--attacker);
+}
+
+.result.defender {
+  color: var(--defender);
+}
+
+.camera-hint {
+  position: absolute;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(70px, calc(env(safe-area-inset-bottom) + 54px));
+  max-width: 260px;
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(27, 36, 51, 0.55);
+  color: #fff;
+  font-size: 12px;
+  pointer-events: none;
+  animation: fade-hint 1s ease 8s forwards;
+}
+
+@keyframes fade-hint {
+  to {
+    opacity: 0;
+  }
+}
+
+.perf-overlay {
+  position: absolute;
+  left: max(16px, env(safe-area-inset-left));
+  top: 72px;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(10, 14, 20, 0.78);
+  color: #b9f5c8;
+  font:
+    12px/1.45 ui-monospace,
+    Consolas,
+    monospace;
+  pointer-events: none;
+}
+
+.level-error {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 16px;
+}
+
+@media (max-width: 600px) {
+  .level-title {
+    font-size: 15px;
+    padding: 6px 12px;
+  }
+  .level-hud.top .hud-button {
+    padding: 0 10px;
+  }
+  .camera-hint {
+    display: none;
+  }
+}
+
+@media (max-height: 480px) {
+  .level-hud.bottom {
+    bottom: 8px;
+    padding: 4px 12px;
+  }
+  .camera-hint {
+    display: none;
+  }
+}
+
+.hud-group {
+  display: flex;
+  gap: 8px;
+}
+
+/* Phones: one compact line of match status, smaller labels. */
+@media (max-width: 900px), (max-height: 480px) {
+  .level-hud.bottom {
+    flex-wrap: nowrap;
+    gap: 10px;
+    padding: 4px 12px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .hold-bar {
+    width: 48px;
+  }
+  .world-label.landmark {
+    font-size: 11px;
+    padding: 2px 7px;
+  }
+  .world-label.route {
+    font-size: 10px;
+  }
+}

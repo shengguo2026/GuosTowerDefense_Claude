@@ -11,6 +11,8 @@ export interface MapNode {
 export interface MapEdge {
   from: string;
   to: string;
+  /** Bend points between the two nodes, so paths can curve around terrain. */
+  via?: [number, number][];
 }
 
 export interface Route {

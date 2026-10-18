@@ -1,0 +1,19 @@
+{
+  "id": "explorer",
+  "side": "attacker",
+  "name": "profile.explorer.name",
+  "description": "profile.explorer.description",
+  "resource": {
+    "id": "expedition-supplies",
+    "name": "resource.expedition-supplies"
+  },
+  "passive": {
+    "name": "profile.explorer.passive.name",
+    "description": "profile.explorer.passive.description",
+    "effects": []
+  },
+  "units": ["scout", "expedition-team"],
+  "defenses": [],
+  "abilities": ["reconnaissance", "rapid-reroute"],
+  "commands": []
+}

@@ -10,6 +10,7 @@ import { EventLog } from './eventLog';
 import { Rng } from './rng';
 import type {
   DefenseEntity,
+  MapEdge,
   GroupEntity,
   MapNode,
   MatchEntity,
@@ -33,6 +34,8 @@ export class Match {
   private readonly rng: Rng;
   private readonly nodes: Map<string, MapNode>;
   private readonly routes: Map<string, Route>;
+  /** Each route expanded into the points a group walks through, including edge bend points. */
+  private readonly paths: Map<string, Point[]>;
   private readonly unitTypes: Map<string, SimUnitType>;
   private readonly defenseTypes: Map<string, SimDefenseType>;
   private readonly timerTicks: number;
@@ -47,6 +50,7 @@ export class Match {
     this.rng = new Rng(setup.seed);
     this.nodes = new Map(level.nodes.map((node) => [node.id, node]));
     this.routes = new Map(level.routes.map((route) => [route.id, route]));
+    this.paths = new Map(level.routes.map((route) => [route.id, routePath(route, this.nodes, level.edges)]));
     this.unitTypes = new Map(setup.attacker.units.map((unit) => [unit.id, unit]));
     this.defenseTypes = new Map(setup.defender.defenses.map((defense) => [defense.id, defense]));
     this.timerTicks = secondsToTicks(level.timerSeconds);
@@ -123,7 +127,7 @@ export class Match {
     const cost = unit.cost * command.count;
     if (cost > this.resources.attacker) return 'notEnoughResources';
     this.resources.attacker -= cost;
-    const start = this.node(route.nodes[0]);
+    const start = (this.paths.get(route.id) as Point[])[0] as Point;
     const group = this.entities.create((id): GroupEntity => ({
       id,
       kind: 'group',
@@ -186,13 +190,12 @@ export class Match {
   private moveGroups(): void {
     for (const group of this.groups()) {
       if (group.state !== 'moving') continue;
-      const route = this.routes.get(group.routeId) as Route;
+      const path = this.paths.get(group.routeId) as Point[];
       let remaining = group.speed * TICK_SECONDS;
-      while (remaining > 0 && group.segment < route.nodes.length - 1) {
-        const from = this.node(route.nodes[group.segment]);
-        const to = this.node(route.nodes[group.segment + 1]);
-        const length = Math.hypot(to.x - from.x, to.z - from.z);
-        const left = length - group.distance;
+      while (remaining > 0 && group.segment < path.length - 1) {
+        const from = path[group.segment] as Point;
+        const to = path[group.segment + 1] as Point;
+        const left = Math.hypot(to.x - from.x, to.z - from.z) - group.distance;
         if (remaining < left) {
           group.distance += remaining;
           remaining = 0;
@@ -201,14 +204,11 @@ export class Match {
           group.segment++;
           group.distance = 0;
         }
-        const nextFrom = this.node(route.nodes[group.segment]);
-        const nextTo = this.node(route.nodes[Math.min(group.segment + 1, route.nodes.length - 1)]);
-        const segmentLength = Math.hypot(nextTo.x - nextFrom.x, nextTo.z - nextFrom.z);
-        const t = segmentLength > 0 ? group.distance / segmentLength : 0;
-        group.x = nextFrom.x + (nextTo.x - nextFrom.x) * t;
-        group.z = nextFrom.z + (nextTo.z - nextFrom.z) * t;
       }
-      if (group.segment >= route.nodes.length - 1) {
+      const at = pointAlong(path, group.segment, group.distance);
+      group.x = at.x;
+      group.z = at.z;
+      if (group.segment >= path.length - 1) {
         group.state = 'holding';
         this.events.push({ tick: this.tickCount, type: 'groupReachedObjective', groupId: group.id });
       }
@@ -255,10 +255,37 @@ export class Match {
   private defenses(): DefenseEntity[] {
     return this.entities.filter((entity): entity is DefenseEntity => entity.kind === 'defense');
   }
+}
 
-  private node(id: string | undefined): MapNode {
-    const node = id === undefined ? undefined : this.nodes.get(id);
+interface Point {
+  x: number;
+  z: number;
+}
+
+/** Expands a route's node list into walkable points, inserting each edge's bend points in travel direction. */
+export function routePath(route: Route, nodes: Map<string, MapNode>, edges: MapEdge[]): Point[] {
+  const point = (id: string | undefined): Point => {
+    const node = id === undefined ? undefined : nodes.get(id);
     if (!node) throw new Error(`Unknown map node "${id}"`);
-    return node;
+    return { x: node.x, z: node.z };
+  };
+  const path: Point[] = [point(route.nodes[0])];
+  for (let i = 1; i < route.nodes.length; i++) {
+    const from = route.nodes[i - 1];
+    const to = route.nodes[i];
+    const forward = edges.find((e) => e.from === from && e.to === to);
+    const backward = forward ? undefined : edges.find((e) => e.from === to && e.to === from);
+    const via = forward?.via ?? [...(backward?.via ?? [])].reverse();
+    for (const [x, z] of via) path.push({ x, z });
+    path.push(point(to));
   }
+  return path;
+}
+
+function pointAlong(path: Point[], segment: number, distance: number): Point {
+  const from = path[segment] as Point;
+  const to = path[Math.min(segment + 1, path.length - 1)] as Point;
+  const length = Math.hypot(to.x - from.x, to.z - from.z);
+  const t = length > 0 ? distance / length : 0;
+  return { x: from.x + (to.x - from.x) * t, z: from.z + (to.z - from.z) * t };
 }

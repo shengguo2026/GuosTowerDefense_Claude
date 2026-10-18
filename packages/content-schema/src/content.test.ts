@@ -33,6 +33,35 @@ describe('stage pack loader', () => {
     expect(report.stages.map((stage) => stage.manifest.id)).toContain('test-stage');
   });
 
+  it('loads the Big Five stage with the Lion level, its two routes and its scene', async () => {
+    const result = await loadStageDirectory(join(STAGES, 'stage-01-big-five'));
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    expect(result.pack.manifest.core).toBe(true);
+    const lion = result.pack.levels.find((level) => level.id === 'lion');
+    expect(lion?.routes.map((route) => route.id)).toEqual(['ridge', 'riverbed']);
+    expect(lion?.objective.nodeId).toBe('lion-waterhole');
+    expect(lion?.scene?.landmarks.map((l) => l.kind)).toEqual(
+      expect.arrayContaining(['acaciaGrove', 'rockyRidge', 'riverCrossing', 'waterhole']),
+    );
+  });
+
+  it('reports a scene that names an unknown streambed route or label', async () => {
+    const result = await loadStagePack({
+      async readJson(name) {
+        const json = JSON.parse(await readFile(join(STAGES, 'stage-01-big-five', name), 'utf8'));
+        if (name === 'levels/lion.json') {
+          json.scene.streambedRoute = 'canyon';
+          json.scene.landmarks[0].label = 'landmark.nowhere';
+        }
+        return json;
+      },
+    });
+    const found = messages(result).join('\n');
+    expect(found).toMatch(/canyon/);
+    expect(found).toMatch(/landmark\.nowhere/);
+  });
+
   it('loads the test stage with its own level and profile counts', async () => {
     const result = await loadStageDirectory(TEST_STAGE);
     expect(result.ok).toBe(true);

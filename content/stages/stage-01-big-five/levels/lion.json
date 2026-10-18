@@ -1,0 +1,215 @@
+{
+  "id": "lion",
+  "title": "level.lion.title",
+  "unlockedBy": null,
+  "timerSeconds": 720,
+  "objective": {
+    "nodeId": "lion-waterhole",
+    "holdSeconds": 30
+  },
+  "map": {
+    "nodes": [
+      {
+        "id": "savanna-entrance",
+        "x": -58,
+        "z": 36,
+        "kind": "spawn"
+      },
+      {
+        "id": "acacia-junction",
+        "x": -36,
+        "z": 29,
+        "kind": "junction"
+      },
+      {
+        "id": "rocky-ridge",
+        "x": -9,
+        "z": 9,
+        "kind": "checkpoint"
+      },
+      {
+        "id": "dry-river-crossing",
+        "x": -13,
+        "z": 27,
+        "kind": "checkpoint"
+      },
+      {
+        "id": "lion-waterhole",
+        "x": 12,
+        "z": -8,
+        "kind": "objective"
+      },
+      {
+        "id": "junction-hill",
+        "x": -30,
+        "z": 19,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "ridge-lookout",
+        "x": -3,
+        "z": -2,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "crossing-bank",
+        "x": -16,
+        "z": 19,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "river-bank",
+        "x": 5,
+        "z": 13,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "waterhole-east",
+        "x": 29,
+        "z": -4,
+        "kind": "buildZone",
+        "buildable": true
+      }
+    ],
+    "edges": [
+      {
+        "from": "savanna-entrance",
+        "to": "acacia-junction",
+        "via": [[-47, 33]]
+      },
+      {
+        "from": "acacia-junction",
+        "to": "rocky-ridge",
+        "via": [
+          [-26, 19],
+          [-17, 13]
+        ]
+      },
+      {
+        "from": "rocky-ridge",
+        "to": "lion-waterhole",
+        "via": [
+          [1, 1],
+          [7, -4]
+        ]
+      },
+      {
+        "from": "acacia-junction",
+        "to": "dry-river-crossing",
+        "via": [[-25, 30]]
+      },
+      {
+        "from": "dry-river-crossing",
+        "to": "lion-waterhole",
+        "via": [
+          [-1, 17],
+          [8, 7],
+          [13, 0]
+        ]
+      }
+    ]
+  },
+  "routes": [
+    {
+      "id": "ridge",
+      "name": "route.ridge",
+      "nodes": ["savanna-entrance", "acacia-junction", "rocky-ridge", "lion-waterhole"]
+    },
+    {
+      "id": "riverbed",
+      "name": "route.riverbed",
+      "nodes": ["savanna-entrance", "acacia-junction", "dry-river-crossing", "lion-waterhole"]
+    }
+  ],
+  "startingResources": {
+    "attacker": 150,
+    "defender": 150
+  },
+  "incomePerSecond": {
+    "attacker": 2,
+    "defender": 2
+  },
+  "scene": {
+    "kit": "savanna",
+    "seed": 11,
+    "size": 260,
+    "streambedRoute": "riverbed",
+    "landmarks": [
+      {
+        "id": "savanna-entrance",
+        "kind": "entrance",
+        "x": -58,
+        "z": 36,
+        "radius": 5,
+        "rotation": 0.6,
+        "label": "landmark.savanna-entrance"
+      },
+      {
+        "id": "acacia-junction",
+        "kind": "acaciaGrove",
+        "x": -36,
+        "z": 29,
+        "radius": 6,
+        "label": "landmark.acacia-junction"
+      },
+      {
+        "id": "rocky-ridge",
+        "kind": "rockyRidge",
+        "x": -6,
+        "z": 4,
+        "radius": 8,
+        "label": "landmark.rocky-ridge"
+      },
+      {
+        "id": "dry-river-crossing",
+        "kind": "riverCrossing",
+        "x": -13,
+        "z": 27,
+        "radius": 4,
+        "label": "landmark.dry-river-crossing"
+      },
+      {
+        "id": "lion-waterhole",
+        "kind": "waterhole",
+        "x": 23,
+        "z": -17,
+        "radius": 8,
+        "label": "landmark.lion-waterhole"
+      }
+    ],
+    "animals": [
+      {
+        "kind": "lion",
+        "x": 15,
+        "z": -23,
+        "rotation": 2.3,
+        "pose": "lying"
+      },
+      {
+        "kind": "lioness",
+        "x": 18.5,
+        "z": -25.5,
+        "rotation": 1.6,
+        "pose": "standing"
+      },
+      {
+        "kind": "lioness",
+        "x": 27,
+        "z": -24,
+        "rotation": 2.8,
+        "pose": "lying"
+      }
+    ],
+    "camera": {
+      "x": -14,
+      "z": 8,
+      "yaw": -1.1,
+      "pitch": 0.5,
+      "distance": 92
+    }
+  }
+}

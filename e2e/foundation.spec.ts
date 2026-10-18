@@ -41,11 +41,11 @@ test('switches between English, German and Chinese in Settings', async ({ page }
   await expect(page.getByTestId('app-title')).toHaveText("Guo's Tower Defense");
 
   await page.getByRole('button', { name: 'Settings' }).click();
-  await page.getByRole('combobox').selectOption('de');
+  await page.getByTestId('language-select').selectOption('de');
   await expect(page.getByTestId('app-title')).toHaveText('Guos Tower Defense');
-  await page.getByRole('combobox').selectOption('zh-CN');
+  await page.getByTestId('language-select').selectOption('zh-CN');
   await expect(page.getByTestId('app-title')).toHaveText('盛国的塔防游戏');
-  await page.getByRole('combobox').selectOption('en');
+  await page.getByTestId('language-select').selectOption('en');
   await page.getByRole('button', { name: 'Close' }).click();
   await expect(page).toHaveTitle("Guo's Tower Defense");
 });
@@ -74,4 +74,19 @@ test('renders the 3D scene and takes a layout screenshot', async ({ page }, test
     expect(box!.x + box!.width).toBeLessThanOrEqual(viewport!.width + 1);
     expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height + 1);
   }
+});
+
+test('works on a plain-http Wi-Fi address, where secure-only browser features are missing', async ({
+  page,
+}) => {
+  // Phones open the game as http://<pc address>:<port>, which browsers treat as insecure.
+  await page.addInitScript(() => {
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined });
+  });
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.request.put('/api/settings', { data: { language: 'en' } });
+  await page.goto('/');
+  await expect(page.getByTestId('connection')).toHaveText('Connected');
+  expect(errors).toEqual([]);
 });

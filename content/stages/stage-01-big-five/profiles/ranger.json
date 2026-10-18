@@ -1,0 +1,19 @@
+{
+  "id": "ranger",
+  "side": "defender",
+  "name": "profile.ranger.name",
+  "description": "profile.ranger.description",
+  "resource": {
+    "id": "ranger-supplies",
+    "name": "resource.ranger-supplies"
+  },
+  "passive": {
+    "name": "profile.ranger.passive.name",
+    "description": "profile.ranger.passive.description",
+    "effects": []
+  },
+  "units": ["ranger-patrol"],
+  "defenses": ["observation-post", "temporary-checkpoint"],
+  "abilities": ["rapid-response", "intercept"],
+  "commands": []
+}
