@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@gtd/ai": "0.0.1",
     "@gtd/i18n": "0.0.1",
     "@gtd/protocol": "0.0.1",
     "react": "^19.2.0",

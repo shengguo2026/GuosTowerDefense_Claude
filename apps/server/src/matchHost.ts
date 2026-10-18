@@ -1,6 +1,6 @@
 import { SNAPSHOT_EVERY_TICKS } from '@gtd/protocol';
 import { FixedStepClock, Match, TICK_MS, type Command, type MatchSetup } from '@gtd/sim';
-import type { Controller } from '@gtd/test-kit';
+import type { Controller } from '@gtd/ai';
 
 export interface MatchHostOptions {
   setup: MatchSetup;

@@ -504,6 +504,13 @@ describe('patrols', () => {
 
   it('contests the objective: hold progress runs at half speed while a patrol is in the zone', () => {
     const match = newMatch({}, { objective: { nodeId: 'goal', holdSeconds: 30, radius: 4 } });
+    place(match, 'patrol', 'goal');
+    run(match, 1);
+    // Before any group has seen the patrol, the Attacker cannot tell that the objective is contested.
+    expect(match.snapshot('defender').objective.contested).toBe(true);
+    expect(match.snapshot('attacker').objective.contested).toBe(false);
+    send(match, { type: 'sellDefense', side: 'defender', defenseId: 1 });
+    run(match, 1);
     skipPreparation(match);
     launch(match, order({ unitTypeId: 'sneaker', count: 3 }));
     runUntil(match, () => groups(match)[0]?.state === 'atObjective');
@@ -514,6 +521,7 @@ describe('patrols', () => {
     run(match, 2);
     const contested = match.snapshot().objective;
     expect(contested.contested).toBe(true);
+    expect(match.snapshot('attacker').objective.contested).toBe(true);
     expect(contested.heldTicks - held).toBeGreaterThan(secondsToTicks(2) * 0.4);
     expect(contested.heldTicks - held).toBeLessThan(secondsToTicks(2) * 0.6);
   });

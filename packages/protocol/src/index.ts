@@ -1,9 +1,10 @@
+import { DIFFICULTIES, type AiThought, type Difficulty } from '@gtd/ai';
 import { LANGUAGES } from '@gtd/i18n';
 import type { Command, MatchSnapshot, Side } from '@gtd/sim';
 import { z } from 'zod';
 
 /** Bumped whenever a message changes shape, so an old browser tab gets a clear "please reload" instead of errors. */
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 export const WEBSOCKET_PATH = '/ws';
 
 const language = z.enum(LANGUAGES);
@@ -133,12 +134,20 @@ export function seatControls(seat: Seat, side: Side): boolean {
   return seat === 'both' || seat === side;
 }
 
+/** The side the computer plays in a match against the AI, and how well. */
+export interface ComputerPlayer {
+  side: Side;
+  difficulty: Difficulty;
+}
+
 export interface MatchSummary {
   matchId: string;
   stageId: string;
   levelId: string;
   /** Seats taken by connected players. */
   seats: Seat[];
+  /** Set when the computer plays one side; that seat cannot be joined. */
+  computer?: ComputerPlayer;
   phase: MatchSnapshot['phase'];
 }
 
@@ -154,7 +163,10 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
   /** Watch a match the server plays by itself on a level (the level preview until real matches arrive in M2). */
   z.object({ type: z.literal('watchDemo'), stageId: z.string().min(1), levelId: z.string().min(1) }),
   z.object({ type: z.literal('stopWatching') }),
-  /** Start a match between people on this server (debug controls until the real HUD arrives in M4). */
+  /**
+   * Start a match on this server (debug controls until the real HUD arrives in M4). With `opponent` the computer plays
+   * the side the seat leaves free, at that difficulty; `showAiReasoning` streams the AI's thinking (developer view).
+   */
   z.object({
     type: z.literal('createMatch'),
     stageId: contentId,
@@ -162,6 +174,8 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
     attackerProfileId: contentId.optional(),
     defenderProfileId: contentId.optional(),
     seat: z.enum(SEATS),
+    opponent: z.enum(DIFFICULTIES).optional(),
+    showAiReasoning: z.boolean().optional(),
   }),
   z.object({ type: z.literal('joinMatch'), matchId: contentId, seat: z.enum(SEATS) }),
   z.object({ type: z.literal('leaveMatch') }),
@@ -180,8 +194,11 @@ export type ServerMessage =
       levelId: string;
       attackerProfileId: string;
       defenderProfileId: string;
+      computer?: ComputerPlayer;
     }
   | { type: 'snapshot'; matchId: string; snapshot: MatchSnapshot }
+  /** One round of the computer's reasoning, sent only when the match was started with `showAiReasoning`. */
+  | { type: 'aiThought'; matchId: string; thought: AiThought }
   | { type: 'joined'; matchId: string; seat: Seat }
   | { type: 'matches'; matches: MatchSummary[] }
   /** Why the simulation refused one of this connection's commands (e.g. `notEnoughResources`). */
@@ -189,7 +206,13 @@ export type ServerMessage =
   | {
       type: 'error';
       code:
-        'badMessage' | 'protocolMismatch' | 'unknownLevel' | 'unknownMatch' | 'notYourSide' | 'notInMatch';
+        | 'badMessage'
+        | 'protocolMismatch'
+        | 'unknownLevel'
+        | 'unknownMatch'
+        | 'notYourSide'
+        | 'notInMatch'
+        | 'seatTaken';
       message: string;
     };
 

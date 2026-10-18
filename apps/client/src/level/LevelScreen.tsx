@@ -1,20 +1,25 @@
+import type { AiThought } from '@gtd/ai';
 import type { StagePack } from '@gtd/content-schema';
 import { createTranslator, type Language, type Translate } from '@gtd/i18n';
-import type { GraphicsPreset, MatchCommand, MatchSummary, Seat } from '@gtd/protocol';
+import type { ComputerPlayer, GraphicsPreset, MatchCommand, MatchSummary, Seat } from '@gtd/protocol';
 import type { MatchSnapshot } from '@gtd/sim';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import type { ServerConnection } from '../useServerConnection';
 import { LevelView, type RenderStats } from '../world/levelView';
 import { currentDevice, resolvePreset } from '../world/presets';
+import { AiReasoning } from './AiReasoning';
 import { MatchControls, formatSeconds } from './MatchControls';
 import { ResultScreen } from './ResultScreen';
-import { SeatPicker } from './SeatPicker';
+import { SeatPicker, type MatchOptions } from './SeatPicker';
+
+/** Rounds of AI reasoning kept on screen. */
+const KEPT_THOUGHTS = 40;
 
 interface Props {
   stageId: string;
   levelId: string;
-  /** `demo`: the server plays by itself; `play`: people play through debug controls. */
+  /** `demo`: the server plays by itself; `play`: people (or a person and the computer) play through debug controls. */
   mode: 'demo' | 'play';
   language: Language;
   graphics: GraphicsPreset;
@@ -29,7 +34,7 @@ interface Joined {
   seat: Seat;
 }
 
-/** A level on screen, with either the server's demo match or a match between people running on it. */
+/** A level on screen, with either the server's demo match or a match of people or against the computer on it. */
 export function LevelScreen({
   stageId,
   levelId,
@@ -52,6 +57,9 @@ export function LevelScreen({
   const [joined, setJoined] = useState<Joined | null>(null);
   const [profiles, setProfiles] = useState<{ attacker: string; defender: string } | null>(null);
   const [openMatches, setOpenMatches] = useState<MatchSummary[]>([]);
+  const [computer, setComputer] = useState<ComputerPlayer | null>(null);
+  const [thoughts, setThoughts] = useState<AiThought[]>([]);
+  const [lastOptions, setLastOptions] = useState<MatchOptions | undefined>(undefined);
   const [notice, setNotice] = useState<string | null>(null);
   const [controlsOpen, setControlsOpen] = useState(() => window.innerWidth > 900);
   const preset = useMemo(() => resolvePreset(graphics, currentDevice()), [graphics]);
@@ -97,13 +105,18 @@ export function LevelScreen({
       if (message.type === 'matchStarted') {
         viewRef.current?.buffer.clear();
         setProfiles({ attacker: message.attackerProfileId, defender: message.defenderProfileId });
+        setComputer(message.computer ?? null);
+        setThoughts([]);
         setSnapshot(null);
       }
+      if (message.type === 'aiThought')
+        setThoughts((kept) => [...kept, message.thought].slice(-KEPT_THOUGHTS));
       if (message.type === 'joined') setJoined({ matchId: message.matchId, seat: message.seat });
       if (message.type === 'matches') setOpenMatches(message.matches);
       if (message.type === 'commandRejected')
         setNotice(t('ctl.rejected', { reason: t(`reject.${message.reason}`) }));
       if (message.type === 'error' && message.code === 'notYourSide') setNotice(t('ctl.sideError'));
+      if (message.type === 'error' && message.code === 'seatTaken') setNotice(t('seat.computerSide'));
       if (message.type === 'error' && message.code === 'unknownMatch') setJoined(null);
       if (message.type !== 'snapshot') return;
       viewRef.current?.pushSnapshot(message.snapshot);
@@ -145,7 +158,10 @@ export function LevelScreen({
   }, [notice]);
 
   const createMatch = useCallback(
-    (seat: Seat) => send({ type: 'createMatch', stageId, levelId, seat }),
+    (seat: Seat, options?: MatchOptions) => {
+      setLastOptions(options);
+      send({ type: 'createMatch', stageId, levelId, seat, ...options });
+    },
     [send, stageId, levelId],
   );
   const sendCommand = useCallback((command: MatchCommand) => send({ type: 'command', command }), [send]);
@@ -185,6 +201,11 @@ export function LevelScreen({
         <div className="level-title panel">
           <strong>{level && stageText ? stageText(level.title) : t('level.loading')}</strong>
           <span className="badge">{mode === 'demo' ? t('level.demo') : t('level.match')}</span>
+          {mode === 'play' && computer && (
+            <span className="badge computer" data-testid="computer-badge">
+              {t('hud.vsComputer', { difficulty: t(`difficulty.${computer.difficulty}`) })}
+            </span>
+          )}
         </div>
         <div className="hud-group">
           {playing && (
@@ -291,6 +312,8 @@ ${t('perf.geometries')}: ${stats.geometries}  ${t('perf.textures')}: ${stats.tex
         </aside>
       )}
 
+      {playing && lastOptions?.showAiReasoning && computer && <AiReasoning thoughts={thoughts} t={t} />}
+
       {notice && (
         <p className="notice panel" role="status" data-testid="notice">
           {notice}
@@ -312,7 +335,7 @@ ${t('perf.geometries')}: ${stats.geometries}  ${t('perf.textures')}: ${stats.tex
           stats={snapshot.stats}
           seat={joined.seat}
           t={t}
-          onPlayAgain={() => createMatch(joined.seat)}
+          onPlayAgain={() => createMatch(joined.seat, lastOptions)}
           onBack={onBack}
         />
       )}

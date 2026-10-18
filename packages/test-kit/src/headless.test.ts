@@ -2,6 +2,8 @@ import { resolve } from 'node:path';
 import { createMatchSetup } from '@gtd/content-schema';
 import { loadStageDirectory } from '@gtd/content-schema/node';
 import { describe, expect, it } from 'vitest';
+import { DIFFICULTIES } from '@gtd/ai';
+import { runBalance } from './balance';
 import { idleController, scriptedAttacker, scriptedDefender } from './controllers';
 import { runHeadlessMatch } from './runHeadlessMatch';
 
@@ -100,5 +102,40 @@ describe('headless matches of Lion', () => {
     const run = runHeadlessMatch(setup, { attacker: idleController, defender: scriptedDefender() });
     expect(run.result).toEqual({ winner: 'defender', reason: 'timerExpired' });
     expect(run.ticks).toBe((setup.level.preparationSeconds + setup.level.timerSeconds) * 20);
+  });
+});
+
+// The full gate (200 matches per difficulty, no side above 70%) runs as `npm run balance -- 200 --check` in CI.
+describe('AI against AI on Lion', { timeout: 60_000 }, () => {
+  async function lionPack() {
+    const result = await loadStageDirectory(
+      resolve(import.meta.dirname, '../../../content/stages/stage-01-big-five'),
+    );
+    if (!result.ok) throw new Error(result.issues.map((i) => i.message).join('\n'));
+    const pack = result.pack;
+    return (seed: number) =>
+      createMatchSetup(pack, {
+        levelId: 'lion',
+        attackerProfileId: 'explorer',
+        defenderProfileId: 'ranger',
+        seed,
+      });
+  }
+
+  it.each(DIFFICULTIES)(
+    'plays %s matches to the end with only accepted commands, and both sides win some',
+    async (difficulty) => {
+      const report = runBalance(await lionPack(), difficulty, difficulty, 16);
+      expect(report.failures).toBe(0);
+      expect(report.rejectedCommands).toBe(0);
+      expect(report.attackerWins).toBeGreaterThan(0);
+      expect(report.defenderWins).toBeGreaterThan(0);
+    },
+  );
+
+  it('beats an easier opponent from either side', async () => {
+    const setupFor = await lionPack();
+    expect(runBalance(setupFor, 'hard', 'easy', 10).attackerWins).toBeGreaterThan(7);
+    expect(runBalance(setupFor, 'easy', 'hard', 10).defenderWins).toBeGreaterThan(7);
   });
 });

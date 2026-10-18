@@ -11,9 +11,11 @@
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "simulate": "tsx src/simulateCli.ts"
+    "simulate": "tsx src/simulateCli.ts",
+    "balance": "tsx src/balanceCli.ts"
   },
   "dependencies": {
+    "@gtd/ai": "0.0.1",
     "@gtd/content-schema": "0.0.1",
     "@gtd/sim": "0.0.1"
   }
