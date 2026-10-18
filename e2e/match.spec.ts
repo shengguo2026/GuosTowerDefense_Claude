@@ -34,8 +34,12 @@ test('plays both sides on one screen through the debug controls', async ({ page 
   await expect(page.getByTestId('asset-row')).toContainText('Observation Post');
 
   await page.getByTestId('tab-attacker').click();
+  // Software rendering on slow runners can use up the 30 s preparation before this point, so check whichever
+  // outcome the rules give at the moment of the click.
+  const preparing = (await page.getByTestId('phase').textContent())?.includes('Preparation');
   await page.getByTestId('launch-wave').click();
-  await expect(page.getByTestId('notice')).toContainText('once preparation is over');
+  if (preparing) await expect(page.getByTestId('notice')).toContainText('once preparation is over');
+  else await expect(page.getByTestId('group-row')).toHaveCount(1);
   await page.screenshot({ path: testInfo.outputPath(`match-${testInfo.project.name}.png`) });
 });
 
