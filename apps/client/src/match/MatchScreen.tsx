@@ -953,10 +953,13 @@ export function MatchScreen({
                   {compact && minimap}
                 </div>
               </aside>
-              {layout === 'tablet' ? <div className="hud-abilities">{abilityBar}</div> : abilityBar}
             </>
           )}
-          <footer className="hud-bottom">{bottom}</footer>
+          {/* On tablets and phones the abilities sit in the bottom bar, so nothing can cover them. */}
+          <footer className="hud-bottom">
+            {bottom}
+            {layout !== 'desktop' && abilityBar}
+          </footer>
         </>
       )}
 

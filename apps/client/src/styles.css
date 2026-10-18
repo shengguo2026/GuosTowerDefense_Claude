@@ -1028,7 +1028,6 @@ button.primary-small {
 .match-screen > aside,
 .match-screen > footer,
 .match-screen > .hud-minimap,
-.match-screen > .hud-abilities,
 .match-screen > .ability-bar,
 .tutorial-panel,
 .hint-toast,
@@ -2229,11 +2228,6 @@ kbd {
   right: 10px;
   width: 180px;
 }
-.layout-tablet .hud-abilities {
-  position: absolute;
-  right: 10px;
-  bottom: 170px;
-}
 .layout-tablet .ability-bar h3 {
   display: none;
 }
@@ -2360,9 +2354,6 @@ kbd {
   padding: 8px;
 }
 .layout-phone .ability-bar.floating {
-  position: absolute;
-  right: 6px;
-  top: 50px;
   padding: 4px;
   background: transparent;
   box-shadow: none;
@@ -2453,4 +2444,25 @@ kbd {
 }
 .drawer-content > * {
   flex: none;
+}
+
+/* Tablet and phone: the bottom bar holds the build or wave panel and, at its right end, the abilities. */
+.layout-tablet .hud-bottom,
+.layout-phone .hud-bottom {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.layout-tablet .hud-bottom > :first-child,
+.layout-phone .hud-bottom > :first-child {
+  flex: 1;
+  min-width: 0;
+}
+.layout-tablet .hud-bottom > .ability-bar,
+.layout-phone .hud-bottom > .ability-bar {
+  flex: none;
+  align-self: flex-end;
+}
+.layout-phone.drawer-open .hud-bottom {
+  display: none;
 }
