@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "test-stage",
+  "order": 900,
+  "core": false,
+  "devOnly": true,
+  "title": "stage.title",
+  "levels": ["meadow", "canyon"],
+  "profiles": {
+    "attacker": ["courier", "sprinter"],
+    "defender": ["gatekeeper", "lookout"]
+  },
+  "plugins": []
+}

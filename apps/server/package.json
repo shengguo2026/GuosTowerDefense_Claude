@@ -1,0 +1,23 @@
+{
+  "name": "@gtd/server",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Local game host on the PC: serves the client, runs matches, keeps the save.",
+  "type": "module",
+  "main": "src/main.ts",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "start": "node --import tsx src/main.ts"
+  },
+  "dependencies": {
+    "@gtd/content-schema": "0.0.1",
+    "@gtd/i18n": "0.0.1",
+    "@gtd/protocol": "0.0.1",
+    "@gtd/sim": "0.0.1",
+    "ws": "^8.18.3",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1"
+  }
+}

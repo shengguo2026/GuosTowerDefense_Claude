@@ -1,0 +1,82 @@
+{
+  "id": "meadow",
+  "title": "level.meadow.title",
+  "unlockedBy": null,
+  "timerSeconds": 120,
+  "objective": {
+    "nodeId": "beacon",
+    "holdSeconds": 8
+  },
+  "map": {
+    "nodes": [
+      {
+        "id": "gate",
+        "x": 0,
+        "z": 0
+      },
+      {
+        "id": "fork",
+        "x": 12,
+        "z": 0,
+        "buildable": true
+      },
+      {
+        "id": "hill",
+        "x": 22,
+        "z": 10,
+        "buildable": true
+      },
+      {
+        "id": "brook",
+        "x": 22,
+        "z": -10,
+        "buildable": true
+      },
+      {
+        "id": "beacon",
+        "x": 34,
+        "z": 0
+      }
+    ],
+    "edges": [
+      {
+        "from": "gate",
+        "to": "fork"
+      },
+      {
+        "from": "fork",
+        "to": "hill"
+      },
+      {
+        "from": "fork",
+        "to": "brook"
+      },
+      {
+        "from": "hill",
+        "to": "beacon"
+      },
+      {
+        "from": "brook",
+        "to": "beacon"
+      }
+    ]
+  },
+  "routes": [
+    {
+      "id": "hill-path",
+      "nodes": ["gate", "fork", "hill", "beacon"]
+    },
+    {
+      "id": "brook-path",
+      "nodes": ["gate", "fork", "brook", "beacon"]
+    }
+  ],
+  "startingResources": {
+    "attacker": 120,
+    "defender": 100
+  },
+  "incomePerSecond": {
+    "attacker": 2,
+    "defender": 2
+  }
+}

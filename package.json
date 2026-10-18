@@ -1,0 +1,41 @@
+{
+  "name": "guos-tower-defense",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Guo's Tower Defense: an asymmetric, non-violent tower-defense strategy game played in the browser.",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "dev": "node tools/dev.mjs",
+    "start": "node tools/start.mjs",
+    "build": "npm run build -w @gtd/client",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "validate:content": "npm run validate -w @gtd/content-schema -- ../../content/stages",
+    "simulate": "npm run simulate -w @gtd/test-kit --",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run validate:content"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "1.56.1",
+    "@types/node": "^22.18.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^16.4.0",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.6",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.0",
+    "vitest": "^3.2.4"
+  }
+}

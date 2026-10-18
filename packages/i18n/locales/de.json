@@ -1,0 +1,16 @@
+{
+  "app.title": "Guos Tower Defense",
+  "language.pickerTitle": "Wähle deine Sprache",
+  "language.pickerHint": "Du kannst sie jederzeit in den Einstellungen ändern.",
+  "language.continue": "Weiter",
+  "language.label": "Sprache",
+  "settings.title": "Einstellungen",
+  "settings.close": "Schließen",
+  "connection.connecting": "Verbindung zum Spielserver wird hergestellt …",
+  "connection.connected": "Verbunden",
+  "connection.disconnected": "Verbindung verloren. Neuer Versuch …",
+  "connection.serverVersion": "Serverversion {version}",
+  "home.tagline": "Ein asymmetrisches Strategiespiel. Schütze die Wildnis oder finde deinen Weg hindurch.",
+  "home.foundation": "Grundgerüst: Die Spielwelt folgt im nächsten Meilenstein.",
+  "home.stages": "{count} Stage-Paket(e) geladen"
+}

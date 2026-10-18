@@ -1,0 +1,19 @@
+{
+  "id": "sprinter",
+  "side": "attacker",
+  "name": "profile.sprinter.name",
+  "description": "profile.sprinter.description",
+  "resource": {
+    "id": "stamina",
+    "name": "resource.stamina"
+  },
+  "passive": {
+    "name": "profile.sprinter.passive.name",
+    "description": "profile.sprinter.passive.description",
+    "effects": []
+  },
+  "units": ["runner", "glider"],
+  "defenses": [],
+  "abilities": ["smoke-trail"],
+  "commands": []
+}

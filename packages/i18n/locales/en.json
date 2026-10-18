@@ -1,0 +1,16 @@
+{
+  "app.title": "Guo's Tower Defense",
+  "language.pickerTitle": "Choose your language",
+  "language.pickerHint": "You can change it any time in Settings.",
+  "language.continue": "Continue",
+  "language.label": "Language",
+  "settings.title": "Settings",
+  "settings.close": "Close",
+  "connection.connecting": "Connecting to the game server…",
+  "connection.connected": "Connected",
+  "connection.disconnected": "Connection lost. Trying again…",
+  "connection.serverVersion": "Server version {version}",
+  "home.tagline": "An asymmetric strategy game. Protect the wild, or find your way through it.",
+  "home.foundation": "Foundation build: the world arrives in the next milestone.",
+  "home.stages": "{count} stage pack(s) loaded"
+}
