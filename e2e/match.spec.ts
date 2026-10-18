@@ -50,8 +50,10 @@ test('plays both sides on one screen through the debug controls', async ({ page 
 test('two people play a full match from separate screens', async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'one full match is enough; it runs in real time');
   test.setTimeout(600_000);
-  const attacker = await (await browser.newContext({ viewport: { width: 1180, height: 820 } })).newPage();
-  const defender = await (await browser.newContext({ viewport: { width: 1180, height: 820 } })).newPage();
+  const attackerContext = await browser.newContext({ viewport: { width: 1180, height: 820 } });
+  const defenderContext = await browser.newContext({ viewport: { width: 1180, height: 820 } });
+  const attacker = await attackerContext.newPage();
+  const defender = await defenderContext.newPage();
   await attacker.request.put('/api/settings', { data: { language: 'en', graphics: 'low' } });
 
   await startMatch(attacker, 'attacker');
@@ -83,6 +85,9 @@ test('two people play a full match from separate screens', async ({ browser }, t
   await expect(defender.getByTestId('result-defender')).toContainText('Defeat');
   await attacker.screenshot({ path: testInfo.outputPath('result-attacker.png') });
   await defender.screenshot({ path: testInfo.outputPath('result-defender.png') });
+  // Two extra 3D views left open would keep rendering and slow down every later test.
+  await attackerContext.close();
+  await defenderContext.close();
 });
 
 test('plays against the computer and shows its reasoning', async ({ page }, testInfo) => {
