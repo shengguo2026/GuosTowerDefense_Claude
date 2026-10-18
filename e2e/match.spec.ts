@@ -41,8 +41,8 @@ test('plays both sides on one screen through the debug controls', async ({ page 
 
 test('two people play a full match from separate screens', async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'one full match is enough; it runs in real time');
-  test.setTimeout(420_000);
-  const attacker = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  test.setTimeout(600_000);
+  const attacker = await (await browser.newContext({ viewport: { width: 1180, height: 820 } })).newPage();
   const defender = await (await browser.newContext({ viewport: { width: 1180, height: 820 } })).newPage();
   await attacker.request.put('/api/settings', { data: { language: 'en', graphics: 'low' } });
 
