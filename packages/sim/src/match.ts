@@ -9,6 +9,7 @@ import {
 } from './commandQueue';
 import {
   BLOCK_STANDOFF,
+  CONTESTED_HOLD_RATE,
   DEFAULT_EFFECT_MAGNITUDE,
   FORMATIONS,
   IDENTIFY_SECONDS,
@@ -112,7 +113,10 @@ export class Match {
   private readonly patrolData = new Map<number, PatrolInternals>();
   private readonly defenseBoosts = new Map<number, { untilTick: number; magnitude: number }>();
   private readonly waves = new Map<number, WaveRecord>();
-  private readonly cooldownUntil: Record<Side, Map<string, number>> = { attacker: new Map(), defender: new Map() };
+  private readonly cooldownUntil: Record<Side, Map<string, number>> = {
+    attacker: new Map(),
+    defender: new Map(),
+  };
   private readonly usedRoutes = new Set<string>();
   /** What the Attacker remembers of each structure it has seen: a copy from the last time it was in sight. */
   private readonly seenDefenses = new Map<number, DefenseEntity>();
@@ -192,7 +196,8 @@ export class Match {
   step(): void {
     if (this.outcome) return;
     this.tickCount++;
-    if (this.tickCount === this.preparationTicks) this.events.push({ tick: this.tickCount, type: 'combatStarted' });
+    if (this.tickCount === this.preparationTicks)
+      this.events.push({ tick: this.tickCount, type: 'combatStarted' });
     for (const command of this.commands.drain(this.tickCount)) this.apply(command);
     this.addIncome();
     this.areas = this.areas.filter((area) => area.untilTick > this.tickCount);
@@ -245,7 +250,7 @@ export class Match {
         x: objectiveNode.x,
         z: objectiveNode.z,
         radius: level.objective.radius,
-        heldTicks: this.heldTicks,
+        heldTicks: Math.floor(this.heldTicks),
         requiredTicks: this.holdTicksRequired,
         contested: this.contested,
       },
@@ -268,7 +273,13 @@ export class Match {
   private apply(command: Command): void {
     const reason = this.applyCommand(command);
     if (reason)
-      this.events.push({ tick: this.tickCount, type: 'commandRejected', side: command.side, command: command.type, reason });
+      this.events.push({
+        tick: this.tickCount,
+        type: 'commandRejected',
+        side: command.side,
+        command: command.type,
+        reason,
+      });
   }
 
   /** Returns a rejection reason, or null when the command was carried out. */
@@ -327,7 +338,12 @@ export class Match {
         defense.spent += cost;
         defense.level++;
         this.stats.defender.upgrades++;
-        this.events.push({ tick: this.tickCount, type: 'defenseUpgraded', defenseId: defense.id, level: defense.level });
+        this.events.push({
+          tick: this.tickCount,
+          type: 'defenseUpgraded',
+          defenseId: defense.id,
+          level: defense.level,
+        });
         return null;
       }
       case 'repairDefense': {
@@ -388,7 +404,11 @@ export class Match {
     if (this.phase !== 'combat') return 'preparation';
     if (this.tickCount < this.launchReadyTick) return 'launchCooldown';
     if (this.activeWaveCount() >= this.setup.level.maxActiveWaves) return 'tooManyWaves';
-    if (!Array.isArray(command.groups) || command.groups.length < 1 || command.groups.length > MAX_GROUPS_PER_WAVE)
+    if (
+      !Array.isArray(command.groups) ||
+      command.groups.length < 1 ||
+      command.groups.length > MAX_GROUPS_PER_WAVE
+    )
       return 'invalidWave';
     let capacity = 0;
     let cost = 0;
@@ -415,28 +435,26 @@ export class Match {
       const unit = this.unitTypes.get(order.unitTypeId) as SimUnitType;
       const spawn = this.graph.node(this.graph.routes.get(order.routeId)?.nodes[0] as string);
       const delayTicks = secondsToTicks(order.delaySeconds);
-      const group = this.entities.create(
-        (id): GroupEntity => ({
-          id,
-          kind: 'group',
-          waveId,
-          unitTypeId: unit.id,
-          count: order.count,
-          formation: order.formation,
-          routeId: order.routeId,
-          leg: 0,
-          legDistance: 0,
-          state: delayTicks > 0 ? 'waiting' : 'moving',
-          holdAtJunction: false,
-          pendingRouteId: null,
-          pressure: 0,
-          detection: 'unknown',
-          slowed: false,
-          boosted: false,
-          x: spawn.x,
-          z: spawn.z,
-        }),
-      );
+      const group = this.entities.create((id): GroupEntity => ({
+        id,
+        kind: 'group',
+        waveId,
+        unitTypeId: unit.id,
+        count: order.count,
+        formation: order.formation,
+        routeId: order.routeId,
+        leg: 0,
+        legDistance: 0,
+        state: delayTicks > 0 ? 'waiting' : 'moving',
+        holdAtJunction: false,
+        pendingRouteId: null,
+        pressure: 0,
+        detection: 'unknown',
+        slowed: false,
+        boosted: false,
+        x: spawn.x,
+        z: spawn.z,
+      }));
       this.groupData.set(group.id, {
         unit,
         speedVariation: this.rng.range(1 - SPEED_VARIATION, 1 + SPEED_VARIATION),
@@ -481,30 +499,33 @@ export class Match {
     if (!node) return 'unknownNode';
     if (!this.canPlace(type, node.id)) return 'notBuildable';
     if (!type.mobile && this.defenses().some((d) => !d.mobile && d.nodeId === node.id)) return 'occupied';
+    if (
+      type.maxCount !== undefined &&
+      this.defenses().filter((d) => d.defenseTypeId === type.id).length >= type.maxCount
+    )
+      return 'limitReached';
     if (type.cost > this.resources.defender) return 'notEnoughResources';
     const blocking = type.blocksNode && this.graph.routeNodes.has(node.id);
     if (blocking && !this.graph.hasOpenRoute(this.closedNodes(node.id))) return 'wouldBlockAllRoutes';
     this.resources.defender -= type.cost;
-    const defense = this.entities.create(
-      (id): DefenseEntity => ({
-        id,
-        kind: 'defense',
-        defenseTypeId: type.id,
-        mobile: type.mobile,
-        nodeId: node.id,
-        level: 1,
-        condition: 100,
-        blocking,
-        priority: 'first',
-        focusGroupId: null,
-        targetGroupId: null,
-        order: type.mobile ? { type: 'guard', nodeId: node.id } : null,
-        boosted: false,
-        spent: type.cost,
-        x: node.x,
-        z: node.z,
-      }),
-    );
+    const defense = this.entities.create((id): DefenseEntity => ({
+      id,
+      kind: 'defense',
+      defenseTypeId: type.id,
+      mobile: type.mobile,
+      nodeId: node.id,
+      level: 1,
+      condition: 100,
+      blocking,
+      priority: 'first',
+      focusGroupId: null,
+      targetGroupId: null,
+      order: type.mobile ? { type: 'guard', nodeId: node.id } : null,
+      boosted: false,
+      spent: type.cost,
+      x: node.x,
+      z: node.z,
+    }));
     if (type.mobile) {
       this.patrolData.set(defense.id, { path: [], legIndex: 0, legDistance: 0, patrolIndex: 0 });
       this.stats.defender.patrolsDeployed++;
@@ -524,7 +545,8 @@ export class Match {
   private canPlace(type: SimDefenseType, nodeId: string): boolean {
     const node = this.graph.node(nodeId);
     const onRoute = this.graph.routeNodes.has(nodeId);
-    const spawn = node.kind === 'spawn' || [...this.graph.routes.values()].some((route) => route.nodes[0] === nodeId);
+    const spawn =
+      node.kind === 'spawn' || [...this.graph.routes.values()].some((route) => route.nodes[0] === nodeId);
     if (type.mobile) return onRoute && !spawn;
     const objective = nodeId === this.setup.level.objective.nodeId;
     const routeOk = onRoute && !spawn && !objective;
@@ -541,7 +563,8 @@ export class Match {
     const targets = order.type === 'guard' ? [order.nodeId] : order.type === 'patrol' ? order.nodeIds : [];
     if (targets.length === 0) return 'invalidOrder';
     const type = this.defenseType(defense);
-    for (const id of targets) if (!this.graph.nodes.has(id) || !this.canPlace(type, id)) return 'invalidOrder';
+    for (const id of targets)
+      if (!this.graph.nodes.has(id) || !this.canPlace(type, id)) return 'invalidOrder';
     const patrol = this.patrolData.get(defense.id) as PatrolInternals;
     const current = patrol.path[patrol.legIndex];
     const from = current ? current.to : defense.nodeId;
@@ -553,7 +576,10 @@ export class Match {
     patrol.legIndex = 0;
     if (!current) patrol.legDistance = 0;
     patrol.patrolIndex = 0;
-    defense.order = order.type === 'guard' ? { type: 'guard', nodeId: order.nodeId } : { type: 'patrol', nodeIds: [order.nodeIds[0], order.nodeIds[1]] };
+    defense.order =
+      order.type === 'guard'
+        ? { type: 'guard', nodeId: order.nodeId }
+        : { type: 'patrol', nodeIds: [order.nodeIds[0], order.nodeIds[1]] };
     return null;
   }
 
@@ -591,7 +617,12 @@ export class Match {
    * Abilities are read from data: the target type says what the ability is aimed at and each effect says what happens
    * there. Returns the action to run, or a rejection reason (nothing is spent when an ability is rejected).
    */
-  private planEffect(side: Side, ability: SimAbility, effect: SimEffect, command: UseAbilityCommand): (() => void) | string {
+  private planEffect(
+    side: Side,
+    ability: SimAbility,
+    effect: SimEffect,
+    command: UseAbilityCommand,
+  ): (() => void) | string {
     const until = this.tickCount + Math.max(1, secondsToTicks(ability.durationSeconds));
     const magnitude = effect.magnitude ?? DEFAULT_EFFECT_MAGNITUDE;
     const at = this.abilityPoint(ability, command);
@@ -635,7 +666,8 @@ export class Match {
         }
         if (!at) return 'missingTarget';
         return () => {
-          for (const group of this.fieldGroups()) if (distance(group, at) <= ability.range) this.slowGroup(group, until, magnitude);
+          for (const group of this.fieldGroups())
+            if (distance(group, at) <= ability.range) this.slowGroup(group, until, magnitude);
         };
       }
       case 'boost': {
@@ -751,14 +783,21 @@ export class Match {
       let slow = slowed ? data.slowMagnitude : 0;
       for (const defense of this.activeDefenses()) {
         const type = this.defenseType(defense);
-        if (type.slow > 0 && distance(defense, group) <= this.reach(defense)) slow = Math.max(slow, type.slow);
+        if (type.slow > 0 && distance(defense, group) <= this.reach(defense))
+          slow = Math.max(slow, type.slow);
       }
       group.slowed = slow > 0 && ON_FIELD.has(group.state);
       group.boosted = data.boostUntil > this.tickCount;
       if (group.state !== 'moving' && group.state !== 'retreating') continue;
       const legs = this.graph.routeLegs(group.routeId);
-      const terrain = this.setup.level.terrain[legs[Math.min(group.leg, legs.length - 1)]?.terrain ?? 'cover'];
-      let speed = data.unit.speed * data.speedVariation * FORMATIONS[group.formation].speed * terrain.speed * (1 - slow);
+      const terrain =
+        this.setup.level.terrain[legs[Math.min(group.leg, legs.length - 1)]?.terrain ?? 'cover'];
+      let speed =
+        data.unit.speed *
+        data.speedVariation *
+        FORMATIONS[group.formation].speed *
+        terrain.speed *
+        (1 - slow);
       if (group.boosted) speed *= 1 + data.boostMagnitude;
       if (data.knownRoute) speed *= 1 + this.passive('attacker', 'speed', true);
       const step = speed * TICK_SECONDS;
@@ -785,7 +824,13 @@ export class Match {
       if (blocker) {
         group.state = 'blocked';
         this.data(group).blockedBy = blocker.id;
-        this.events.push({ tick: this.tickCount, type: 'groupBlocked', groupId: group.id, nodeId: leg.to, defenseId: blocker.id });
+        this.events.push({
+          tick: this.tickCount,
+          type: 'groupBlocked',
+          groupId: group.id,
+          nodeId: leg.to,
+          defenseId: blocker.id,
+        });
         return;
       }
       group.leg++;
@@ -875,7 +920,9 @@ export class Match {
   private rerouteNodeAhead(group: GroupEntity, routeId: string): boolean {
     const nodes = (this.graph.routes.get(group.routeId) as { nodes: string[] }).nodes;
     const target = (this.graph.routes.get(routeId) as { nodes: string[] }).nodes;
-    return nodes.slice(group.leg + 1, -1).some((id) => target.indexOf(id) >= 0 && target.indexOf(id) < target.length - 1);
+    return nodes
+      .slice(group.leg + 1, -1)
+      .some((id) => target.indexOf(id) >= 0 && target.indexOf(id) < target.length - 1);
   }
 
   private startRetreat(group: GroupEntity): void {
@@ -905,13 +952,22 @@ export class Match {
     this.resources.attacker += refundSupplies;
     this.stats.attacker.membersRetreated += group.count;
     this.removeGroup(group);
-    this.events.push({ tick: this.tickCount, type: 'groupLeft', groupId: group.id, count: group.count, refundCapacity, refundSupplies });
+    this.events.push({
+      tick: this.tickCount,
+      type: 'groupLeft',
+      groupId: group.id,
+      count: group.count,
+      refundCapacity,
+      refundSupplies,
+    });
   }
 
   private placeGroup(group: GroupEntity): void {
     const legs = this.graph.routeLegs(group.routeId);
     const leg = legs[group.leg];
-    const end = this.graph.node((this.graph.routes.get(group.routeId) as { nodes: string[] }).nodes.at(-1) as string);
+    const end = this.graph.node(
+      (this.graph.routes.get(group.routeId) as { nodes: string[] }).nodes.at(-1) as string,
+    );
     const at = leg ? pointOnPolyline(leg.points, group.legDistance) : end;
     group.x = at.x;
     group.z = at.z;
@@ -925,7 +981,8 @@ export class Match {
       if (defense.targetGroupId !== null) continue; // engaging: stays put while intercepting
       const patrol = this.patrolData.get(defense.id) as PatrolInternals;
       const type = this.defenseType(defense);
-      let remaining = type.speed * (defense.boosted ? 1 + (boost as { magnitude: number }).magnitude : 1) * TICK_SECONDS;
+      let remaining =
+        type.speed * (defense.boosted ? 1 + (boost as { magnitude: number }).magnitude : 1) * TICK_SECONDS;
       while (remaining > 0) {
         const leg = patrol.path[patrol.legIndex];
         if (!leg) {
@@ -973,8 +1030,10 @@ export class Match {
       if (group.state === 'waiting') continue;
       const data = this.data(group);
       const legs = this.graph.routeLegs(group.routeId);
-      const terrain = this.setup.level.terrain[legs[Math.min(group.leg, legs.length - 1)]?.terrain ?? 'cover'];
-      let visibility = VISIBILITY_FACTORS[data.unit.visibility] * FORMATIONS[group.formation].detection * terrain.detection;
+      const terrain =
+        this.setup.level.terrain[legs[Math.min(group.leg, legs.length - 1)]?.terrain ?? 'cover'];
+      let visibility =
+        VISIBILITY_FACTORS[data.unit.visibility] * FORMATIONS[group.formation].detection * terrain.detection;
       if (data.concealUntil > this.tickCount) visibility *= 0.5;
       const seen =
         data.revealedUntil > this.tickCount ||
@@ -1015,7 +1074,8 @@ export class Match {
     // A remembered structure that is gone is forgotten once a group sees the spot again.
     for (const [id, memory] of this.seenDefenses) {
       if (this.entities.get(id)) continue;
-      if (lookers.some((g) => distance(g, memory) <= this.data(g).unit.sightRange)) this.seenDefenses.delete(id);
+      if (lookers.some((g) => distance(g, memory) <= this.data(g).unit.sightRange))
+        this.seenDefenses.delete(id);
     }
   }
 
@@ -1030,8 +1090,10 @@ export class Match {
       const candidates = this.groups().filter(
         (g) => ON_FIELD.has(g.state) && g.detection !== 'unknown' && distance(g, defense) <= reach,
       );
-      if (defense.focusGroupId !== null && !this.entities.get(defense.focusGroupId)) defense.focusGroupId = null;
-      const target = candidates.find((g) => g.id === defense.focusGroupId) ?? this.pickTarget(defense, candidates);
+      if (defense.focusGroupId !== null && !this.entities.get(defense.focusGroupId))
+        defense.focusGroupId = null;
+      const target =
+        candidates.find((g) => g.id === defense.focusGroupId) ?? this.pickTarget(defense, candidates);
       if (!target) continue;
       defense.targetGroupId = target.id;
       const type = this.defenseType(defense);
@@ -1075,11 +1137,22 @@ export class Match {
       this.stats.defender.membersTurnedBack++;
       const wave = this.waves.get(group.waveId) as WaveRecord;
       wave.turnedBack++;
-      this.events.push({ tick: this.tickCount, type: 'memberTurnedBack', groupId: group.id, byDefenseId: defense.id, remaining: group.count });
+      this.events.push({
+        tick: this.tickCount,
+        type: 'memberTurnedBack',
+        groupId: group.id,
+        byDefenseId: defense.id,
+        remaining: group.count,
+      });
     }
     if (group.count > 0) return;
     this.removeGroup(group);
-    this.events.push({ tick: this.tickCount, type: 'groupStopped', groupId: group.id, byDefenseId: defense.id });
+    this.events.push({
+      tick: this.tickCount,
+      type: 'groupStopped',
+      groupId: group.id,
+      byDefenseId: defense.id,
+    });
     const wave = this.waves.get(group.waveId) as WaveRecord;
     const waveGone = wave.groupIds.every((id) => !this.entities.get(id));
     if (waveGone && wave.turnedBack === wave.members) {
@@ -1106,18 +1179,22 @@ export class Match {
     }
   }
 
-  /** Hold progress grows while a group is in the zone and no patrol contests it; it pauses (never resets) otherwise. */
+  /**
+   * Hold progress grows while a group is in the zone, at half speed while a Defender patrol contests it; with nobody
+   * in the zone it pauses (it never resets).
+   */
   private updateObjective(): void {
     const { objective } = this.setup.level;
     const centre = this.graph.node(objective.nodeId);
     const holders = this.groups().some((g) => g.state === 'atObjective');
     this.contested = this.activeDefenses().some((d) => d.mobile && distance(d, centre) <= objective.radius);
-    if (holders && !this.contested) this.heldTicks++;
+    if (holders) this.heldTicks += this.contested ? CONTESTED_HOLD_RATE : 1;
     this.stats.attacker.bestObjectiveProgress = Math.max(
       this.stats.attacker.bestObjectiveProgress,
       Math.min(1, this.heldTicks / this.holdTicksRequired),
     );
-    if (this.heldTicks >= this.holdTicksRequired) this.end({ winner: 'attacker', reason: 'objectiveCompleted' });
+    if (this.heldTicks >= this.holdTicksRequired)
+      this.end({ winner: 'attacker', reason: 'objectiveCompleted' });
   }
 
   /** The Attacker can launch nothing more and has nobody left on the map. */
@@ -1194,12 +1271,15 @@ export class Match {
 
   private blockers(): Map<string, DefenseEntity> {
     const map = new Map<string, DefenseEntity>();
-    for (const defense of this.defenses()) if (defense.blocking && !map.has(defense.nodeId)) map.set(defense.nodeId, defense);
+    for (const defense of this.defenses())
+      if (defense.blocking && !map.has(defense.nodeId)) map.set(defense.nodeId, defense);
     return map;
   }
 
   private blocksWhenActive(defense: DefenseEntity): boolean {
-    return this.defenseType(defense).blocksNode && !defense.mobile && this.graph.routeNodes.has(defense.nodeId);
+    return (
+      this.defenseType(defense).blocksNode && !defense.mobile && this.graph.routeNodes.has(defense.nodeId)
+    );
   }
 
   private upgradeCost(defense: DefenseEntity): number {
@@ -1208,7 +1288,7 @@ export class Match {
   }
 
   private repairCost(defense: DefenseEntity): number {
-    return Math.ceil(this.defenseType(defense).cost * REPAIR_COST_SHARE * (100 - defense.condition) / 100);
+    return Math.ceil((this.defenseType(defense).cost * REPAIR_COST_SHARE * (100 - defense.condition)) / 100);
   }
 
   private reach(defense: DefenseEntity): number {

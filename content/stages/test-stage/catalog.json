@@ -28,14 +28,19 @@
       "name": "defense.gate-post",
       "cost": 35,
       "range": 5,
-      "pressurePerSecond": 3
+      "pressurePerSecond": 3,
+      "placement": "any",
+      "slow": 0.3,
+      "blocksNode": true,
+      "wearPerMemberSecond": 3
     },
     {
       "id": "watch-light",
       "name": "defense.watch-light",
       "cost": 25,
       "range": 8,
-      "pressurePerSecond": 1.5
+      "pressurePerSecond": 1.5,
+      "detectionRange": 12
     }
   ],
   "abilities": [

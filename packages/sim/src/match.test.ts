@@ -84,7 +84,11 @@ describe('phases and waves', () => {
     const match = newMatch();
     skipPreparation(match);
     const before = match.snapshot();
-    launch(match, order({ count: 3 }), order({ unitTypeId: 'sneaker', count: 2, routeId: 'south', formation: 'spread' }));
+    launch(
+      match,
+      order({ count: 3 }),
+      order({ unitTypeId: 'sneaker', count: 2, routeId: 'south', formation: 'spread' }),
+    );
     const after = match.snapshot();
     expect(groups(match).map((g) => [g.unitTypeId, g.count, g.routeId, g.formation])).toEqual([
       ['walker', 3, 'north', 'column'],
@@ -164,7 +168,13 @@ describe('movement on the route graph', () => {
       const match = newMatch();
       skipPreparation(match);
       launch(match, order({ formation }));
-      if (switchTo) send(match, { type: 'setFormation', side: 'attacker', groupId: groups(match)[0]!.id, formation: switchTo });
+      if (switchTo)
+        send(match, {
+          type: 'setFormation',
+          side: 'attacker',
+          groupId: groups(match)[0]!.id,
+          formation: switchTo,
+        });
       run(match, 2);
       return groups(match)[0]!.x;
     };
@@ -212,7 +222,11 @@ describe('movement on the route graph', () => {
     expect(group(match, id)?.state).toBe('retreating');
     const capacityBefore = match.snapshot().capacity.remaining;
     runUntil(match, () => !group(match, id));
-    expect(eventsOf(match, 'groupLeft')[0]).toMatchObject({ count: 4, refundCapacity: 2, refundSupplies: 20 });
+    expect(eventsOf(match, 'groupLeft')[0]).toMatchObject({
+      count: 4,
+      refundCapacity: 2,
+      refundSupplies: 20,
+    });
     expect(match.snapshot().capacity.remaining).toBe(capacityBefore + 2);
     expect(match.snapshot().stats.attacker.membersRetreated).toBe(4);
   });
@@ -302,7 +316,9 @@ describe('defenses and the non-lethal outcome', () => {
       place(match, 'post', 'goal-zone');
       skipPreparation(match);
       launch(match, order({ count: 1 }), order({ count: 5 }));
-      runUntil(match, () => groups(match).every((g) => g.state === 'atObjective' && g.detection === 'identified'));
+      runUntil(match, () =>
+        groups(match).every((g) => g.state === 'atObjective' && g.detection === 'identified'),
+      );
       return match;
     };
     const targetOf = (match: Match) => defenses(match)[0]?.targetGroupId;
@@ -355,6 +371,17 @@ describe('defenses and the non-lethal outcome', () => {
       ['post', 'north-zone'],
       ['patrol', 'goal'],
     ]);
+  });
+
+  it('keeps to the limit of how many of an asset the Defender may have', () => {
+    const setup = fixtureSetup();
+    setup.defender.defenses = setup.defender.defenses.map((d) =>
+      d.id === 'patrol' ? { ...d, maxCount: 1 } : d,
+    );
+    const match = new Match(setup);
+    place(match, 'patrol', 'fork');
+    place(match, 'patrol', 'goal');
+    expect(rejections(match)).toEqual(['limitReached']);
   });
 
   it('never lets the Defender block every route', () => {
@@ -439,7 +466,12 @@ describe('patrols', () => {
   it('guards a node and patrols back and forth between two nodes', () => {
     const match = newMatch();
     place(match, 'patrol', 'fork');
-    send(match, { type: 'orderDefense', side: 'defender', defenseId: 1, order: { type: 'guard', nodeId: 'goal' } });
+    send(match, {
+      type: 'orderDefense',
+      side: 'defender',
+      defenseId: 1,
+      order: { type: 'guard', nodeId: 'goal' },
+    });
     run(match, 8);
     expect(defenses(match)[0]).toMatchObject({ nodeId: 'goal', x: 30, z: 0 });
     send(match, {
@@ -454,13 +486,23 @@ describe('patrols', () => {
       visited.add(defenses(match)[0]!.nodeId);
     }
     expect(visited).toEqual(new Set(['goal', 'north', 'fork', 'south']));
-    send(match, { type: 'orderDefense', side: 'defender', defenseId: 1, order: { type: 'guard', nodeId: 'north-zone' } });
+    send(match, {
+      type: 'orderDefense',
+      side: 'defender',
+      defenseId: 1,
+      order: { type: 'guard', nodeId: 'north-zone' },
+    });
     place(match, 'post', 'north-zone');
-    send(match, { type: 'orderDefense', side: 'defender', defenseId: 2, order: { type: 'guard', nodeId: 'goal' } });
+    send(match, {
+      type: 'orderDefense',
+      side: 'defender',
+      defenseId: 2,
+      order: { type: 'guard', nodeId: 'goal' },
+    });
     expect(rejections(match)).toEqual(['invalidOrder', 'notMobile']);
   });
 
-  it('contests the objective: hold progress pauses while a patrol is in the zone', () => {
+  it('contests the objective: hold progress runs at half speed while a patrol is in the zone', () => {
     const match = newMatch({}, { objective: { nodeId: 'goal', holdSeconds: 30, radius: 4 } });
     skipPreparation(match);
     launch(match, order({ unitTypeId: 'sneaker', count: 3 }));
@@ -470,8 +512,10 @@ describe('patrols', () => {
     expect(held).toBeGreaterThan(0);
     place(match, 'patrol', 'goal');
     run(match, 2);
-    expect(match.snapshot().objective).toMatchObject({ contested: true });
-    expect(match.snapshot().objective.heldTicks).toBeLessThanOrEqual(held + 1);
+    const contested = match.snapshot().objective;
+    expect(contested.contested).toBe(true);
+    expect(contested.heldTicks - held).toBeGreaterThan(secondsToTicks(2) * 0.4);
+    expect(contested.heldTicks - held).toBeLessThan(secondsToTicks(2) * 0.6);
   });
 
   it('moves faster under Rapid Response', () => {
@@ -479,7 +523,12 @@ describe('patrols', () => {
       const match = newMatch();
       place(match, 'patrol', 'fork');
       if (boost) send(match, { type: 'useAbility', side: 'defender', abilityId: 'response', x: 10, z: 0 });
-      send(match, { type: 'orderDefense', side: 'defender', defenseId: 1, order: { type: 'guard', nodeId: 'goal' } });
+      send(match, {
+        type: 'orderDefense',
+        side: 'defender',
+        defenseId: 1,
+        order: { type: 'guard', nodeId: 'goal' },
+      });
       run(match, 2);
       return defenses(match)[0]!.x;
     };
@@ -516,7 +565,13 @@ describe('abilities', () => {
     skipPreparation(match);
     launch(match);
     const id = groups(match)[0]!.id;
-    send(match, { type: 'useAbility', side: 'attacker', abilityId: 'reroute', groupId: id, routeId: 'south' });
+    send(match, {
+      type: 'useAbility',
+      side: 'attacker',
+      abilityId: 'reroute',
+      groupId: id,
+      routeId: 'south',
+    });
     expect(group(match, id)?.pendingRouteId).toBe('south');
     runUntil(match, () => group(match, id)?.routeId === 'south');
     expect(eventsOf(match, 'groupHolding')).toHaveLength(0);
@@ -527,7 +582,13 @@ describe('abilities', () => {
     skipPreparation(second);
     launch(second);
     run(second, 4);
-    send(second, { type: 'useAbility', side: 'attacker', abilityId: 'reroute', groupId: groups(second)[0]!.id, routeId: 'south' });
+    send(second, {
+      type: 'useAbility',
+      side: 'attacker',
+      abilityId: 'reroute',
+      groupId: groups(second)[0]!.id,
+      routeId: 'south',
+    });
     expect(rejections(second)).toEqual(['noJunctionAhead']);
   });
 
@@ -538,7 +599,13 @@ describe('abilities', () => {
     const id = groups(match)[0]!.id;
     send(match, { type: 'holdGroup', side: 'attacker', groupId: id });
     runUntil(match, () => group(match, id)?.state === 'holding');
-    send(match, { type: 'useAbility', side: 'attacker', abilityId: 'reroute', groupId: id, routeId: 'south' });
+    send(match, {
+      type: 'useAbility',
+      side: 'attacker',
+      abilityId: 'reroute',
+      groupId: id,
+      routeId: 'south',
+    });
     expect(group(match, id)).toMatchObject({ routeId: 'south', state: 'moving' });
   });
 
@@ -549,7 +616,8 @@ describe('abilities', () => {
       skipPreparation(match);
       launch(match, order({ count: 20 }));
       runUntil(match, () => (groups(match)[0]?.x ?? 0) >= 15);
-      if (intercept) send(match, { type: 'useAbility', side: 'defender', abilityId: 'intercept', groupId: 2 });
+      if (intercept)
+        send(match, { type: 'useAbility', side: 'defender', abilityId: 'intercept', groupId: 2 });
       else match.step();
       run(match, 2);
       return groups(match)[0]!;
@@ -571,8 +639,24 @@ describe('abilities', () => {
   it('runs resource abilities and rejects effects the engine does not support yet', () => {
     const setup = fixtureSetup();
     setup.attacker.abilities.push(
-      { id: 'drop', target: 'self', effects: [{ type: 'resource', magnitude: 30 }], range: 0, durationSeconds: 0, cost: 0, cooldownSeconds: 10 },
-      { id: 'wall', target: 'junction', effects: [{ type: 'blockBranch' }], range: 0, durationSeconds: 5, cost: 0, cooldownSeconds: 10 },
+      {
+        id: 'drop',
+        target: 'self',
+        effects: [{ type: 'resource', magnitude: 30 }],
+        range: 0,
+        durationSeconds: 0,
+        cost: 0,
+        cooldownSeconds: 10,
+      },
+      {
+        id: 'wall',
+        target: 'junction',
+        effects: [{ type: 'blockBranch' }],
+        range: 0,
+        durationSeconds: 5,
+        cost: 0,
+        cooldownSeconds: 10,
+      },
     );
     const match = new Match(setup);
     const before = match.snapshot().resources.attacker as number;
@@ -587,7 +671,8 @@ describe('passives', () => {
   it('Trail Knowledge speeds up groups on a route an earlier wave already used', () => {
     const secondWaveSpeed = (passive: boolean) => {
       const setup = fixtureSetup();
-      if (passive) setup.attacker.passive = [{ type: 'boost', stat: 'speed', magnitude: 0.1, condition: 'knownRoute' }];
+      if (passive)
+        setup.attacker.passive = [{ type: 'boost', stat: 'speed', magnitude: 0.1, condition: 'knownRoute' }];
       const match = new Match(setup);
       skipPreparation(match);
       launch(match, order({ count: 1 }));

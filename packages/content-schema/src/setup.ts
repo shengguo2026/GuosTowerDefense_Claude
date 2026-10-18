@@ -1,5 +1,5 @@
-import type { MatchSetup } from '@gtd/sim';
-import type { StagePack } from './schema';
+import type { MatchSetup, SimAbility, SimEffect } from '@gtd/sim';
+import type { Effect, StagePack } from './schema';
 
 export interface MatchChoice {
   levelId: string;
@@ -19,26 +19,64 @@ export function createMatchSetup(pack: StagePack, choice: MatchChoice): MatchSet
     level: {
       id: level.id,
       timerSeconds: level.timerSeconds,
+      preparationSeconds: level.preparationSeconds,
       objective: level.objective,
       nodes: level.map.nodes,
       edges: level.map.edges,
       routes: level.routes,
+      deploymentCapacity: level.deploymentCapacity,
+      launchCooldownSeconds: level.launchCooldownSeconds,
+      maxActiveWaves: level.maxActiveWaves,
       startingResources: level.startingResources,
       incomePerSecond: level.incomePerSecond,
+      startingPoints: level.startingPoints,
+      pointsPerSecond: level.pointsPerSecond,
+      bonuses: level.bonuses,
+      terrain: level.terrain,
     },
     attacker: {
       profileId: attacker.id,
       units: pack.catalog.units
         .filter((unit) => attacker.units.includes(unit.id))
-        .map(({ id, speed, cost, resilience }) => ({ id, speed, cost, resilience })),
+        .map(({ name: _name, ...unit }) => unit),
+      abilities: abilitiesOf(pack, attacker.abilities),
+      passive: attacker.passive.effects.map(effectOf),
     },
     defender: {
       profileId: defender.id,
       defenses: pack.catalog.defenses
         .filter((defense) => defender.defenses.includes(defense.id))
-        .map(({ id, cost, range, pressurePerSecond }) => ({ id, cost, range, pressurePerSecond })),
+        .map(({ name: _name, detectionRange, maxCount, ...defense }) => ({
+          ...defense,
+          detectionRange: detectionRange ?? defense.range,
+          ...(maxCount === undefined ? {} : { maxCount }),
+        })),
+      abilities: abilitiesOf(pack, defender.abilities),
+      passive: defender.passive.effects.map(effectOf),
     },
   };
+}
+
+function abilitiesOf(pack: StagePack, ids: string[]): SimAbility[] {
+  return pack.catalog.abilities
+    .filter((ability) => ids.includes(ability.id))
+    .map(({ id, target, effects, range, durationSeconds, cost, cooldownSeconds }) => ({
+      id,
+      target,
+      effects: effects.map(effectOf),
+      range,
+      durationSeconds,
+      cost,
+      cooldownSeconds,
+    }));
+}
+
+function effectOf(effect: Effect): SimEffect {
+  const out: SimEffect = { type: effect.type };
+  if (effect.magnitude !== undefined) out.magnitude = effect.magnitude;
+  if (effect.stat !== undefined) out.stat = effect.stat;
+  if (effect.condition !== undefined) out.condition = effect.condition;
+  return out;
 }
 
 function findProfile(pack: StagePack, id: string, side: 'attacker' | 'defender') {

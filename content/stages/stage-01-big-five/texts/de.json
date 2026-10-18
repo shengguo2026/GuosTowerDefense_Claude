@@ -20,7 +20,7 @@
   "resource.ranger-supplies": "Rangervorräte",
   "unit.scout": "Späher",
   "unit.expedition-team": "Expeditionsteam",
-  "unit.ranger-patrol": "Rangerpatrouille",
+  "defense.ranger-patrol": "Rangerpatrouille",
   "defense.observation-post": "Beobachtungsposten",
   "defense.temporary-checkpoint": "Temporärer Kontrollpunkt",
   "ability.reconnaissance.name": "Aufklärung",

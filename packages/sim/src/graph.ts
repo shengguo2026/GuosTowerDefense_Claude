@@ -56,7 +56,8 @@ export class RouteGraph {
       });
     }
     for (const [id, next] of nextNodes) if (next.size > 1) this.junctions.add(id);
-    for (const node of level.nodes) if (node.kind === 'junction' && this.routeNodes.has(node.id)) this.junctions.add(node.id);
+    for (const node of level.nodes)
+      if (node.kind === 'junction' && this.routeNodes.has(node.id)) this.junctions.add(node.id);
   }
 
   node(id: string): MapNode {
@@ -86,7 +87,8 @@ export class RouteGraph {
     const open = new Set<string>([from]);
     while (open.size > 0) {
       let current: string | undefined;
-      for (const id of open) if (current === undefined || (dist.get(id) as number) < (dist.get(current) as number)) current = id;
+      for (const id of open)
+        if (current === undefined || (dist.get(id) as number) < (dist.get(current) as number)) current = id;
       const here = current as string;
       open.delete(here);
       if (here === to) break;
@@ -101,7 +103,7 @@ export class RouteGraph {
     }
     if (!prev.has(to)) return null;
     const path: Leg[] = [];
-    for (let at = to; at !== from; ) {
+    for (let at = to; at !== from;) {
       const step = prev.get(at) as { node: string; leg: Leg };
       path.unshift(step.leg);
       at = step.node;
@@ -132,7 +134,13 @@ export class RouteGraph {
     const via = (edge.via ?? []).map(([x, z]) => ({ x, z }));
     if (reverse) via.reverse();
     const points = [{ x: from.x, z: from.z }, ...via, { x: to.x, z: to.z }];
-    return { from: from.id, to: to.id, points, length: polylineLength(points), terrain: edge.terrain ?? 'cover' };
+    return {
+      from: from.id,
+      to: to.id,
+      points,
+      length: polylineLength(points),
+      terrain: edge.terrain ?? 'cover',
+    };
   }
 }
 
@@ -167,7 +175,8 @@ export function pointOnPolyline(points: Point[], distance: number): Point {
 export function routePath(route: Route, nodes: Map<string, MapNode>, edges: MapEdge[]): Point[] {
   const graph = new RouteGraph({ nodes: [...nodes.values()], edges, routes: [route] });
   const path: Point[] = [];
-  for (const leg of graph.routeLegs(route.id)) path.push(...(path.length === 0 ? leg.points : leg.points.slice(1)));
+  for (const leg of graph.routeLegs(route.id))
+    path.push(...(path.length === 0 ? leg.points : leg.points.slice(1)));
   return path;
 }
 

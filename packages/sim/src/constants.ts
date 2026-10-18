@@ -35,3 +35,5 @@ export const MAX_GROUPS_PER_WAVE = 4;
 export const MAX_LAUNCH_DELAY_SECONDS = 30;
 /** Default strength of a boost or slow ability that gives no magnitude. */
 export const DEFAULT_EFFECT_MAGNITUDE = 0.3;
+/** Hold progress per tick while a Defender patrol is inside the objective zone. */
+export const CONTESTED_HOLD_RATE = 0.5;

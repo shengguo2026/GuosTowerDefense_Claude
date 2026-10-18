@@ -90,21 +90,54 @@ export const SceneSchema = z.object({
     .optional(),
 });
 
+export const TERRAINS = ['open', 'cover'] as const;
+const terrainModifiers = z.object({ speed: z.number().positive(), detection: z.number().positive() });
+
 export const LevelSchema = z.object({
   id,
   title: textKey,
   /** Level that must be completed first; null means unlocked from the start. */
   unlockedBy: id.nullable(),
+  /** Length of the combat phase; preparation comes on top. */
   timerSeconds: z.number().positive(),
-  objective: z.object({ nodeId: id, holdSeconds: z.number().positive() }),
+  preparationSeconds: z.number().nonnegative().default(30),
+  objective: z.object({
+    nodeId: id,
+    holdSeconds: z.number().positive(),
+    /** Radius of the objective zone; a Defender patrol inside it pauses the hold timer. */
+    radius: z.number().positive().default(4.5),
+  }),
   map: z.object({
     nodes: z.array(MapNodeSchema).min(2),
-    edges: z.array(z.object({ from: id, to: id, via: z.array(point).optional() })).min(1),
+    edges: z
+      .array(
+        z.object({ from: id, to: id, via: z.array(point).optional(), terrain: z.enum(TERRAINS).optional() }),
+      )
+      .min(1),
   }),
   routes: z.array(z.object({ id, name: textKey.optional(), nodes: z.array(id).min(2) })).min(1),
   scene: SceneSchema.optional(),
+  /** Total capacity the Attacker can deploy over the whole match. */
+  deploymentCapacity: z.number().positive().default(40),
+  launchCooldownSeconds: z.number().nonnegative().default(15),
+  maxActiveWaves: z.number().int().positive().default(2),
   startingResources: sideValues,
   incomePerSecond: sideValues,
+  /** The profile's second resource (e.g. Recon Points), spent on abilities. */
+  startingPoints: sideValues.default({ attacker: 20, defender: 20 }),
+  pointsPerSecond: sideValues.default({ attacker: 0.5, defender: 0.5 }),
+  bonuses: z
+    .object({
+      checkpointPass: z.number().nonnegative(),
+      memberTurnedBack: z.number().nonnegative(),
+      waveStopped: z.number().nonnegative(),
+      retreatRefund: z.number().min(0).max(1),
+    })
+    .default({ checkpointPass: 10, memberTurnedBack: 3, waveStopped: 20, retreatRefund: 0.5 }),
+  /** Open Ground Exposure: open ground is faster but easier to detect, cover slower but safer. */
+  terrain: z
+    .object({ open: terrainModifiers, cover: terrainModifiers })
+    .default({ open: { speed: 1.15, detection: 1.3 }, cover: { speed: 0.85, detection: 0.6 } }),
 });
 
 /** Generic building blocks that abilities and commands are composed of (spec §2.1). */
@@ -128,6 +161,10 @@ export const EffectSchema = z.object({
   magnitude: z.number().optional(),
   /** For `spawn`: the unit or defense id to create. */
   spawn: id.optional(),
+  /** For `boost`: what is raised (default speed). */
+  stat: z.enum(['speed', 'detectionRange']).optional(),
+  /** For passives: when the effect applies, e.g. `knownRoute` (a route an earlier wave already used). */
+  condition: z.enum(['knownRoute']).optional(),
 });
 
 export const ActionSchema = z.object({
@@ -146,16 +183,41 @@ export const UnitSchema = z.object({
   id,
   name: textKey,
   speed: z.number().positive(),
+  /** Supplies per member. */
   cost: z.number().nonnegative(),
+  /** Deployment capacity per member. */
+  capacity: z.number().positive().default(1),
+  /** Pressure needed to turn back one member. */
   resilience: z.number().positive(),
+  visibility: z.enum(['normal', 'concealed', 'stealth']).default('normal'),
+  /** How close the unit must come to a defense to see it. */
+  sightRange: z.number().positive().default(12),
 });
 
 export const DefenseSchema = z.object({
   id,
   name: textKey,
   cost: z.number().nonnegative(),
+  /** Mobile assets (patrols) move along the route graph. */
+  mobile: z.boolean().default(false),
+  /** Build zones, route nodes, or either. Mobile assets always start on a route node. */
+  placement: z.enum(['buildZone', 'routeNode', 'any']).default('buildZone'),
+  /** Reach of interception and slowing. */
   range: z.number().positive(),
+  /** Defaults to `range`. */
+  detectionRange: z.number().positive().optional(),
   pressurePerSecond: z.number().nonnegative(),
+  /** Share of speed groups in reach lose. */
+  slow: z.number().min(0).max(1).default(0),
+  speed: z.number().nonnegative().default(0),
+  /** How many the Defender may have at once. */
+  maxCount: z.number().int().positive().optional(),
+  /** On a route node, stops groups like a roadblock. The Defender may never block every route. */
+  blocksNode: z.boolean().default(false),
+  maxLevel: z.number().int().positive().default(3),
+  upgradeCostFactor: z.number().nonnegative().default(0.75),
+  /** Condition a roadblock loses per second for each member pushing against it. */
+  wearPerMemberSecond: z.number().nonnegative().default(0),
 });
 
 export const CatalogSchema = z.object({
@@ -187,6 +249,7 @@ export type Scene = z.infer<typeof SceneSchema>;
 export type Catalog = z.infer<typeof CatalogSchema>;
 export type Profile = z.infer<typeof ProfileSchema>;
 export type Action = z.infer<typeof ActionSchema>;
+export type Effect = z.infer<typeof EffectSchema>;
 export type Texts = z.infer<typeof TextsSchema>;
 
 /** A fully loaded and validated stage pack. */

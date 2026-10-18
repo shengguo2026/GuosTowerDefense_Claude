@@ -3,9 +3,11 @@
   "title": "level.lion.title",
   "unlockedBy": null,
   "timerSeconds": 720,
+  "preparationSeconds": 30,
   "objective": {
     "nodeId": "lion-waterhole",
-    "holdSeconds": 30
+    "holdSeconds": 20,
+    "radius": 4.5
   },
   "map": {
     "nodes": [
@@ -79,7 +81,8 @@
       {
         "from": "savanna-entrance",
         "to": "acacia-junction",
-        "via": [[-47, 33]]
+        "via": [[-47, 33]],
+        "terrain": "open"
       },
       {
         "from": "acacia-junction",
@@ -87,7 +90,8 @@
         "via": [
           [-26, 19],
           [-17, 13]
-        ]
+        ],
+        "terrain": "open"
       },
       {
         "from": "rocky-ridge",
@@ -95,12 +99,14 @@
         "via": [
           [1, 1],
           [7, -4]
-        ]
+        ],
+        "terrain": "open"
       },
       {
         "from": "acacia-junction",
         "to": "dry-river-crossing",
-        "via": [[-25, 30]]
+        "via": [[-25, 30]],
+        "terrain": "cover"
       },
       {
         "from": "dry-river-crossing",
@@ -109,7 +115,8 @@
           [-1, 17],
           [8, 7],
           [13, 0]
-        ]
+        ],
+        "terrain": "cover"
       }
     ]
   },
@@ -125,14 +132,6 @@
       "nodes": ["savanna-entrance", "acacia-junction", "dry-river-crossing", "lion-waterhole"]
     }
   ],
-  "startingResources": {
-    "attacker": 150,
-    "defender": 150
-  },
-  "incomePerSecond": {
-    "attacker": 2,
-    "defender": 2
-  },
   "scene": {
     "kit": "savanna",
     "seed": 11,
@@ -210,6 +209,41 @@
       "yaw": -1.1,
       "pitch": 0.5,
       "distance": 92
+    }
+  },
+  "deploymentCapacity": 48,
+  "launchCooldownSeconds": 15,
+  "maxActiveWaves": 2,
+  "startingResources": {
+    "attacker": 240,
+    "defender": 150
+  },
+  "incomePerSecond": {
+    "attacker": 3,
+    "defender": 2
+  },
+  "startingPoints": {
+    "attacker": 20,
+    "defender": 20
+  },
+  "pointsPerSecond": {
+    "attacker": 0.5,
+    "defender": 0.5
+  },
+  "bonuses": {
+    "checkpointPass": 8,
+    "memberTurnedBack": 3,
+    "waveStopped": 20,
+    "retreatRefund": 0.5
+  },
+  "terrain": {
+    "open": {
+      "speed": 1.15,
+      "detection": 1.3
+    },
+    "cover": {
+      "speed": 0.85,
+      "detection": 0.6
     }
   }
 }

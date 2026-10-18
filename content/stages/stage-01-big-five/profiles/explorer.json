@@ -10,7 +10,14 @@
   "passive": {
     "name": "profile.explorer.passive.name",
     "description": "profile.explorer.passive.description",
-    "effects": []
+    "effects": [
+      {
+        "type": "boost",
+        "stat": "speed",
+        "magnitude": 0.1,
+        "condition": "knownRoute"
+      }
+    ]
   },
   "units": ["scout", "expedition-team"],
   "defenses": [],

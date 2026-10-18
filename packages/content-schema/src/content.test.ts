@@ -123,6 +123,38 @@ describe('stage pack loader', () => {
     expect(setup.defender.defenses.map((d) => d.id)).toEqual(['gate-post', 'watch-light']);
     expect(() => createMatchSetup(result.pack, { ...setupChoice(), attackerProfileId: 'lookout' })).toThrow();
   });
+
+  it('fills in match rules the level leaves out with defaults', async () => {
+    const result = await loadStageDirectory(TEST_STAGE);
+    if (!result.ok) throw new Error('test stage should load');
+    const { level, attacker } = createMatchSetup(result.pack, setupChoice());
+    expect(level).toMatchObject({ preparationSeconds: 30, deploymentCapacity: 40, maxActiveWaves: 2 });
+    expect(level.objective.radius).toBe(4.5);
+    expect(attacker.units[0]).toMatchObject({ capacity: 1, visibility: 'normal' });
+  });
+
+  it('builds the Explorer vs Ranger setup for Lion with abilities, passives and the patrol', async () => {
+    const result = await loadStageDirectory(join(STAGES, 'stage-01-big-five'));
+    if (!result.ok) throw new Error('Stage 1 should load');
+    const setup = createMatchSetup(result.pack, {
+      levelId: 'lion',
+      attackerProfileId: 'explorer',
+      defenderProfileId: 'ranger',
+      seed: 1,
+    });
+    expect(setup.attacker.abilities.map((a) => a.id)).toEqual(['reconnaissance', 'rapid-reroute']);
+    expect(setup.defender.abilities.map((a) => a.id)).toEqual(['rapid-response', 'intercept']);
+    expect(setup.attacker.passive).toEqual([
+      { type: 'boost', stat: 'speed', magnitude: 0.1, condition: 'knownRoute' },
+    ]);
+    expect(setup.defender.passive).toEqual([{ type: 'boost', stat: 'detectionRange', magnitude: 0.1 }]);
+    const patrol = setup.defender.defenses.find((d) => d.id === 'ranger-patrol');
+    expect(patrol).toMatchObject({ mobile: true, placement: 'routeNode', maxCount: 2 });
+    expect(setup.defender.defenses.find((d) => d.id === 'temporary-checkpoint')?.blocksNode).toBe(true);
+    const terrain = new Map(setup.level.edges.map((e) => [`${e.from}>${e.to}`, e.terrain]));
+    expect(terrain.get('acacia-junction>rocky-ridge')).toBe('open');
+    expect(terrain.get('acacia-junction>dry-river-crossing')).toBe('cover');
+  });
 });
 
 function setupChoice() {

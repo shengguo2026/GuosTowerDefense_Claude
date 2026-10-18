@@ -21,8 +21,11 @@ export function runHeadlessMatch(setup: MatchSetup, options: HeadlessMatchOption
   const { attacker = idleController, defender = idleController, maxTicks = 100_000 } = options;
   const match = new Match(setup);
   while (!match.isOver && match.tick < maxTicks) {
-    const snapshot = match.snapshot();
-    for (const command of [...attacker.decide(snapshot, setup), ...defender.decide(snapshot, setup)]) {
+    const commands = [
+      ...attacker.decide(match.snapshot('attacker'), setup),
+      ...defender.decide(match.snapshot('defender'), setup),
+    ];
+    for (const command of commands) {
       match.enqueue({ ...command, tick: match.tick + 1 });
     }
     match.step();

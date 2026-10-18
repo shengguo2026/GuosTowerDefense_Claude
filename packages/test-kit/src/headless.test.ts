@@ -27,7 +27,7 @@ describe('headless matches of the test stage', () => {
           });
           const run = runHeadlessMatch(setup, { attacker: scriptedAttacker(), defender: scriptedDefender() });
           expect(run.result, `${level.id} ${attackerProfileId} vs ${defenderProfileId}`).not.toBeNull();
-          expect(run.ticks).toBeLessThanOrEqual(level.timerSeconds * 20);
+          expect(run.ticks).toBeLessThanOrEqual((level.preparationSeconds + level.timerSeconds) * 20);
         }
       }
     }
@@ -62,5 +62,43 @@ describe('headless matches of the test stage', () => {
         { attacker: scriptedAttacker(2, 30), defender: scriptedDefender() },
       ).hash;
     expect(run(11)).toBe(run(11));
+  });
+});
+
+describe('headless matches of Lion', () => {
+  async function lionSetup(seed = 1) {
+    const result = await loadStageDirectory(
+      resolve(import.meta.dirname, '../../../content/stages/stage-01-big-five'),
+    );
+    if (!result.ok) throw new Error(result.issues.map((i) => i.message).join('\n'));
+    return createMatchSetup(result.pack, {
+      levelId: 'lion',
+      attackerProfileId: 'explorer',
+      defenderProfileId: 'ranger',
+      seed,
+    });
+  }
+
+  it('lets the Defender win against small waves sent one at a time', async () => {
+    const run = runHeadlessMatch(await lionSetup(), {
+      attacker: scriptedAttacker(4),
+      defender: scriptedDefender(),
+    });
+    expect(run.result).toEqual({ winner: 'defender', reason: 'capacityExhausted' });
+  });
+
+  it('lets the Attacker win with massed waves against the same defense', async () => {
+    const run = runHeadlessMatch(await lionSetup(), {
+      attacker: scriptedAttacker(12, 20, { formation: 'spread', routeId: 'ridge', groupsPerWave: 2 }),
+      defender: scriptedDefender(),
+    });
+    expect(run.result).toEqual({ winner: 'attacker', reason: 'objectiveCompleted' });
+  });
+
+  it('ends in a Defender win on time when the Attacker never launches', async () => {
+    const setup = await lionSetup();
+    const run = runHeadlessMatch(setup, { attacker: idleController, defender: scriptedDefender() });
+    expect(run.result).toEqual({ winner: 'defender', reason: 'timerExpired' });
+    expect(run.ticks).toBe((setup.level.preparationSeconds + setup.level.timerSeconds) * 20);
   });
 });

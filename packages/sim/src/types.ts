@@ -103,6 +103,8 @@ export interface SimDefenseType {
   slow: number;
   /** Map units per second, mobile assets only. */
   speed: number;
+  /** How many of this asset the Defender may have at once (no limit when left out). */
+  maxCount?: number;
   /**
    * A blocking asset on a route node stops groups in front of it (a roadblock). The Defender may never block every
    * route: placement and repair are refused if they would.
@@ -201,7 +203,13 @@ export interface GroupEntity {
 }
 
 export type TargetPriority = 'first' | 'last' | 'strongest' | 'weakest' | 'fastest';
-export const TARGET_PRIORITIES: readonly TargetPriority[] = ['first', 'last', 'strongest', 'weakest', 'fastest'];
+export const TARGET_PRIORITIES: readonly TargetPriority[] = [
+  'first',
+  'last',
+  'strongest',
+  'weakest',
+  'fastest',
+];
 
 export type DefenseOrder = { type: 'guard'; nodeId: string } | { type: 'patrol'; nodeIds: [string, string] };
 

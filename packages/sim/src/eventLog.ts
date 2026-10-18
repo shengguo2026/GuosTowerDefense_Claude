@@ -18,7 +18,14 @@ export type MatchEvent =
   | { tick: number; type: 'groupBlocked'; groupId: number; nodeId: string; defenseId: number }
   | { tick: number; type: 'groupRerouted'; groupId: number; routeId: string }
   | { tick: number; type: 'groupRetreating'; groupId: number }
-  | { tick: number; type: 'groupLeft'; groupId: number; count: number; refundCapacity: number; refundSupplies: number }
+  | {
+      tick: number;
+      type: 'groupLeft';
+      groupId: number;
+      count: number;
+      refundCapacity: number;
+      refundSupplies: number;
+    }
   | { tick: number; type: 'checkpointPassed'; groupId: number; nodeId: string; bonus: number }
   | { tick: number; type: 'groupReachedObjective'; groupId: number }
   | { tick: number; type: 'groupDetected'; groupId: number }
