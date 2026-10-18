@@ -1,0 +1,16 @@
+{
+  "app.title": "盛国的塔防游戏",
+  "language.pickerTitle": "选择语言",
+  "language.pickerHint": "你可以随时在设置中更改。",
+  "language.continue": "继续",
+  "language.label": "语言",
+  "settings.title": "设置",
+  "settings.close": "关闭",
+  "connection.connecting": "正在连接游戏服务器…",
+  "connection.connected": "已连接",
+  "connection.disconnected": "连接中断，正在重试…",
+  "connection.serverVersion": "服务器版本 {version}",
+  "home.tagline": "一款非对称策略游戏。守护荒野，或在其中找到你的路。",
+  "home.foundation": "基础版本：游戏世界将在下一个里程碑加入。",
+  "home.stages": "已加载 {count} 个关卡包"
+}

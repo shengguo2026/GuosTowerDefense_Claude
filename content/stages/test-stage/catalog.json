@@ -1,0 +1,143 @@
+{
+  "units": [
+    {
+      "id": "runner",
+      "name": "unit.runner",
+      "speed": 3.5,
+      "cost": 10,
+      "resilience": 2
+    },
+    {
+      "id": "hauler",
+      "name": "unit.hauler",
+      "speed": 2,
+      "cost": 18,
+      "resilience": 5
+    },
+    {
+      "id": "glider",
+      "name": "unit.glider",
+      "speed": 5,
+      "cost": 14,
+      "resilience": 1.5
+    }
+  ],
+  "defenses": [
+    {
+      "id": "gate-post",
+      "name": "defense.gate-post",
+      "cost": 35,
+      "range": 5,
+      "pressurePerSecond": 3
+    },
+    {
+      "id": "watch-light",
+      "name": "defense.watch-light",
+      "cost": 25,
+      "range": 8,
+      "pressurePerSecond": 1.5
+    }
+  ],
+  "abilities": [
+    {
+      "id": "tailwind",
+      "name": "ability.tailwind.name",
+      "description": "ability.tailwind.description",
+      "target": "route",
+      "effects": [
+        {
+          "type": "boost",
+          "magnitude": 0.4
+        }
+      ],
+      "durationSeconds": 6,
+      "cost": 15,
+      "cooldownSeconds": 30
+    },
+    {
+      "id": "smoke-trail",
+      "name": "ability.smoke-trail.name",
+      "description": "ability.smoke-trail.description",
+      "target": "area",
+      "effects": [
+        {
+          "type": "conceal"
+        }
+      ],
+      "range": 6,
+      "durationSeconds": 8,
+      "cost": 20,
+      "cooldownSeconds": 40
+    },
+    {
+      "id": "signal-flare",
+      "name": "ability.signal-flare.name",
+      "description": "ability.signal-flare.description",
+      "target": "area",
+      "effects": [
+        {
+          "type": "reveal"
+        }
+      ],
+      "range": 10,
+      "durationSeconds": 5,
+      "cost": 10,
+      "cooldownSeconds": 25
+    },
+    {
+      "id": "rope-barrier",
+      "name": "ability.rope-barrier.name",
+      "description": "ability.rope-barrier.description",
+      "target": "junction",
+      "effects": [
+        {
+          "type": "blockBranch"
+        }
+      ],
+      "durationSeconds": 10,
+      "cost": 25,
+      "cooldownSeconds": 45
+    },
+    {
+      "id": "supply-drop",
+      "name": "ability.supply-drop.name",
+      "description": "ability.supply-drop.description",
+      "target": "self",
+      "effects": [
+        {
+          "type": "resource",
+          "magnitude": 30
+        }
+      ],
+      "cost": 0,
+      "cooldownSeconds": 60
+    }
+  ],
+  "commands": [
+    {
+      "id": "regroup",
+      "name": "command.regroup.name",
+      "description": "command.regroup.description",
+      "target": "unit",
+      "effects": [
+        {
+          "type": "move"
+        }
+      ]
+    },
+    {
+      "id": "hold-line",
+      "name": "command.hold-line.name",
+      "description": "command.hold-line.description",
+      "target": "area",
+      "effects": [
+        {
+          "type": "protect",
+          "magnitude": 0.2
+        }
+      ],
+      "range": 4,
+      "durationSeconds": 5
+    }
+  ]
+}

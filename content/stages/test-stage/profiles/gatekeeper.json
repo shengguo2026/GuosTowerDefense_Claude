@@ -1,0 +1,19 @@
+{
+  "id": "gatekeeper",
+  "side": "defender",
+  "name": "profile.gatekeeper.name",
+  "description": "profile.gatekeeper.description",
+  "resource": {
+    "id": "tokens",
+    "name": "resource.tokens"
+  },
+  "passive": {
+    "name": "profile.gatekeeper.passive.name",
+    "description": "profile.gatekeeper.passive.description",
+    "effects": []
+  },
+  "units": [],
+  "defenses": ["gate-post"],
+  "abilities": ["rope-barrier"],
+  "commands": ["hold-line"]
+}

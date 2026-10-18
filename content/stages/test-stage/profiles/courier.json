@@ -1,0 +1,19 @@
+{
+  "id": "courier",
+  "side": "attacker",
+  "name": "profile.courier.name",
+  "description": "profile.courier.description",
+  "resource": {
+    "id": "parcels",
+    "name": "resource.parcels"
+  },
+  "passive": {
+    "name": "profile.courier.passive.name",
+    "description": "profile.courier.passive.description",
+    "effects": []
+  },
+  "units": ["runner", "hauler"],
+  "defenses": [],
+  "abilities": ["tailwind", "supply-drop"],
+  "commands": ["regroup"]
+}

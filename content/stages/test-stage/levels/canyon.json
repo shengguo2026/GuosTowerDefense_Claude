@@ -1,0 +1,85 @@
+{
+  "id": "canyon",
+  "title": "level.canyon.title",
+  "unlockedBy": "meadow",
+  "timerSeconds": 150,
+  "objective": {
+    "nodeId": "summit",
+    "holdSeconds": 10
+  },
+  "map": {
+    "nodes": [
+      {
+        "id": "west-gate",
+        "x": 0,
+        "z": 8
+      },
+      {
+        "id": "east-gate",
+        "x": 0,
+        "z": -8
+      },
+      {
+        "id": "narrows",
+        "x": 14,
+        "z": 0,
+        "buildable": true
+      },
+      {
+        "id": "ledge",
+        "x": 26,
+        "z": 12,
+        "buildable": true
+      },
+      {
+        "id": "summit",
+        "x": 38,
+        "z": 0
+      }
+    ],
+    "edges": [
+      {
+        "from": "west-gate",
+        "to": "narrows"
+      },
+      {
+        "from": "east-gate",
+        "to": "narrows"
+      },
+      {
+        "from": "west-gate",
+        "to": "ledge"
+      },
+      {
+        "from": "narrows",
+        "to": "summit"
+      },
+      {
+        "from": "ledge",
+        "to": "summit"
+      }
+    ]
+  },
+  "routes": [
+    {
+      "id": "narrows-west",
+      "nodes": ["west-gate", "narrows", "summit"]
+    },
+    {
+      "id": "narrows-east",
+      "nodes": ["east-gate", "narrows", "summit"]
+    },
+    {
+      "id": "ledge-climb",
+      "nodes": ["west-gate", "ledge", "summit"]
+    }
+  ],
+  "startingResources": {
+    "attacker": 140,
+    "defender": 120
+  },
+  "incomePerSecond": {
+    "attacker": 2,
+    "defender": 2.5
+  }
+}

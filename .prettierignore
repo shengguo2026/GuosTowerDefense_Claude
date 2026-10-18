@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+user-data
+test-results
+playwright-report
+package-lock.json
+docs
+assets
+*.md

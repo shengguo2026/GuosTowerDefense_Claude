@@ -1,0 +1,19 @@
+{
+  "id": "lookout",
+  "side": "defender",
+  "name": "profile.lookout.name",
+  "description": "profile.lookout.description",
+  "resource": {
+    "id": "lamp-oil",
+    "name": "resource.lamp-oil"
+  },
+  "passive": {
+    "name": "profile.lookout.passive.name",
+    "description": "profile.lookout.passive.description",
+    "effects": []
+  },
+  "units": [],
+  "defenses": ["watch-light", "gate-post"],
+  "abilities": ["signal-flare", "supply-drop"],
+  "commands": []
+}
