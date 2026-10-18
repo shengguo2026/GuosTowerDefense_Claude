@@ -10,10 +10,16 @@
   "passive": {
     "name": "profile.ranger.passive.name",
     "description": "profile.ranger.passive.description",
-    "effects": []
+    "effects": [
+      {
+        "type": "boost",
+        "stat": "detectionRange",
+        "magnitude": 0.1
+      }
+    ]
   },
-  "units": ["ranger-patrol"],
-  "defenses": ["observation-post", "temporary-checkpoint"],
+  "units": [],
+  "defenses": ["observation-post", "temporary-checkpoint", "ranger-patrol"],
   "abilities": ["rapid-response", "intercept"],
   "commands": []
 }

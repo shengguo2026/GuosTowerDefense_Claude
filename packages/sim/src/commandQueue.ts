@@ -1,4 +1,4 @@
-import type { Side } from './types';
+import type { DefenseOrder, Formation, Side, TargetPriority } from './types';
 
 interface CommandBase {
   /** The tick the command should apply on. Late commands apply on the next tick that runs. */
@@ -6,12 +6,56 @@ interface CommandBase {
   side: Side;
 }
 
-export interface LaunchGroupCommand extends CommandBase {
-  type: 'launchGroup';
-  side: 'attacker';
+/** One group of a wave, as set up in the wave builder. */
+export interface WaveGroupOrder {
   unitTypeId: string;
   count: number;
+  formation: Formation;
   routeId: string;
+  /** Seconds after the wave's launch before this group sets off. */
+  delaySeconds: number;
+}
+
+export interface LaunchWaveCommand extends CommandBase {
+  type: 'launchWave';
+  side: 'attacker';
+  groups: WaveGroupOrder[];
+}
+
+/** Stop at the next junction (or stay, when already holding). */
+export interface HoldGroupCommand extends CommandBase {
+  type: 'holdGroup';
+  side: 'attacker';
+  groupId: number;
+}
+
+/** Resume a holding group, or cancel a pending hold. */
+export interface AdvanceGroupCommand extends CommandBase {
+  type: 'advanceGroup';
+  side: 'attacker';
+  groupId: number;
+}
+
+/** Change route while holding at a junction that lies on the new route. */
+export interface RerouteGroupCommand extends CommandBase {
+  type: 'rerouteGroup';
+  side: 'attacker';
+  groupId: number;
+  routeId: string;
+}
+
+/** Walk back to the spawn point; part of the capacity and supplies is refunded when the group leaves. */
+export interface RetreatGroupCommand extends CommandBase {
+  type: 'retreatGroup';
+  side: 'attacker';
+  groupId: number;
+}
+
+export interface SetFormationCommand extends CommandBase {
+  type: 'setFormation';
+  side: 'attacker';
+  groupId: number;
+  formation: Formation;
 }
 
 export interface PlaceDefenseCommand extends CommandBase {
@@ -21,7 +65,91 @@ export interface PlaceDefenseCommand extends CommandBase {
   nodeId: string;
 }
 
-export type Command = LaunchGroupCommand | PlaceDefenseCommand;
+export interface UpgradeDefenseCommand extends CommandBase {
+  type: 'upgradeDefense';
+  side: 'defender';
+  defenseId: number;
+}
+
+export interface RepairDefenseCommand extends CommandBase {
+  type: 'repairDefense';
+  side: 'defender';
+  defenseId: number;
+}
+
+export interface SellDefenseCommand extends CommandBase {
+  type: 'sellDefense';
+  side: 'defender';
+  defenseId: number;
+}
+
+/** Guard a node, or patrol back and forth between two nodes (mobile assets only). */
+export interface OrderDefenseCommand extends CommandBase {
+  type: 'orderDefense';
+  side: 'defender';
+  defenseId: number;
+  order: DefenseOrder;
+}
+
+export interface SetPriorityCommand extends CommandBase {
+  type: 'setPriority';
+  side: 'defender';
+  defenseId: number;
+  priority: TargetPriority;
+}
+
+/** Focus a detected group in range; `null` clears the focus. */
+export interface FocusTargetCommand extends CommandBase {
+  type: 'focusTarget';
+  side: 'defender';
+  defenseId: number;
+  groupId: number | null;
+}
+
+/** Use one of the side's abilities. Which fields are needed depends on the ability's target type. */
+export interface UseAbilityCommand extends CommandBase {
+  type: 'useAbility';
+  abilityId: string;
+  x?: number;
+  z?: number;
+  groupId?: number;
+  routeId?: string;
+}
+
+export type Command =
+  | LaunchWaveCommand
+  | HoldGroupCommand
+  | AdvanceGroupCommand
+  | RerouteGroupCommand
+  | RetreatGroupCommand
+  | SetFormationCommand
+  | PlaceDefenseCommand
+  | UpgradeDefenseCommand
+  | RepairDefenseCommand
+  | SellDefenseCommand
+  | OrderDefenseCommand
+  | SetPriorityCommand
+  | FocusTargetCommand
+  | UseAbilityCommand;
+
+export type CommandType = Command['type'];
+
+/** Which side may send each command (`useAbility` is checked against the ability's owner). */
+export const COMMAND_SIDES: Record<Exclude<CommandType, 'useAbility'>, Side> = {
+  launchWave: 'attacker',
+  holdGroup: 'attacker',
+  advanceGroup: 'attacker',
+  rerouteGroup: 'attacker',
+  retreatGroup: 'attacker',
+  setFormation: 'attacker',
+  placeDefense: 'defender',
+  upgradeDefense: 'defender',
+  repairDefense: 'defender',
+  sellDefense: 'defender',
+  orderDefense: 'defender',
+  setPriority: 'defender',
+  focusTarget: 'defender',
+};
 
 interface QueuedCommand {
   command: Command;

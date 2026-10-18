@@ -15,6 +15,7 @@ interface Demo {
 
 /** Pause between the end of a demo match and the next one, so the result stays visible for a moment. */
 const RESTART_DELAY_MS = 4000;
+const DEMO_PREPARATION_SECONDS = 3;
 
 /**
  * Level previews: the server plays the level by itself with scripted controllers and streams it to every watcher.
@@ -75,6 +76,8 @@ export class DemoMatches {
       defenderProfileId,
       seed: this.matchCounter,
     });
+    // A preview gets going at once instead of waiting through the preparation phase.
+    setup.level.preparationSeconds = Math.min(setup.level.preparationSeconds, DEMO_PREPARATION_SECONDS);
     const started: ServerMessage = {
       type: 'matchStarted',
       matchId,
@@ -92,7 +95,7 @@ export class DemoMatches {
         setup,
         attacker: scriptedAttacker(3, 100, { mixUnits: true }),
         defender: scriptedDefender({ maxDefenses: 2, startTick: 400 }),
-        onSnapshot: (snapshot) => broadcast({ type: 'snapshot', matchId, snapshot }),
+        onFrame: (match) => broadcast({ type: 'snapshot', matchId, snapshot: match.snapshot() }),
         onEnd: () => {
           demo.restartTimer = setTimeout(() => {
             const key = `${pack.manifest.id}/${levelId}`;

@@ -9,6 +9,8 @@ import type { InterpolatedEntity } from './snapshotBuffer';
 
 const MAX_FIGURES = 240;
 const MAX_GROUPS = 64;
+const RING_SEEN = new THREE.Color(SIDE_COLORS.attacker);
+const RING_UNSEEN = new THREE.Color(0x9aa3ad);
 
 /** Which figure a unit type uses; stage packs with other units fall back to the side's default look. */
 function lookFor(unitTypeId: string): LookName {
@@ -69,14 +71,11 @@ export class EntityView {
     ringGeometry.rotateX(-Math.PI / 2);
     this.rings = new THREE.InstancedMesh(
       ringGeometry,
-      new THREE.MeshBasicMaterial({
-        color: SIDE_COLORS.attacker,
-        transparent: true,
-        opacity: 0.9,
-        depthWrite: false,
-      }),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false }),
       MAX_GROUPS,
     );
+    // Per-group colour: the side colour once the Defender has detected the group, grey while it is unseen.
+    this.rings.setColorAt(0, RING_SEEN);
     this.rings.count = 0;
     this.rings.frustumCulled = false;
     this.root.add(this.rings);
@@ -106,7 +105,8 @@ export class EntityView {
       if (entity.kind === 'group') {
         const look = lookFor((entity as GroupEntity).unitTypeId);
         const mesh = this.figures[look];
-        const members = Math.min(entity.count, 8);
+        // A detected but not yet identified group shows up with an unknown size: drawn as one figure.
+        const members = Math.min(Math.max(entity.count, 1), 8);
         const forward = { x: Math.sin(at.heading), z: Math.cos(at.heading) };
         const side = { x: forward.z, z: -forward.x };
         for (let m = 0; m < members && counts[look] < MAX_FIGURES; m++) {
@@ -137,11 +137,20 @@ export class EntityView {
           d.rotation.set(0, 0, 0);
           d.scale.set(radius, 1, radius);
           d.updateMatrix();
+          this.rings.setColorAt(rings, entity.detection === 'unknown' ? RING_UNSEEN : RING_SEEN);
           this.rings.setMatrixAt(rings++, d.matrix);
         }
       } else {
         seenDefenses.add(entity.id);
         if (!this.defenseMeshes.has(entity.id)) this.addDefense(entity as DefenseEntity);
+        // Patrols walk the route network; their model and reach follow them.
+        if (entity.mobile) {
+          const group = this.defenseMeshes.get(entity.id) as THREE.Group;
+          const y = this.heightAt(at.x, at.z);
+          group.children[0]?.position.set(at.x, y, at.z);
+          if (group.children[0]) group.children[0].rotation.y = at.heading;
+          for (const ring of group.children.slice(1)) ring.position.set(at.x, y + 0.3, at.z);
+        }
       }
     }
 
@@ -161,6 +170,7 @@ export class EntityView {
     }
     this.rings.count = rings;
     this.rings.instanceMatrix.needsUpdate = true;
+    if (this.rings.instanceColor) this.rings.instanceColor.needsUpdate = true;
     this.blobs.count = blobs;
     this.blobs.instanceMatrix.needsUpdate = true;
   }
@@ -199,6 +209,17 @@ export class EntityView {
     model.receiveShadow = true;
     group.add(model);
     const range = this.ranges[defense.defenseTypeId] ?? 5;
+    if (defense.mobile) {
+      // A moving reach cannot be draped once, so it is a flat ring that rides along slightly above the ground.
+      const flat = (geometry: THREE.RingGeometry) => geometry.rotateX(-Math.PI / 2);
+      group.add(
+        new THREE.Mesh(flat(new THREE.RingGeometry(0, range, 40)), this.rangeFill),
+        new THREE.Mesh(flat(new THREE.RingGeometry(range - 0.15, range, 48)), this.rangeLine),
+      );
+      this.defenseMeshes.set(defense.id, group);
+      this.root.add(group);
+      return;
+    }
     const at = { x: defense.x, z: defense.z };
     // Several radial rings of vertices let the disc follow the terrain inside, not only at its edge.
     const fill = new THREE.Mesh(

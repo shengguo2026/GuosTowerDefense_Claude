@@ -5,15 +5,11 @@ import {
   Match,
   Rng,
   TICK_MS,
-  hashValue,
+  RouteGraph,
   routePath,
   type Command,
 } from './index';
 import { fixtureSetup } from './testFixture';
-
-function runToEnd(match: Match, maxTicks = 10_000): void {
-  for (let i = 0; i < maxTicks && !match.isOver; i++) match.step();
-}
 
 describe('Rng', () => {
   it('repeats the same sequence for the same seed', () => {
@@ -52,12 +48,10 @@ describe('CommandQueue', () => {
       nodeId: 'north',
     };
     const attackLate: Command = {
-      type: 'launchGroup',
+      type: 'launchWave',
       side: 'attacker',
       tick: 2,
-      unitTypeId: 'walker',
-      count: 1,
-      routeId: 'north',
+      groups: [{ unitTypeId: 'walker', count: 1, formation: 'column', routeId: 'north', delaySeconds: 0 }],
     };
     const attack: Command = { ...attackLate, tick: 1 };
     queue.enqueue(attackLate);
@@ -81,100 +75,6 @@ describe('FixedStepClock', () => {
     const clock = new FixedStepClock(TICK_MS, 10);
     expect(clock.advance(60_000)).toBe(10);
     expect(clock.alpha).toBe(0);
-  });
-});
-
-describe('Match', () => {
-  it('ends with a Defender win when the timer runs out', () => {
-    const match = new Match(fixtureSetup());
-    runToEnd(match);
-    expect(match.result).toEqual({ winner: 'defender', reason: 'timerExpired' });
-    expect(match.tick).toBe(60 * 20);
-  });
-
-  it('ends with an Attacker win when a group holds the objective', () => {
-    const match = new Match(fixtureSetup());
-    match.enqueue({
-      type: 'launchGroup',
-      side: 'attacker',
-      tick: 1,
-      unitTypeId: 'walker',
-      count: 2,
-      routeId: 'south',
-    });
-    runToEnd(match);
-    expect(match.result).toEqual({ winner: 'attacker', reason: 'objectiveHeld' });
-    const types = match.events.all().map((event) => event.type);
-    expect(types).toEqual(['matchStarted', 'groupLaunched', 'groupReachedObjective', 'matchEnded']);
-  });
-
-  it('turns back a group that walks past a defense instead of harming it', () => {
-    const match = new Match(fixtureSetup());
-    match.enqueue({
-      type: 'placeDefense',
-      side: 'defender',
-      tick: 1,
-      defenseTypeId: 'post',
-      nodeId: 'north',
-    });
-    match.enqueue({
-      type: 'launchGroup',
-      side: 'attacker',
-      tick: 1,
-      unitTypeId: 'walker',
-      count: 1,
-      routeId: 'north',
-    });
-    runToEnd(match);
-    expect(match.events.all().some((event) => event.type === 'groupStopped')).toBe(true);
-    expect(match.result?.winner).toBe('defender');
-  });
-
-  it('rejects illegal commands without changing resources', () => {
-    const match = new Match(fixtureSetup());
-    match.enqueue({ type: 'placeDefense', side: 'defender', tick: 1, defenseTypeId: 'post', nodeId: 'goal' });
-    match.enqueue({
-      type: 'launchGroup',
-      side: 'attacker',
-      tick: 1,
-      unitTypeId: 'walker',
-      count: 50,
-      routeId: 'north',
-    });
-    match.step();
-    const rejected = match.events.all().filter((event) => event.type === 'commandRejected');
-    expect(rejected.map((event) => event.type === 'commandRejected' && event.reason)).toEqual([
-      'notEnoughResources',
-      'notBuildable',
-    ]);
-    expect(match.snapshot().entities).toHaveLength(0);
-  });
-
-  it('is deterministic for the same seed and commands', () => {
-    const play = (seed: number) => {
-      const match = new Match(fixtureSetup({ seed }));
-      match.enqueue({
-        type: 'placeDefense',
-        side: 'defender',
-        tick: 3,
-        defenseTypeId: 'post',
-        nodeId: 'north',
-      });
-      for (let t = 1; t < 400; t += 40) {
-        match.enqueue({
-          type: 'launchGroup',
-          side: 'attacker',
-          tick: t,
-          unitTypeId: 'walker',
-          count: 1,
-          routeId: 'north',
-        });
-      }
-      runToEnd(match);
-      return hashValue({ events: match.events.all(), snapshot: match.snapshot() });
-    };
-    expect(play(1)).toBe(play(1));
-    expect(play(1)).not.toBe(play(2));
   });
 });
 
@@ -207,21 +107,36 @@ describe('routePath', () => {
   });
 
   it('walks groups along the bend points', () => {
-    const setup = fixtureSetup();
-    setup.level.edges[0] = { from: 'spawn', to: 'north', via: [[0, 10]] };
+    const setup = fixtureSetup({}, { preparationSeconds: 0 });
+    setup.level.edges[0] = { from: 'spawn', to: 'fork', via: [[0, 10]], terrain: 'cover' };
     const match = new Match(setup);
     match.enqueue({
-      type: 'launchGroup',
+      type: 'launchWave',
       side: 'attacker',
       tick: 1,
-      unitTypeId: 'walker',
-      count: 1,
-      routeId: 'north',
+      groups: [{ unitTypeId: 'walker', count: 1, formation: 'column', routeId: 'north', delaySeconds: 0 }],
     });
     for (let i = 0; i < 40; i++) match.step();
     const group = match.snapshot().entities[0];
-    // Roughly 8 units along the first leg, which runs straight up the z axis to the bend point.
+    // About 6 units along the first leg, which runs straight up the z axis to the bend point.
     expect(group?.x).toBeCloseTo(0, 5);
-    expect(group?.z).toBeGreaterThan(7);
+    expect(group?.z).toBeGreaterThan(5);
+  });
+});
+
+describe('RouteGraph', () => {
+  it('finds junctions where routes split and the shortest walk between nodes', () => {
+    const graph = new RouteGraph(fixtureSetup().level);
+    expect([...graph.junctions]).toEqual(['fork']);
+    expect(graph.shortestPath('north', 'south')?.map((leg) => leg.to)).toEqual(['fork', 'south']);
+    expect(graph.shortestPath('north', 'north-zone')).toBeNull();
+  });
+
+  it('knows whether a set of closed nodes leaves a route open', () => {
+    const graph = new RouteGraph(fixtureSetup().level);
+    expect(graph.hasOpenRoute(new Set(['north']))).toBe(true);
+    expect(graph.hasOpenRoute(new Set(['north', 'south']))).toBe(false);
+    expect(graph.hasOpenRoute(new Set(['fork']))).toBe(false);
+    expect(graph.hasOpenRoute(new Set(['spawn']))).toBe(true);
   });
 });

@@ -20,7 +20,7 @@
   "resource.ranger-supplies": "护林补给",
   "unit.scout": "侦察员",
   "unit.expedition-team": "探险队",
-  "unit.ranger-patrol": "巡护队",
+  "defense.ranger-patrol": "巡护队",
   "defense.observation-post": "观察哨",
   "defense.temporary-checkpoint": "临时检查站",
   "ability.reconnaissance.name": "侦察",

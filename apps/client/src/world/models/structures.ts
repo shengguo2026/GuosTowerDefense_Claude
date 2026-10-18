@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { ColorGeometryBuilder, transform } from '../geometryBuilder';
-import { SIDE_COLORS } from './people';
+import { LOOKS, SIDE_COLORS, personGeometry } from './people';
 
 const WOOD = 0x7a5532;
 const WOOD_DARK = 0x5a3c22;
@@ -78,8 +78,25 @@ export function checkpointGeometry(): THREE.BufferGeometry {
   return b.build();
 }
 
+/** A ranger patrol: three rangers walking together around a small flag. */
+function patrolGeometry(): THREE.BufferGeometry {
+  const person = personGeometry(LOOKS.ranger);
+  const b = new ColorGeometryBuilder();
+  for (const [x, z] of [
+    [0, 0.5],
+    [-0.55, -0.35],
+    [0.55, -0.35],
+  ] as const)
+    b.addColored(person, transform(x, 0, z));
+  b.add(new THREE.CylinderGeometry(0.03, 0.03, 2, 4), 0x6b5a45, transform(0, 1, -0.1));
+  b.add(new THREE.BoxGeometry(0.02, 0.35, 0.55), SIDE_COLORS.defender, transform(0, 1.8, 0.18));
+  person.dispose();
+  return b.build();
+}
+
 /** Defense model by catalog id; unknown types get a simple marker post so nothing is ever invisible. */
 export function defenseGeometry(defenseTypeId: string): THREE.BufferGeometry {
+  if (defenseTypeId.includes('patrol')) return patrolGeometry();
   if (defenseTypeId.includes('observation') || defenseTypeId.includes('light'))
     return observationPostGeometry();
   if (defenseTypeId.includes('checkpoint') || defenseTypeId.includes('gate')) return checkpointGeometry();

@@ -9,13 +9,21 @@ import { useSettings } from './useSettings';
 /** The first playable level; M2 adds a real level choice. */
 const LION = { stageId: 'stage-01-big-five', levelId: 'lion' };
 
+interface OpenLevel {
+  stageId: string;
+  levelId: string;
+  mode: 'demo' | 'play';
+}
+
 export function App() {
   const { settings, language, suggested, needsLanguageChoice, t, update } = useSettings();
   const connection = useServerConnection();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [openLevel, setOpenLevel] = useState<{ stageId: string; levelId: string } | null>(() =>
-    location.hash === '#lion' ? { stageId: LION.stageId, levelId: LION.levelId } : null,
-  );
+  const [openLevel, setOpenLevel] = useState<OpenLevel | null>(() => {
+    if (location.hash === '#lion') return { ...LION, mode: 'demo' };
+    if (location.hash === '#lion-match') return { ...LION, mode: 'play' };
+    return null;
+  });
   const lionAvailable = connection.stages.some((stage) => stage.id === LION.stageId);
   const closeLevel = useCallback(() => {
     setOpenLevel(null);
@@ -28,6 +36,8 @@ export function App() {
         <LevelScreen
           stageId={openLevel.stageId}
           levelId={openLevel.levelId}
+          mode={openLevel.mode}
+          key={`${openLevel.stageId}/${openLevel.levelId}/${openLevel.mode}`}
           language={language}
           graphics={settings?.graphics ?? 'auto'}
           connection={connection}
@@ -79,14 +89,24 @@ export function App() {
             {connection.stages.length > 0 && ` · ${t('home.stages', { count: connection.stages.length })}`}
           </p>
           {lionAvailable && (
-            <button
-              type="button"
-              className="primary"
-              data-testid="open-lion"
-              onClick={() => setOpenLevel({ stageId: LION.stageId, levelId: LION.levelId })}
-            >
-              {t('home.openLion')}
-            </button>
+            <div className="home-actions">
+              <button
+                type="button"
+                className="primary"
+                data-testid="play-lion"
+                onClick={() => setOpenLevel({ ...LION, mode: 'play' })}
+              >
+                {t('home.playLion')}
+              </button>
+              <button
+                type="button"
+                className="primary secondary"
+                data-testid="open-lion"
+                onClick={() => setOpenLevel({ ...LION, mode: 'demo' })}
+              >
+                {t('home.openLion')}
+              </button>
+            </div>
           )}
           {connection.error && <p className="error">{connection.error}</p>}
         </main>

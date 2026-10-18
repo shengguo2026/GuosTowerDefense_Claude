@@ -1,12 +1,13 @@
 import { SNAPSHOT_EVERY_TICKS } from '@gtd/protocol';
-import { FixedStepClock, Match, TICK_MS, type MatchSetup, type MatchSnapshot } from '@gtd/sim';
+import { FixedStepClock, Match, TICK_MS, type Command, type MatchSetup } from '@gtd/sim';
 import type { Controller } from '@gtd/test-kit';
 
 export interface MatchHostOptions {
   setup: MatchSetup;
-  attacker: Controller;
-  defender: Controller;
-  onSnapshot(snapshot: MatchSnapshot): void;
+  attacker?: Controller;
+  defender?: Controller;
+  /** Called at the snapshot rate (and once at the start and end); the owner decides who sees which view. */
+  onFrame(match: Match): void;
   onEnd?(): void;
   snapshotEveryTicks?: number;
   /** Injectable for tests. */
@@ -14,8 +15,8 @@ export interface MatchHostOptions {
 }
 
 /**
- * Runs one authoritative match in real time on the server: 20 ticks per second, controllers' commands applied before
- * each tick, snapshots sent at a fixed rate.
+ * Runs one authoritative match in real time on the server: 20 ticks per second, controllers' and players' commands
+ * applied before each tick, frames sent at a fixed rate.
  */
 export class MatchHost {
   readonly match: Match;
@@ -31,13 +32,22 @@ export class MatchHost {
 
   start(): void {
     this.last = this.now();
-    this.options.onSnapshot(this.match.snapshot());
+    this.options.onFrame(this.match);
     this.timer = setInterval(() => this.advance(), TICK_MS / 2);
   }
 
   stop(): void {
     clearInterval(this.timer);
     this.timer = undefined;
+  }
+
+  /** Queues a player's command for the next tick (its own tick is ignored). */
+  submit(command: Command): void {
+    this.match.enqueue({ ...command, tick: this.match.tick + 1 });
+  }
+
+  get running(): boolean {
+    return this.timer !== undefined;
   }
 
   /** Runs the ticks that are due; public so tests can drive time by hand. */
@@ -51,12 +61,13 @@ export class MatchHost {
 
   private tick(every: number): void {
     const { setup, attacker, defender } = this.options;
-    const snapshot = this.match.snapshot();
-    for (const command of [...attacker.decide(snapshot, setup), ...defender.decide(snapshot, setup)]) {
-      this.match.enqueue({ ...command, tick: this.match.tick + 1 });
-    }
+    const commands = [
+      ...(attacker?.decide(this.match.snapshot('attacker'), setup) ?? []),
+      ...(defender?.decide(this.match.snapshot('defender'), setup) ?? []),
+    ];
+    for (const command of commands) this.match.enqueue({ ...command, tick: this.match.tick + 1 });
     this.match.step();
-    if (this.match.tick % every === 0 || this.match.isOver) this.options.onSnapshot(this.match.snapshot());
+    if (this.match.tick % every === 0 || this.match.isOver) this.options.onFrame(this.match);
     if (this.match.isOver) {
       this.stop();
       this.options.onEnd?.();
