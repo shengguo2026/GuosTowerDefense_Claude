@@ -14,6 +14,7 @@ import {
   type StageSummary,
 } from '@gtd/protocol';
 import { WebSocketServer, type WebSocket } from 'ws';
+import { DemoMatches } from './demoMatches';
 import type { SaveManager } from './saveManager';
 
 export interface GameServerOptions {
@@ -24,6 +25,8 @@ export interface GameServerOptions {
   clientDir?: string;
   /** Show developer-only stage packs (dev mode and tests). */
   showDevStages?: boolean;
+  /** Folder with Codex art and textures, served under /art/. */
+  artDir?: string;
 }
 
 export interface RunningGameServer {
@@ -50,6 +53,8 @@ const CONTENT_TYPES: Record<string, string> = {
 const MAX_BODY_BYTES = 64 * 1024;
 
 export function createGameServer(options: GameServerOptions): Server {
+  const visibleStages = options.stages.filter((stage) => options.showDevStages || !stage.manifest.devOnly);
+  const demos = new DemoMatches(visibleStages);
   const stageSummaries: StageSummary[] = options.stages
     .filter((stage) => options.showDevStages || !stage.manifest.devOnly)
     .map((stage) => ({
@@ -93,10 +98,22 @@ export function createGameServer(options: GameServerOptions): Server {
       const save = await options.saves.updateSettings(patch.data);
       return sendJson(res, 200, save.settings);
     }
+    const stageMatch = req.method === 'GET' && /^\/api\/stages\/([a-z0-9-]+)$/.exec(url.pathname);
+    if (stageMatch) {
+      const pack = visibleStages.find((stage) => stage.manifest.id === stageMatch[1]);
+      return pack ? sendJson(res, 200, pack) : sendJson(res, 404, { error: 'unknownStage' });
+    }
     if (url.pathname.startsWith('/api/')) return sendJson(res, 404, { error: 'notFound' });
 
+    if (
+      url.pathname.startsWith('/art/') &&
+      options.artDir &&
+      (req.method === 'GET' || req.method === 'HEAD')
+    ) {
+      return serveStatic(options.artDir, url.pathname.slice('/art'.length), res, false);
+    }
     if (options.clientDir && (req.method === 'GET' || req.method === 'HEAD')) {
-      return serveStatic(options.clientDir, url.pathname, res);
+      return serveStatic(options.clientDir, url.pathname, res, true);
     }
     sendJson(res, 404, { error: 'notFound' });
   }
@@ -109,10 +126,16 @@ export function createGameServer(options: GameServerOptions): Server {
     }
     sockets.handleUpgrade(req, socket, head, (ws) => handleSocket(ws));
   });
-  server.on('close', () => sockets.close());
+  server.on('close', () => {
+    demos.stopAll();
+    sockets.close();
+  });
 
   function handleSocket(ws: WebSocket): void {
-    const send = (message: ServerMessage) => ws.send(JSON.stringify(message));
+    const send = (message: ServerMessage) => {
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(message));
+    };
+    ws.on('close', () => demos.unwatch(send));
     ws.on('message', (data) => {
       const message = parseClientMessage(String(data));
       if (!message) return send({ type: 'error', code: 'badMessage', message: 'Unrecognised message.' });
@@ -133,6 +156,14 @@ export function createGameServer(options: GameServerOptions): Server {
           });
         case 'ping':
           return send({ type: 'pong', sentAt: message.sentAt });
+        case 'watchDemo':
+          demos.unwatch(send);
+          if (!demos.watch(message.stageId, message.levelId, send)) {
+            send({ type: 'error', code: 'unknownLevel', message: 'This level does not exist.' });
+          }
+          return;
+        case 'stopWatching':
+          return demos.unwatch(send);
       }
     });
   }
@@ -181,8 +212,13 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
 }
 
 /** Serves the built client. Unknown paths without a file extension get index.html (single-page app). */
-async function serveStatic(clientDir: string, pathname: string, res: ServerResponse): Promise<void> {
-  const root = resolve(clientDir);
+async function serveStatic(
+  dir: string,
+  pathname: string,
+  res: ServerResponse,
+  spaFallback: boolean,
+): Promise<void> {
+  const root = resolve(dir);
   let decoded: string;
   try {
     decoded = decodeURIComponent(pathname);
@@ -196,15 +232,15 @@ async function serveStatic(clientDir: string, pathname: string, res: ServerRespo
   let file = requested;
   const info = await stat(file).catch(() => null);
   if (!info || info.isDirectory()) {
-    if (info?.isDirectory() || !extname(decoded)) file = join(root, 'index.html');
+    if (spaFallback && (info?.isDirectory() || !extname(decoded))) file = join(root, 'index.html');
     else return sendJson(res, 404, { error: 'notFound' });
     if (!(await stat(file).catch(() => null))) return sendJson(res, 503, { error: 'clientNotBuilt' });
   }
   const isHtml = file.endsWith('.html');
   res.writeHead(200, {
     'content-type': CONTENT_TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream',
-    // Hashed asset names can be cached forever; the page itself must always be fresh.
-    'cache-control': isHtml ? 'no-cache' : 'public, max-age=31536000, immutable',
+    // Hashed client assets can be cached forever; the page and art (fixed names) are revalidated.
+    'cache-control': isHtml || !spaFallback ? 'no-cache' : 'public, max-age=31536000, immutable',
   });
   createReadStream(file).pipe(res);
 }

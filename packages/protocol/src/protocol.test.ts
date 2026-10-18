@@ -19,7 +19,7 @@ describe('settings', () => {
   it('fills defaults for a first launch', () => {
     expect(SettingsSchema.parse({})).toEqual({
       language: null,
-      graphics: 'high',
+      graphics: 'auto',
       audio: { master: 0.8, music: 0.6, effects: 0.8 },
     });
   });

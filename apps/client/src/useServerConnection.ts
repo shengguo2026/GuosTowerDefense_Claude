@@ -1,28 +1,41 @@
-import { PROTOCOL_VERSION, WEBSOCKET_PATH, type ServerMessage, type StageSummary } from '@gtd/protocol';
-import { useEffect, useState } from 'react';
+import {
+  PROTOCOL_VERSION,
+  WEBSOCKET_PATH,
+  type ClientMessage,
+  type ServerMessage,
+  type StageSummary,
+} from '@gtd/protocol';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected';
+
+type Listener = (message: ServerMessage) => void;
 
 export interface ServerConnection {
   status: ConnectionStatus;
   serverVersion: string | null;
   stages: StageSummary[];
   error: string | null;
+  /** Sends a message when connected; returns false while offline. */
+  send(message: ClientMessage): boolean;
+  /** Receives every server message (match snapshots go here rather than into React state). */
+  subscribe(listener: Listener): () => void;
 }
 
 const RETRY_DELAYS_MS = [500, 1000, 2000, 4000];
 
 /** Keeps a WebSocket to the game server open, reconnecting with a growing delay after a drop. */
 export function useServerConnection(): ServerConnection {
-  const [state, setState] = useState<ServerConnection>({
-    status: 'connecting',
-    serverVersion: null,
-    stages: [],
-    error: null,
+  const [state, setState] = useState({
+    status: 'connecting' as ConnectionStatus,
+    serverVersion: null as string | null,
+    stages: [] as StageSummary[],
+    error: null as string | null,
   });
+  const socketRef = useRef<WebSocket | null>(null);
+  const listeners = useRef(new Set<Listener>());
 
   useEffect(() => {
-    let socket: WebSocket | null = null;
     let retryTimer: number | undefined;
     let attempts = 0;
     let stopped = false;
@@ -30,9 +43,10 @@ export function useServerConnection(): ServerConnection {
 
     const connect = () => {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      socket = new WebSocket(`${protocol}//${location.host}${WEBSOCKET_PATH}`);
+      const socket = new WebSocket(`${protocol}//${location.host}${WEBSOCKET_PATH}`);
+      socketRef.current = socket;
       socket.addEventListener('open', () => {
-        socket?.send(JSON.stringify({ type: 'hello', protocolVersion: PROTOCOL_VERSION, clientId }));
+        socket.send(JSON.stringify({ type: 'hello', protocolVersion: PROTOCOL_VERSION, clientId }));
       });
       socket.addEventListener('message', (event) => {
         const message = JSON.parse(String(event.data)) as ServerMessage;
@@ -47,6 +61,7 @@ export function useServerConnection(): ServerConnection {
         } else if (message.type === 'error') {
           setState((previous) => ({ ...previous, error: message.message }));
         }
+        listeners.current.forEach((listener) => listener(message));
       });
       socket.addEventListener('close', () => {
         if (stopped) return;
@@ -60,9 +75,23 @@ export function useServerConnection(): ServerConnection {
     return () => {
       stopped = true;
       window.clearTimeout(retryTimer);
-      socket?.close();
+      socketRef.current?.close();
     };
   }, []);
 
-  return state;
+  const send = useCallback((message: ClientMessage) => {
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify(message));
+    return true;
+  }, []);
+
+  const subscribe = useCallback((listener: Listener) => {
+    listeners.current.add(listener);
+    return () => {
+      listeners.current.delete(listener);
+    };
+  }, []);
+
+  return { ...state, send, subscribe };
 }

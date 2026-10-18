@@ -56,10 +56,21 @@ export function crossCheck(pack: StagePack): ContentIssue[] {
           add(file, `routes.${r}.nodes.${n}`, `no edge connects "${node}" and "${next}"`);
         }
       });
+      if (route.name) useText(route.name, file);
       if (route.nodes.at(-1) !== level.objective.nodeId) {
         add(file, `routes.${r}`, `route "${route.id}" must end at the objective "${level.objective.nodeId}"`);
       }
     });
+    if (level.scene) {
+      const { scene } = level;
+      if (scene.streambedRoute && !level.routes.some((route) => route.id === scene.streambedRoute)) {
+        add(file, 'scene.streambedRoute', `unknown route "${scene.streambedRoute}"`);
+      }
+      findDuplicates(scene.landmarks.map((landmark) => landmark.id)).forEach((dup) =>
+        add(file, 'scene.landmarks', `landmark "${dup}" is defined twice`),
+      );
+      scene.landmarks.forEach((landmark) => landmark.label && useText(landmark.label, file));
+    }
   });
 
   // Catalog

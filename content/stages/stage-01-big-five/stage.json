@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "stage-01-big-five",
+  "order": 1,
+  "core": true,
+  "devOnly": false,
+  "title": "stage.title",
+  "levels": ["lion"],
+  "profiles": {
+    "attacker": ["explorer"],
+    "defender": ["ranger"]
+  },
+  "plugins": []
+}

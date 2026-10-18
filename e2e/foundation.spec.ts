@@ -41,11 +41,11 @@ test('switches between English, German and Chinese in Settings', async ({ page }
   await expect(page.getByTestId('app-title')).toHaveText("Guo's Tower Defense");
 
   await page.getByRole('button', { name: 'Settings' }).click();
-  await page.getByRole('combobox').selectOption('de');
+  await page.getByTestId('language-select').selectOption('de');
   await expect(page.getByTestId('app-title')).toHaveText('Guos Tower Defense');
-  await page.getByRole('combobox').selectOption('zh-CN');
+  await page.getByTestId('language-select').selectOption('zh-CN');
   await expect(page.getByTestId('app-title')).toHaveText('盛国的塔防游戏');
-  await page.getByRole('combobox').selectOption('en');
+  await page.getByTestId('language-select').selectOption('en');
   await page.getByRole('button', { name: 'Close' }).click();
   await expect(page).toHaveTitle("Guo's Tower Defense");
 });

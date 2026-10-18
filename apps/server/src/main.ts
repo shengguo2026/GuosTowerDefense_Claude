@@ -47,6 +47,7 @@ async function main(): Promise<void> {
     saves,
     clientDir: devMode ? undefined : resolve(gameRoot, 'apps/client/dist'),
     showDevStages: devMode,
+    artDir: resolve(gameRoot, 'assets/art'),
   });
   const port = devMode ? firstPort : await findFreePort(firstPort, host);
   const running = await listen(server, port, host);

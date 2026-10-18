@@ -1,0 +1,104 @@
+{
+  "units": [
+    {
+      "id": "scout",
+      "name": "unit.scout",
+      "speed": 4.5,
+      "cost": 12,
+      "resilience": 2
+    },
+    {
+      "id": "expedition-team",
+      "name": "unit.expedition-team",
+      "speed": 3,
+      "cost": 20,
+      "resilience": 4
+    },
+    {
+      "id": "ranger-patrol",
+      "name": "unit.ranger-patrol",
+      "speed": 5,
+      "cost": 40,
+      "resilience": 6
+    }
+  ],
+  "defenses": [
+    {
+      "id": "observation-post",
+      "name": "defense.observation-post",
+      "cost": 60,
+      "range": 13,
+      "pressurePerSecond": 0.6
+    },
+    {
+      "id": "temporary-checkpoint",
+      "name": "defense.temporary-checkpoint",
+      "cost": 40,
+      "range": 5,
+      "pressurePerSecond": 3
+    }
+  ],
+  "abilities": [
+    {
+      "id": "reconnaissance",
+      "name": "ability.reconnaissance.name",
+      "description": "ability.reconnaissance.description",
+      "target": "area",
+      "effects": [
+        {
+          "type": "reveal"
+        }
+      ],
+      "range": 14,
+      "durationSeconds": 8,
+      "cost": 20,
+      "cooldownSeconds": 45
+    },
+    {
+      "id": "rapid-reroute",
+      "name": "ability.rapid-reroute.name",
+      "description": "ability.rapid-reroute.description",
+      "target": "route",
+      "effects": [
+        {
+          "type": "move"
+        }
+      ],
+      "cost": 15,
+      "cooldownSeconds": 40
+    },
+    {
+      "id": "rapid-response",
+      "name": "ability.rapid-response.name",
+      "description": "ability.rapid-response.description",
+      "target": "area",
+      "effects": [
+        {
+          "type": "boost",
+          "magnitude": 0.5
+        }
+      ],
+      "range": 12,
+      "durationSeconds": 10,
+      "cost": 25,
+      "cooldownSeconds": 50
+    },
+    {
+      "id": "intercept",
+      "name": "ability.intercept.name",
+      "description": "ability.intercept.description",
+      "target": "unit",
+      "effects": [
+        {
+          "type": "slow",
+          "magnitude": 0.5
+        }
+      ],
+      "range": 10,
+      "durationSeconds": 4,
+      "cost": 20,
+      "cooldownSeconds": 35
+    }
+  ],
+  "commands": []
+}

@@ -15,7 +15,9 @@
     "@gtd/protocol": "0.0.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "three": "^0.180.0"
+    "three": "^0.180.0",
+    "@gtd/sim": "0.0.1",
+    "@gtd/content-schema": "0.0.1"
   },
   "devDependencies": {
     "@types/react": "^19.2.2",

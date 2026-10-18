@@ -30,11 +30,64 @@ export const StageManifestSchema = z.object({
   plugins: z.array(z.object({ id, entry: z.string().min(1) })).default([]),
 });
 
+export const NODE_KINDS = ['spawn', 'junction', 'checkpoint', 'connector', 'objective', 'buildZone'] as const;
+
 export const MapNodeSchema = z.object({
   id,
   x: z.number(),
   z: z.number(),
+  kind: z.enum(NODE_KINDS).optional(),
   buildable: z.boolean().optional(),
+});
+
+const point = z.tuple([z.number(), z.number()]);
+
+/**
+ * How the level looks. `kit` names the world builder in the client (e.g. `savanna`); landmarks and animals are
+ * placed by the level so the same kit serves several levels.
+ */
+export const SceneSchema = z.object({
+  kit: z.string().min(1),
+  /** Seed for scattering trees, rocks and grass, so the level looks the same every time. */
+  seed: z.number().int(),
+  /** Width and depth of the terrain in map units. */
+  size: z.number().positive(),
+  /** Route whose path carves a dry streambed into the terrain. */
+  streambedRoute: id.optional(),
+  landmarks: z
+    .array(
+      z.object({
+        id,
+        kind: z.string().min(1),
+        x: z.number(),
+        z: z.number(),
+        radius: z.number().positive().default(6),
+        rotation: z.number().default(0),
+        label: textKey.optional(),
+      }),
+    )
+    .default([]),
+  animals: z
+    .array(
+      z.object({
+        kind: z.string().min(1),
+        x: z.number(),
+        z: z.number(),
+        rotation: z.number().default(0),
+        pose: z.enum(['standing', 'lying']).default('standing'),
+      }),
+    )
+    .default([]),
+  /** Where the camera starts: the point it looks at, plus angle and distance. */
+  camera: z
+    .object({
+      x: z.number(),
+      z: z.number(),
+      yaw: z.number(),
+      pitch: z.number(),
+      distance: z.number().positive(),
+    })
+    .optional(),
 });
 
 export const LevelSchema = z.object({
@@ -46,9 +99,10 @@ export const LevelSchema = z.object({
   objective: z.object({ nodeId: id, holdSeconds: z.number().positive() }),
   map: z.object({
     nodes: z.array(MapNodeSchema).min(2),
-    edges: z.array(z.object({ from: id, to: id })).min(1),
+    edges: z.array(z.object({ from: id, to: id, via: z.array(point).optional() })).min(1),
   }),
-  routes: z.array(z.object({ id, nodes: z.array(id).min(2) })).min(1),
+  routes: z.array(z.object({ id, name: textKey.optional(), nodes: z.array(id).min(2) })).min(1),
+  scene: SceneSchema.optional(),
   startingResources: sideValues,
   incomePerSecond: sideValues,
 });
@@ -129,6 +183,7 @@ export const TextsSchema = z.record(z.string(), z.string());
 
 export type StageManifest = z.infer<typeof StageManifestSchema>;
 export type Level = z.infer<typeof LevelSchema>;
+export type Scene = z.infer<typeof SceneSchema>;
 export type Catalog = z.infer<typeof CatalogSchema>;
 export type Profile = z.infer<typeof ProfileSchema>;
 export type Action = z.infer<typeof ActionSchema>;

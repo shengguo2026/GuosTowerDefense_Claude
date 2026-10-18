@@ -21,13 +21,13 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-async function startServer(userDataDir = join(dir, 'user-data'), clientDir?: string) {
+async function startServer(userDataDir = join(dir, 'user-data'), clientDir?: string, artDir?: string) {
   await prepareUserData(userDataDir);
   const saves = new SaveManager(userDataDir);
   await saves.load();
   const { stages } = await loadAllStages(resolve(import.meta.dirname, '../../../content/stages'));
   const server = await listen(
-    createGameServer({ version: '9.9.9', stages, saves, clientDir, showDevStages: true }),
+    createGameServer({ version: '9.9.9', stages, saves, clientDir, artDir, showDevStages: true }),
     0,
     '127.0.0.1',
   );
@@ -165,6 +165,84 @@ describe('game server', () => {
     expect(await (await fetch(`${server.url}/settings`)).text()).toContain('game');
     expect((await fetch(`${server.url}/missing.js`)).status).toBe(404);
     expect((await fetch(`${server.url}/..%2fsecret.txt`)).status).toBe(403);
+  });
+});
+
+describe('levels', () => {
+  /** Opens a WebSocket, says hello, sends `messages` and collects replies until `until` returns true. */
+  async function converse(
+    url: string,
+    messages: object[],
+    until: (received: ServerMessage[]) => boolean,
+  ): Promise<ServerMessage[]> {
+    const ws = new WebSocket(`${url.replace('http', 'ws')}/ws`);
+    const received: ServerMessage[] = [];
+    await new Promise<void>((done, fail) => {
+      const timer = setTimeout(
+        () => fail(new Error(`timed out after ${JSON.stringify(received.map((m) => m.type))}`)),
+        5000,
+      );
+      ws.on('error', fail);
+      ws.on('open', () => {
+        ws.send(JSON.stringify({ type: 'hello', protocolVersion: PROTOCOL_VERSION, clientId: 'test' }));
+        for (const message of messages) ws.send(JSON.stringify(message));
+      });
+      ws.on('message', (data) => {
+        received.push(JSON.parse(String(data)) as ServerMessage);
+        if (until(received)) {
+          clearTimeout(timer);
+          done();
+        }
+      });
+    });
+    ws.close();
+    return received;
+  }
+
+  it('serves a whole stage pack, and 404 for an unknown one', async () => {
+    const server = await startServer();
+    const pack = (await (await fetch(`${server.url}/api/stages/stage-01-big-five`)).json()) as {
+      levels: { id: string; scene?: { kit: string } }[];
+    };
+    expect(pack.levels.map((level) => level.id)).toEqual(['lion']);
+    expect(pack.levels[0]?.scene?.kit).toBe('savanna');
+    expect((await fetch(`${server.url}/api/stages/nope`)).status).toBe(404);
+  });
+
+  it('serves art files and blocks paths outside the art folder', async () => {
+    const artDir = join(dir, 'art');
+    await mkdir(join(artDir, 'textures'), { recursive: true });
+    await writeFile(join(artDir, 'textures', 'grass.jpg'), 'jpeg');
+    await writeFile(join(dir, 'secret.txt'), 'secret');
+    const server = await startServer(join(dir, 'ud3'), undefined, artDir);
+    const response = await fetch(`${server.url}/art/textures/grass.jpg`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('image/jpeg');
+    expect((await fetch(`${server.url}/art/missing.jpg`)).status).toBe(404);
+    expect((await fetch(`${server.url}/art/..%2f..%2fsecret.txt`)).status).toBe(403);
+  });
+
+  it('streams a demo match of a level to a watcher', async () => {
+    const server = await startServer();
+    const received = await converse(
+      server.url,
+      [{ type: 'watchDemo', stageId: 'stage-01-big-five', levelId: 'lion' }],
+      (messages) => messages.filter((m) => m.type === 'snapshot').length >= 3,
+    );
+    const started = received.find((m) => m.type === 'matchStarted');
+    expect(started).toMatchObject({ stageId: 'stage-01-big-five', levelId: 'lion' });
+    const ticks = received.flatMap((m) => (m.type === 'snapshot' ? [m.snapshot.tick] : []));
+    expect(ticks[ticks.length - 1]).toBeGreaterThan(ticks[0] ?? 0);
+  });
+
+  it('answers an unknown level with an error', async () => {
+    const server = await startServer();
+    const received = await converse(
+      server.url,
+      [{ type: 'watchDemo', stageId: 'stage-01-big-five', levelId: 'elephant' }],
+      (messages) => messages.some((m) => m.type === 'error'),
+    );
+    expect(received.find((m) => m.type === 'error')).toMatchObject({ code: 'unknownLevel' });
   });
 });
 

@@ -1,3 +1,4 @@
+import type { StagePack } from '@gtd/content-schema';
 import type { HealthResponse, Settings, SettingsPatch } from '@gtd/protocol';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -8,6 +9,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<HealthResponse>('/api/health'),
+  stage: (id: string) => request<StagePack>(`/api/stages/${encodeURIComponent(id)}`),
   settings: () => request<Settings>('/api/settings'),
   updateSettings: (patch: SettingsPatch) =>
     request<Settings>('/api/settings', {
