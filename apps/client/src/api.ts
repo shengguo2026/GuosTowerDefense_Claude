@@ -1,5 +1,5 @@
 import type { StagePack } from '@gtd/content-schema';
-import type { HealthResponse, Settings, SettingsPatch } from '@gtd/protocol';
+import type { HealthResponse, Progress, Settings, SettingsPatch } from '@gtd/protocol';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
@@ -17,4 +17,7 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(patch),
     }),
+  progress: () => request<Progress>('/api/progress'),
+  /** Codex pictures that exist on the PC, by art id. */
+  art: () => request<Record<string, string>>('/api/art'),
 };

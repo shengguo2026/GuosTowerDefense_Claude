@@ -2,7 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 
 /** Puts the save back into the first-launch state (no language chosen yet). */
 async function resetLanguage(page: Page) {
-  const response = await page.request.put('/api/settings', { data: { language: null } });
+  const response = await page.request.put('/api/settings', {
+    data: { onboarding: { tutorialOffered: true }, language: null },
+  });
   expect(response.ok()).toBe(true);
 }
 
@@ -29,14 +31,18 @@ test.describe('first launch', () => {
 });
 
 test('connects to the game server', async ({ page }) => {
-  await page.request.put('/api/settings', { data: { language: 'en' } });
+  await page.request.put('/api/settings', {
+    data: { onboarding: { tutorialOffered: true }, language: 'en' },
+  });
   await page.goto('/');
   await expect(page.getByTestId('connection')).toHaveText('Connected');
   await expect(page.getByTestId('server-info')).toContainText('Server version');
 });
 
 test('switches between English, German and Chinese in Settings', async ({ page }) => {
-  await page.request.put('/api/settings', { data: { language: 'en' } });
+  await page.request.put('/api/settings', {
+    data: { onboarding: { tutorialOffered: true }, language: 'en' },
+  });
   await page.goto('/');
   await expect(page.getByTestId('app-title')).toHaveText("Guo's Tower Defense");
 
@@ -51,7 +57,9 @@ test('switches between English, German and Chinese in Settings', async ({ page }
 });
 
 test('renders the 3D scene and takes a layout screenshot', async ({ page }, testInfo) => {
-  await page.request.put('/api/settings', { data: { language: 'en' } });
+  await page.request.put('/api/settings', {
+    data: { onboarding: { tutorialOffered: true }, language: 'en' },
+  });
   await page.goto('/');
   await expect(page.getByTestId('world-canvas')).toHaveAttribute('data-rendered', 'true', {
     timeout: 15_000,
@@ -66,7 +74,7 @@ test('renders the 3D scene and takes a layout screenshot', async ({ page }, test
   // The card and the top bar must fit inside the viewport on every device class.
   const viewport = page.viewportSize();
   for (const box of [
-    await page.locator('.home-card').boundingBox(),
+    await page.locator('.main-menu').boundingBox(),
     await page.locator('.top-bar').boundingBox(),
   ]) {
     expect(box).not.toBeNull();
@@ -85,7 +93,9 @@ test('works on a plain-http Wi-Fi address, where secure-only browser features ar
   });
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.request.put('/api/settings', { data: { language: 'en' } });
+  await page.request.put('/api/settings', {
+    data: { onboarding: { tutorialOffered: true }, language: 'en' },
+  });
   await page.goto('/');
   await expect(page.getByTestId('connection')).toHaveText('Connected');
   expect(errors).toEqual([]);

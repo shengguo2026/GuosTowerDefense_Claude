@@ -35,7 +35,11 @@ export function crossCheck(pack: StagePack): ContentIssue[] {
         const { until } = step;
         if (until.type === 'build' && until.defense && !catalog.defenses.some((d) => d.id === until.defense))
           add(file, `tutorial.${side}.${i}.until.defense`, `unknown defense "${until.defense}"`);
-        if (until.type === 'ability' && until.ability && !catalog.abilities.some((a) => a.id === until.ability))
+        if (
+          until.type === 'ability' &&
+          until.ability &&
+          !catalog.abilities.some((a) => a.id === until.ability)
+        )
           add(file, `tutorial.${side}.${i}.until.ability`, `unknown ability "${until.ability}"`);
       });
     }

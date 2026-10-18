@@ -1,130 +1,229 @@
-import { useCallback, useState } from 'react';
+import type { StagePack } from '@gtd/content-schema';
+import type { Side } from '@gtd/sim';
+import { useCallback, useEffect, useState } from 'react';
+import { api } from './api';
+import { ArtProvider } from './art/Art';
+import { sounds } from './audio/sound';
 import { LanguagePicker } from './components/LanguagePicker';
-import { LevelScreen } from './level/LevelScreen';
 import { SettingsPanel } from './components/SettingsPanel';
+import { KeysProvider } from './hud/KeyHint';
+import { TutorialOffer } from './hud/Overlays';
+import { LevelScreen } from './level/LevelScreen';
+import { MatchScreen } from './match/MatchScreen';
+import type { MatchConfig } from './match/matchConfig';
+import { MainMenu } from './menu/MainMenu';
+import { ManualScreen } from './menu/ManualScreen';
+import { SinglePlayerSetup } from './menu/SinglePlayerSetup';
 import { WorldCanvas } from './scene/WorldCanvas';
 import { useServerConnection } from './useServerConnection';
 import { useSettings } from './useSettings';
 
-/** The first playable level; M2 adds a real level choice. */
+/** The first stage and level: the tutorials and the demo run there. */
 const LION = { stageId: 'stage-01-big-five', levelId: 'lion' };
 
-interface OpenLevel {
-  stageId: string;
-  levelId: string;
-  mode: 'demo' | 'play';
+type Screen =
+  | { name: 'menu' }
+  | { name: 'setup' }
+  | { name: 'match'; config: MatchConfig }
+  | { name: 'manual' }
+  /** The M2/M3 level screen: the server's demo match, or a match of two people (seat picker). */
+  | { name: 'level'; mode: 'demo' | 'play' };
+
+function initialScreen(): Screen {
+  if (location.hash === '#lion') return { name: 'level', mode: 'demo' };
+  if (location.hash === '#lion-match') return { name: 'level', mode: 'play' };
+  return { name: 'menu' };
+}
+
+/** Tutorial match on Lion against an easy computer with the stage's first profiles. */
+function tutorialConfig(pack: StagePack, side: Side): MatchConfig {
+  return {
+    ...LION,
+    side,
+    attackerProfileId: pack.manifest.profiles.attacker[0] ?? '',
+    defenderProfileId: pack.manifest.profiles.defender[0] ?? '',
+    difficulty: 'easy',
+    tutorial: true,
+    showAiReasoning: false,
+  };
 }
 
 export function App() {
-  const { settings, language, suggested, needsLanguageChoice, t, update } = useSettings();
+  const settings = useSettings();
+  const { settings: current, language, suggested, needsLanguageChoice, t, update, loaded } = settings;
   const connection = useServerConnection();
+  const [screen, setScreen] = useState<Screen>(initialScreen);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [openLevel, setOpenLevel] = useState<OpenLevel | null>(() => {
-    if (location.hash === '#lion') return { ...LION, mode: 'demo' };
-    if (location.hash === '#lion-match') return { ...LION, mode: 'play' };
-    return null;
-  });
+  const [manualOver, setManualOver] = useState(false);
+  const [offerOpen, setOfferOpen] = useState(false);
+  const [lastConfig, setLastConfig] = useState<MatchConfig | undefined>(undefined);
+  const [pack, setPack] = useState<StagePack | null>(null);
+  const [touch] = useState(() => window.matchMedia('(pointer: coarse)').matches);
   const lionAvailable = connection.stages.some((stage) => stage.id === LION.stageId);
-  const closeLevel = useCallback(() => {
-    setOpenLevel(null);
+  const matchStage = screen.name === 'match' ? screen.config.stageId : null;
+
+  const toMenu = useCallback(() => {
+    setScreen({ name: 'menu' });
+    setManualOver(false);
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   }, []);
 
+  // The match screen needs the whole stage pack (map, catalog, texts).
+  useEffect(() => {
+    const stageId = matchStage ?? (offerOpen ? LION.stageId : null);
+    if (!stageId || pack?.manifest.id === stageId) return;
+    let cancelled = false;
+    api.stage(stageId).then(
+      (loadedPack) => !cancelled && setPack(loadedPack),
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [matchStage, offerOpen, pack]);
+
+  // First launch: offer a tutorial once, after the language is chosen.
+  const firstLaunch = loaded && !needsLanguageChoice && !current.onboarding.tutorialOffered && lionAvailable;
+  useEffect(() => {
+    if (firstLaunch && screen.name === 'menu') setOfferOpen(true);
+  }, [firstLaunch, screen.name]);
+
+  const closeOffer = useCallback(() => {
+    setOfferOpen(false);
+    if (!current.onboarding.tutorialOffered) void update({ onboarding: { tutorialOffered: true } });
+  }, [current.onboarding.tutorialOffered, update]);
+
+  const startTutorial = useCallback(
+    async (side: Side) => {
+      closeOffer();
+      setSettingsOpen(false);
+      const lion = pack?.manifest.id === LION.stageId ? pack : await api.stage(LION.stageId);
+      setPack(lion);
+      setScreen({ name: 'match', config: tutorialConfig(lion, side) });
+    },
+    [closeOffer, pack],
+  );
+
+  // A soft click for every button, as UI feedback (spec §6.5).
+  useEffect(() => {
+    const onClick = (event: MouseEvent) => {
+      const button = (event.target as HTMLElement | null)?.closest('button');
+      if (button && !button.disabled) sounds.play('click');
+    };
+    document.addEventListener('click', onClick, true);
+    return () => document.removeEventListener('click', onClick, true);
+  }, []);
+
+  const overlayOpen = settingsOpen || manualOver;
   return (
-    <div className="app">
-      {openLevel ? (
-        <LevelScreen
-          stageId={openLevel.stageId}
-          levelId={openLevel.levelId}
-          mode={openLevel.mode}
-          key={`${openLevel.stageId}/${openLevel.levelId}/${openLevel.mode}`}
-          language={language}
-          graphics={settings?.graphics ?? 'auto'}
-          connection={connection}
-          t={t}
-          onBack={closeLevel}
-          onSettings={() => setSettingsOpen(true)}
-        />
-      ) : (
-        <WorldCanvas />
-      )}
+    <ArtProvider>
+      <KeysProvider bindings={settings.bindings} show={!touch}>
+        <div className="app">
+          {screen.name === 'level' && (
+            <LevelScreen
+              stageId={LION.stageId}
+              levelId={LION.levelId}
+              mode={screen.mode}
+              language={language}
+              graphics={current.graphics}
+              connection={connection}
+              t={t}
+              onBack={toMenu}
+              onSettings={() => setSettingsOpen(true)}
+            />
+          )}
+          {screen.name === 'match' && pack?.manifest.id === screen.config.stageId && (
+            <MatchScreen
+              key={`${screen.config.stageId}/${screen.config.levelId}/${screen.config.side}/${screen.config.tutorial}`}
+              config={screen.config}
+              pack={pack}
+              connection={connection}
+              settings={settings}
+              overlayOpen={overlayOpen}
+              onQuit={toMenu}
+              onManual={() => setManualOver(true)}
+              onSettings={() => setSettingsOpen(true)}
+            />
+          )}
+          {(screen.name === 'menu' || screen.name === 'setup' || screen.name === 'manual') && <WorldCanvas />}
 
-      {!openLevel && (
-        <header className="top-bar">
-          <div className="brand">
-            <img src="/favicon.svg" alt="" width={32} height={32} />
-            <span data-testid="app-title">{t('app.title')}</span>
-          </div>
-          <div className="top-actions">
-            <span className={`connection ${connection.status}`} data-testid="connection" role="status">
-              <span className="dot" aria-hidden="true" />
-              {t(`connection.${connection.status}`)}
-            </span>
-            <button
-              type="button"
-              className="icon-button"
-              aria-label={t('settings.title')}
-              title={t('settings.title')}
-              onClick={() => setSettingsOpen(true)}
-            >
-              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-                <path
-                  fill="currentColor"
-                  d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1c.5.4 1.1.7 1.7 1l.4 2.7h4l.4-2.7c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"
-                  transform="translate(-1 0)"
-                />
-              </svg>
-            </button>
-          </div>
-        </header>
-      )}
+          {screen.name === 'menu' && (
+            <header className="top-bar">
+              <div className="brand">
+                <img src="/favicon.svg" alt="" width={32} height={32} />
+                <span data-testid="app-title">{t('app.title')}</span>
+              </div>
+              <div className="top-actions">
+                <span className={`connection ${connection.status}`} data-testid="connection" role="status">
+                  <span className="dot" aria-hidden="true" />
+                  {t(`connection.${connection.status}`)}
+                </span>
+              </div>
+            </header>
+          )}
 
-      {!openLevel && (
-        <main className="home-card panel">
-          <h1>{t('app.title')}</h1>
-          <p className="tagline">{t('home.tagline')}</p>
-          <p className="hint">{t('home.foundation')}</p>
-          <p className="meta" data-testid="server-info">
-            {connection.serverVersion && t('connection.serverVersion', { version: connection.serverVersion })}
-            {connection.stages.length > 0 && ` · ${t('home.stages', { count: connection.stages.length })}`}
-          </p>
-          {lionAvailable && (
-            <div className="home-actions">
-              <button
-                type="button"
-                className="primary"
-                data-testid="play-lion"
-                onClick={() => setOpenLevel({ ...LION, mode: 'play' })}
-              >
-                {t('home.playLion')}
-              </button>
-              <button
-                type="button"
-                className="primary secondary"
-                data-testid="open-lion"
-                onClick={() => setOpenLevel({ ...LION, mode: 'demo' })}
-              >
-                {t('home.openLion')}
-              </button>
+          {screen.name === 'menu' && (
+            <MainMenu
+              t={t}
+              connection={connection}
+              playable={lionAvailable}
+              onSinglePlayer={() => setScreen({ name: 'setup' })}
+              onTutorial={() => setOfferOpen(true)}
+              onTwoPlayers={() => setScreen({ name: 'level', mode: 'play' })}
+              onManual={() => setScreen({ name: 'manual' })}
+              onSettings={() => setSettingsOpen(true)}
+              onDemo={() => setScreen({ name: 'level', mode: 'demo' })}
+            />
+          )}
+          {screen.name === 'setup' && (
+            <SinglePlayerSetup
+              stages={connection.stages}
+              language={language}
+              t={t}
+              playerName={current.playerName}
+              initial={lastConfig}
+              onName={(name) => void update({ playerName: name })}
+              onStart={(config) => {
+                setLastConfig(config);
+                setScreen({ name: 'match', config });
+              }}
+              onBack={toMenu}
+            />
+          )}
+          {screen.name === 'manual' && (
+            <ManualScreen stageId={LION.stageId} language={language} t={t} onBack={toMenu} />
+          )}
+          {manualOver && (
+            <div className="manual-over">
+              <ManualScreen
+                stageId={matchStage ?? LION.stageId}
+                language={language}
+                t={t}
+                onBack={() => setManualOver(false)}
+              />
             </div>
           )}
-          {connection.error && <p className="error">{connection.error}</p>}
-        </main>
-      )}
 
-      {needsLanguageChoice && (
-        <LanguagePicker suggested={suggested} onChoose={(choice) => void update({ language: choice })} />
-      )}
-      {settingsOpen && (
-        <SettingsPanel
-          language={language}
-          graphics={settings?.graphics ?? 'auto'}
-          t={t}
-          onGraphics={(choice) => void update({ graphics: choice })}
-          onLanguage={(choice) => void update({ language: choice })}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
-    </div>
+          {needsLanguageChoice && (
+            <LanguagePicker suggested={suggested} onChoose={(choice) => void update({ language: choice })} />
+          )}
+          {offerOpen && !needsLanguageChoice && (
+            <TutorialOffer
+              t={t}
+              onAttacker={() => void startTutorial('attacker')}
+              onDefender={() => void startTutorial('defender')}
+              onLater={closeOffer}
+            />
+          )}
+          {settingsOpen && (
+            <SettingsPanel
+              settings={settings}
+              onReplayTutorial={screen.name === 'menu' ? (side) => void startTutorial(side) : undefined}
+              onClose={() => setSettingsOpen(false)}
+            />
+          )}
+        </div>
+      </KeysProvider>
+    </ArtProvider>
   );
 }

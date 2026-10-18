@@ -12,6 +12,15 @@ import {
 
 const EDGE_PAN_PIXELS = 14;
 const DOUBLE_TAP_MS = 320;
+/** A press that moves less than this and ends quickly is a click or tap on the map, not a drag. */
+const TAP_SLOP_PIXELS = 8;
+const TAP_MS = 450;
+
+/** A click or tap on the map, or the pointer moving over it (screen coordinates). */
+export interface PointerListener {
+  tap?(clientX: number, clientY: number, button: number): void;
+  move?(clientX: number, clientY: number): void;
+}
 
 /**
  * Strategic camera controls (spec §15).
@@ -26,6 +35,11 @@ export class CameraRig {
   private pinch: { distance: number; angle: number } | null = null;
   private lastTap = { time: 0, x: 0, y: 0 };
   private hover: { x: number; y: number } | null = null;
+  private press: { x: number; y: number; at: number; button: number; moved: boolean } | null = null;
+  /** Clicks and pointer moves for selecting on the map. */
+  listener: PointerListener = {};
+  /** Turned off while the HUD asks the player to aim, so the edge of the screen does not drift the view. */
+  edgePan = true;
   private readonly raycaster = new THREE.Raycaster();
   private readonly abort = new AbortController();
 
@@ -60,7 +74,7 @@ export class CameraRig {
 
   /** Called every frame; eases towards the requested view and applies edge panning. */
   update(dt: number): void {
-    if (this.hover && this.pointers.size === 0 && document.hasFocus()) {
+    if (this.edgePan && this.hover && this.pointers.size === 0 && document.hasFocus()) {
       const rect = this.element.getBoundingClientRect();
       const speed = this.target.distance * 0.9 * dt;
       let right = 0;
@@ -103,6 +117,10 @@ export class CameraRig {
   private onDown(e: PointerEvent): void {
     this.element.setPointerCapture(e.pointerId);
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, button: e.button, type: e.pointerType });
+    this.press =
+      this.pointers.size === 1
+        ? { x: e.clientX, y: e.clientY, at: performance.now(), button: e.button, moved: false }
+        : null;
     if (this.pointers.size === 2) this.pinch = this.measurePinch();
     if (e.pointerType === 'touch' && this.pointers.size === 1) {
       const now = performance.now();
@@ -121,6 +139,9 @@ export class CameraRig {
   private onMove(e: PointerEvent): void {
     const rect = this.element.getBoundingClientRect();
     if (e.pointerType === 'mouse') this.hover = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    this.listener.move?.(e.clientX, e.clientY);
+    if (this.press && Math.hypot(e.clientX - this.press.x, e.clientY - this.press.y) > TAP_SLOP_PIXELS)
+      this.press.moved = true;
     const pointer = this.pointers.get(e.pointerId);
     if (!pointer) return;
     const dx = e.clientX - pointer.x;
@@ -149,6 +170,17 @@ export class CameraRig {
   }
 
   private onUp(e: PointerEvent): void {
+    const press = this.press;
+    if (
+      e.type === 'pointerup' &&
+      press &&
+      !press.moved &&
+      this.pointers.size === 1 &&
+      performance.now() - press.at < TAP_MS
+    ) {
+      this.listener.tap?.(e.clientX, e.clientY, press.button);
+    }
+    if (this.pointers.size <= 1) this.press = null;
     this.pointers.delete(e.pointerId);
     this.pinch = this.pointers.size >= 2 ? this.measurePinch() : null;
   }
