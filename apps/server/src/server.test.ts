@@ -246,6 +246,140 @@ describe('levels', () => {
   });
 });
 
+describe('matches between people', () => {
+  /** A WebSocket client that keeps everything it received and can wait for a message. */
+  class TestClient {
+    readonly received: ServerMessage[] = [];
+    private readonly ws: WebSocket;
+    private readonly opened: Promise<void>;
+
+    constructor(url: string) {
+      this.ws = new WebSocket(`${url.replace('http', 'ws')}/ws`);
+      this.ws.on('message', (data) => this.received.push(JSON.parse(String(data)) as ServerMessage));
+      this.opened = new Promise((done, fail) => {
+        this.ws.on('open', () => done());
+        this.ws.on('error', fail);
+      });
+    }
+
+    async send(message: object): Promise<void> {
+      await this.opened;
+      this.ws.send(JSON.stringify(message));
+    }
+
+    /** Waits for a message received from now on that matches. */
+    async next<T extends ServerMessage['type']>(
+      type: T,
+      test: (message: Extract<ServerMessage, { type: T }>) => boolean = () => true,
+    ): Promise<Extract<ServerMessage, { type: T }>> {
+      const start = this.received.length;
+      for (let waited = 0; waited < 5000; waited += 20) {
+        const found = this.received
+          .slice(start)
+          .find((m): m is Extract<ServerMessage, { type: T }> => m.type === type && test(m as never));
+        if (found) return found;
+        await new Promise((resolveWait) => setTimeout(resolveWait, 20));
+      }
+      throw new Error(`no ${type} after ${JSON.stringify(this.received.slice(start).map((m) => m.type))}`);
+    }
+
+    close(): void {
+      this.ws.close();
+    }
+  }
+
+  const lion = { stageId: 'stage-01-big-five', levelId: 'lion' };
+
+  it('runs a match for one person playing both sides and applies their commands', async () => {
+    const server = await startServer();
+    const client = new TestClient(server.url);
+    await client.send({ type: 'createMatch', ...lion, seat: 'both' });
+    const joined = await client.next('joined');
+    expect(joined.seat).toBe('both');
+    await client.send({
+      type: 'command',
+      command: {
+        type: 'placeDefense',
+        side: 'defender',
+        defenseTypeId: 'observation-post',
+        nodeId: 'junction-hill',
+      },
+    });
+    const withPost = await client.next('snapshot', (m) =>
+      m.snapshot.entities.some((e) => e.kind === 'defense'),
+    );
+    expect(withPost.snapshot.viewer).toBeNull();
+    expect(withPost.snapshot.phase).toBe('preparation');
+    await client.send({
+      type: 'command',
+      command: {
+        type: 'launchWave',
+        side: 'attacker',
+        groups: [{ unitTypeId: 'scout', count: 3, formation: 'column', routeId: 'ridge', delaySeconds: 0 }],
+      },
+    });
+    expect(await client.next('commandRejected')).toMatchObject({
+      command: 'launchWave',
+      reason: 'preparation',
+    });
+    await client.send({ type: 'command', command: { type: 'launchWave', side: 'attacker', groups: [] } });
+    expect(await client.next('error')).toMatchObject({ code: 'badMessage' });
+    client.close();
+  });
+
+  it('lets a second person join as the other side and shows each side only its own view', async () => {
+    const server = await startServer();
+    const attacker = new TestClient(server.url);
+    const defender = new TestClient(server.url);
+    await attacker.send({ type: 'createMatch', ...lion, seat: 'attacker' });
+    const { matchId } = await attacker.next('joined');
+    await defender.send({ type: 'listMatches' });
+    const list = await defender.next('matches');
+    expect(list.matches).toEqual([{ matchId, ...lion, seats: ['attacker'], phase: 'preparation' }]);
+    await defender.send({ type: 'joinMatch', matchId, seat: 'defender' });
+    await defender.next('joined');
+    await defender.send({
+      type: 'command',
+      command: {
+        type: 'placeDefense',
+        side: 'defender',
+        defenseTypeId: 'observation-post',
+        nodeId: 'waterhole-east',
+      },
+    });
+    const defenderView = await defender.next('snapshot', (m) => m.snapshot.entities.length > 0);
+    expect(defenderView.snapshot.viewer).toBe('defender');
+    expect(Object.keys(defenderView.snapshot.resources)).toEqual(['defender']);
+    const attackerView = await attacker.next('snapshot', (m) => m.snapshot.tick > defenderView.snapshot.tick);
+    expect(attackerView.snapshot.entities).toEqual([]);
+    expect(Object.keys(attackerView.snapshot.resources)).toEqual(['attacker']);
+    await attacker.send({
+      type: 'command',
+      command: { type: 'sellDefense', side: 'defender', defenseId: 1 },
+    });
+    expect(await attacker.next('error')).toMatchObject({ code: 'notYourSide' });
+    attacker.close();
+    defender.close();
+  });
+
+  it('stops a match when everyone has left', async () => {
+    const server = await startServer();
+    const player = new TestClient(server.url);
+    const observer = new TestClient(server.url);
+    await player.send({ type: 'createMatch', ...lion, seat: 'both' });
+    await player.next('joined');
+    await player.send({ type: 'leaveMatch' });
+    await player.send({ type: 'command', command: { type: 'sellDefense', side: 'defender', defenseId: 1 } });
+    expect(await player.next('error')).toMatchObject({ code: 'notInMatch' });
+    await observer.send({ type: 'listMatches' });
+    expect((await observer.next('matches')).matches).toEqual([]);
+    await observer.send({ type: 'joinMatch', matchId: 'match-1', seat: 'spectator' });
+    expect(await observer.next('error')).toMatchObject({ code: 'unknownMatch' });
+    player.close();
+    observer.close();
+  });
+});
+
 describe('findFreePort', () => {
   it('skips a port that is in use', async () => {
     const busy = await startServer();

@@ -92,7 +92,7 @@ export class DemoMatches {
         setup,
         attacker: scriptedAttacker(3, 100, { mixUnits: true }),
         defender: scriptedDefender({ maxDefenses: 2, startTick: 400 }),
-        onSnapshot: (snapshot) => broadcast({ type: 'snapshot', matchId, snapshot }),
+        onFrame: (match) => broadcast({ type: 'snapshot', matchId, snapshot: match.snapshot() }),
         onEnd: () => {
           demo.restartTimer = setTimeout(() => {
             const key = `${pack.manifest.id}/${levelId}`;

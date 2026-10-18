@@ -15,6 +15,7 @@ import {
 } from '@gtd/protocol';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DemoMatches } from './demoMatches';
+import { PlayerMatches } from './playerMatches';
 import type { SaveManager } from './saveManager';
 
 export interface GameServerOptions {
@@ -55,6 +56,7 @@ const MAX_BODY_BYTES = 64 * 1024;
 export function createGameServer(options: GameServerOptions): Server {
   const visibleStages = options.stages.filter((stage) => options.showDevStages || !stage.manifest.devOnly);
   const demos = new DemoMatches(visibleStages);
+  const players = new PlayerMatches(visibleStages);
   const stageSummaries: StageSummary[] = options.stages
     .filter((stage) => options.showDevStages || !stage.manifest.devOnly)
     .map((stage) => ({
@@ -128,6 +130,7 @@ export function createGameServer(options: GameServerOptions): Server {
   });
   server.on('close', () => {
     demos.stopAll();
+    players.stopAll();
     sockets.close();
   });
 
@@ -135,7 +138,10 @@ export function createGameServer(options: GameServerOptions): Server {
     const send = (message: ServerMessage) => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(message));
     };
-    ws.on('close', () => demos.unwatch(send));
+    ws.on('close', () => {
+      demos.unwatch(send);
+      players.leave(send);
+    });
     ws.on('message', (data) => {
       const message = parseClientMessage(String(data));
       if (!message) return send({ type: 'error', code: 'badMessage', message: 'Unrecognised message.' });
@@ -158,12 +164,34 @@ export function createGameServer(options: GameServerOptions): Server {
           return send({ type: 'pong', sentAt: message.sentAt });
         case 'watchDemo':
           demos.unwatch(send);
+          players.leave(send);
           if (!demos.watch(message.stageId, message.levelId, send)) {
             send({ type: 'error', code: 'unknownLevel', message: 'This level does not exist.' });
           }
           return;
         case 'stopWatching':
           return demos.unwatch(send);
+        case 'createMatch':
+          demos.unwatch(send);
+          if (!players.create(message, send)) {
+            send({ type: 'error', code: 'unknownLevel', message: 'This level or profile does not exist.' });
+          }
+          return;
+        case 'joinMatch': {
+          demos.unwatch(send);
+          const joined = players.join(message.matchId, message.seat, send);
+          if (!joined.ok) send(joined.message);
+          return;
+        }
+        case 'leaveMatch':
+          return players.leave(send);
+        case 'listMatches':
+          return send({ type: 'matches', matches: players.list() });
+        case 'command': {
+          const done = players.command(message.command, send);
+          if (!done.ok) send(done.message);
+          return;
+        }
       }
     });
   }
