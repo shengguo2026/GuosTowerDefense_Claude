@@ -1,4 +1,11 @@
-import { Match, hashValue, type MatchEvent, type MatchResult, type MatchSetup } from '@gtd/sim';
+import {
+  Match,
+  hashValue,
+  type MatchEvent,
+  type MatchResult,
+  type MatchSetup,
+  type SideStats,
+} from '@gtd/sim';
 import { idleController, type Controller } from './controllers';
 
 export interface HeadlessMatchOptions {
@@ -12,6 +19,7 @@ export interface HeadlessMatchReport {
   result: MatchResult | null;
   ticks: number;
   events: readonly MatchEvent[];
+  stats: SideStats;
   /** Hash of the full event log; equal hashes mean identical matches. */
   hash: string;
 }
@@ -34,6 +42,7 @@ export function runHeadlessMatch(setup: MatchSetup, options: HeadlessMatchOption
     result: match.result,
     ticks: match.tick,
     events: match.events.all(),
+    stats: match.snapshot().stats,
     hash: hashValue(match.events.all()),
   };
 }

@@ -53,7 +53,8 @@
       "detectionRange": 10,
       "pressurePerSecond": 1,
       "speed": 5.5,
-      "maxCount": 2
+      "maxCount": 2,
+      "maxLevel": 1
     }
   ],
   "abilities": [

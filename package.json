@@ -23,6 +23,7 @@
     "test:e2e": "playwright test",
     "validate:content": "npm run validate -w @gtd/content-schema -- ../../content/stages",
     "simulate": "npm run simulate -w @gtd/test-kit --",
+    "balance": "npm run balance -w @gtd/test-kit --",
     "check": "npm run typecheck && npm run lint && npm run format:check && npm test && npm run validate:content"
   },
   "devDependencies": {

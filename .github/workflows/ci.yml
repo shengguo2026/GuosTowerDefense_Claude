@@ -29,6 +29,18 @@ jobs:
       - name: Headless simulation of the test stage
         run: npm run simulate -- test-stage 1
 
+  balance:
+    name: AI balance (200 matches per difficulty)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run balance -- 200 stage-01-big-five lion --check
+
   browser:
     name: Browser tests (desktop, tablet, phone)
     runs-on: ubuntu-latest

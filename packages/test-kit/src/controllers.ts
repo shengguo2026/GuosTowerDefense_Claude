@@ -1,14 +1,7 @@
-import type { Command, Formation, MatchSetup, MatchSnapshot } from '@gtd/sim';
+import type { Controller } from '@gtd/ai';
+import type { Formation } from '@gtd/sim';
 
-/**
- * Something that looks at the match from one side and issues commands for it: a scripted bot now, the real AI from
- * M3. It receives that side's view, so it never sees more than a human player would.
- */
-export interface Controller {
-  decide(snapshot: MatchSnapshot, setup: MatchSetup): Command[];
-}
-
-export const idleController: Controller = { decide: () => [] };
+export { idleController, type Controller } from '@gtd/ai';
 
 export interface ScriptedAttackerOptions {
   /** Cycle through every unit type instead of always taking the cheapest. */

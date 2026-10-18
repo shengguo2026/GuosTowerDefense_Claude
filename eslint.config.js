@@ -18,8 +18,8 @@ export default tseslint.config(
     },
   },
   {
-    // The simulation must stay deterministic and free of rendering, DOM, network and filesystem.
-    files: ['packages/sim/src/**/*.ts'],
+    // The simulation and the AI must stay deterministic and free of rendering, DOM, network and filesystem.
+    files: ['packages/sim/src/**/*.ts', 'packages/ai/src/**/*.ts'],
     rules: {
       'no-restricted-globals': [
         'error',

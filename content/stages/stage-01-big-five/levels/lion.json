@@ -6,7 +6,7 @@
   "preparationSeconds": 30,
   "objective": {
     "nodeId": "lion-waterhole",
-    "holdSeconds": 20,
+    "holdSeconds": 15,
     "radius": 4.5
   },
   "map": {
@@ -211,7 +211,7 @@
       "distance": 92
     }
   },
-  "deploymentCapacity": 48,
+  "deploymentCapacity": 60,
   "launchCooldownSeconds": 15,
   "maxActiveWaves": 2,
   "startingResources": {
