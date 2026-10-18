@@ -3,6 +3,7 @@
   "side": "attacker",
   "name": "profile.explorer.name",
   "description": "profile.explorer.description",
+  "portrait": "PORTRAIT-EXPLORER",
   "resource": {
     "id": "expedition-supplies",
     "name": "resource.expedition-supplies"

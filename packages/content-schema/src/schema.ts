@@ -13,6 +13,8 @@ export const MAX_COMMAND_SLOTS = 6;
 const id = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'ids use lowercase letters, digits and dashes');
 /** Key into the stage's texts/<language>.json files. Player-facing text never lives directly in data files. */
 const textKey = z.string().min(1);
+/** Id of a Codex picture in assets/art (e.g. `LEVEL-01-LION`); the game shows a placeholder until the file exists. */
+const artId = z.string().regex(/^[A-Z0-9]+(-[A-Z0-9]+)*$/, 'art ids use capital letters, digits and dashes');
 const sideValues = z.object({ attacker: z.number().nonnegative(), defender: z.number().nonnegative() });
 
 export const StageManifestSchema = z.object({
@@ -24,6 +26,10 @@ export const StageManifestSchema = z.object({
   /** Only shown in developer mode and tests. */
   devOnly: z.boolean().default(false),
   title: textKey,
+  /** One or two sentences for the stage select. */
+  description: textKey.optional(),
+  /** Stage info picture for the stage select and briefings. */
+  picture: artId.optional(),
   levels: z.array(id).min(1),
   profiles: z.object({ attacker: z.array(id).min(1), defender: z.array(id).min(1) }),
   /** Stage plugins for mechanics the building blocks cannot express. Loaded from the pack's plugins folder. */
@@ -91,6 +97,41 @@ export const SceneSchema = z.object({
 });
 
 export const TERRAINS = ['open', 'cover'] as const;
+
+/** Anti-stalemate timer when a level does not set its own (spec §6.2). */
+export const DEFAULT_TIMER_SECONDS = 20 * 60;
+
+/**
+ * When a tutorial step is done. Steps are data so every stage can teach its own levels; the client checks them against
+ * what the player does and what the match shows.
+ */
+export const TutorialConditionSchema = z.discriminatedUnion('type', [
+  /** The player reads the text and presses Next; the match waits meanwhile. */
+  z.object({ type: z.literal('continue') }),
+  z.object({ type: z.literal('phase'), phase: z.enum(['combat']) }),
+  /** The Defender has an asset of this type (any asset when left out). */
+  z.object({ type: z.literal('build'), defense: id.optional() }),
+  z.object({ type: z.literal('upgrade') }),
+  z.object({ type: z.literal('launch') }),
+  /** An ability (any of the side's when left out) is cooling down after use. */
+  z.object({ type: z.literal('ability'), ability: id.optional() }),
+  /** The player gave a group or an asset this order. */
+  z.object({
+    type: z.literal('order'),
+    order: z.enum(['hold', 'advance', 'reroute', 'retreat', 'formation', 'priority', 'guard', 'patrol']),
+  }),
+  z.object({ type: z.literal('select'), kind: z.enum(['group', 'defense']) }),
+  /** Defender: a group has been detected. Attacker: a defense has been seen. */
+  z.object({ type: z.literal('spotted') }),
+  z.object({ type: z.literal('objective') }),
+]);
+
+export const TutorialStepSchema = z.object({
+  text: textKey,
+  /** HUD element to point at (its `data-tutorial` name). */
+  highlight: z.string().min(1).optional(),
+  until: TutorialConditionSchema,
+});
 const terrainModifiers = z.object({ speed: z.number().positive(), detection: z.number().positive() });
 
 export const LevelSchema = z.object({
@@ -98,8 +139,19 @@ export const LevelSchema = z.object({
   title: textKey,
   /** Level that must be completed first; null means unlocked from the start. */
   unlockedBy: id.nullable(),
+  /** One or two sentences for the level select. */
+  description: textKey.optional(),
+  /** Level info picture for the level select and the briefing. */
+  picture: artId.optional(),
+  /** What Chief Warden Guo tells each side before the match. */
+  briefing: z.object({ attacker: textKey, defender: textKey }).optional(),
+  /** Guided tutorial for each side on this level (spec §15). */
+  tutorial: z
+    .object({ attacker: z.array(TutorialStepSchema).min(1), defender: z.array(TutorialStepSchema).min(1) })
+    .partial()
+    .optional(),
   /** Length of the combat phase; preparation comes on top. */
-  timerSeconds: z.number().positive(),
+  timerSeconds: z.number().positive().default(DEFAULT_TIMER_SECONDS),
   preparationSeconds: z.number().nonnegative().default(30),
   objective: z.object({
     nodeId: id,
@@ -170,6 +222,7 @@ export const EffectSchema = z.object({
 export const ActionSchema = z.object({
   id,
   name: textKey,
+  icon: artId.optional(),
   description: textKey,
   target: z.enum(TARGET_TYPES),
   effects: z.array(EffectSchema).min(1),
@@ -182,6 +235,7 @@ export const ActionSchema = z.object({
 export const UnitSchema = z.object({
   id,
   name: textKey,
+  icon: artId.optional(),
   speed: z.number().positive(),
   /** Supplies per member. */
   cost: z.number().nonnegative(),
@@ -197,6 +251,7 @@ export const UnitSchema = z.object({
 export const DefenseSchema = z.object({
   id,
   name: textKey,
+  icon: artId.optional(),
   cost: z.number().nonnegative(),
   /** Mobile assets (patrols) move along the route graph. */
   mobile: z.boolean().default(false),
@@ -232,6 +287,7 @@ export const ProfileSchema = z.object({
   side: z.enum(['attacker', 'defender']),
   name: textKey,
   description: textKey,
+  portrait: artId.optional(),
   resource: z.object({ id, name: textKey }),
   passive: z.object({ name: textKey, description: textKey, effects: z.array(EffectSchema).default([]) }),
   /** Attacker profiles list units, Defender profiles list defenses. */
@@ -251,6 +307,8 @@ export type Profile = z.infer<typeof ProfileSchema>;
 export type Action = z.infer<typeof ActionSchema>;
 export type Effect = z.infer<typeof EffectSchema>;
 export type Texts = z.infer<typeof TextsSchema>;
+export type TutorialStep = z.infer<typeof TutorialStepSchema>;
+export type TutorialCondition = z.infer<typeof TutorialConditionSchema>;
 
 /** A fully loaded and validated stage pack. */
 export interface StagePack {

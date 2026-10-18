@@ -1,6 +1,170 @@
 {
   "id": "lion",
   "title": "level.lion.title",
+  "description": "level.lion.description",
+  "picture": "LEVEL-01-LION",
+  "briefing": {
+    "attacker": "level.lion.briefing.attacker",
+    "defender": "level.lion.briefing.defender"
+  },
+  "tutorial": {
+    "attacker": [
+      {
+        "text": "tutorial.lion.attacker.welcome",
+        "highlight": "objective",
+        "until": {
+          "type": "continue"
+        }
+      },
+      {
+        "text": "tutorial.lion.attacker.routes",
+        "highlight": "minimap",
+        "until": {
+          "type": "continue"
+        }
+      },
+      {
+        "text": "tutorial.lion.attacker.prep",
+        "highlight": "timer",
+        "until": {
+          "type": "continue"
+        }
+      },
+      {
+        "text": "tutorial.lion.attacker.launch",
+        "highlight": "wave-builder",
+        "until": {
+          "type": "launch"
+        }
+      },
+      {
+        "text": "tutorial.lion.attacker.spotted",
+        "until": {
+          "type": "spotted"
+        }
+      },
+      {
+        "text": "tutorial.lion.attacker.select",
+        "highlight": "groups",
+        "until": {
+          "type": "select",
+          "kind": "group"
+        }
+      },
+      {
+        "text": "tutorial.lion.attacker.orders",
+        "highlight": "group-orders",
+        "until": {
+          "type": "order",
+          "order": "hold"
+        }
+      },
+      {
+        "text": "tutorial.lion.attacker.recon",
+        "highlight": "abilities",
+        "until": {
+          "type": "ability",
+          "ability": "reconnaissance"
+        }
+      },
+      {
+        "text": "tutorial.lion.attacker.objective",
+        "highlight": "objective",
+        "until": {
+          "type": "objective"
+        }
+      },
+      {
+        "text": "tutorial.lion.attacker.done",
+        "until": {
+          "type": "continue"
+        }
+      }
+    ],
+    "defender": [
+      {
+        "text": "tutorial.lion.defender.welcome",
+        "highlight": "objective",
+        "until": {
+          "type": "continue"
+        }
+      },
+      {
+        "text": "tutorial.lion.defender.routes",
+        "highlight": "minimap",
+        "until": {
+          "type": "continue"
+        }
+      },
+      {
+        "text": "tutorial.lion.defender.post",
+        "highlight": "build-bar",
+        "until": {
+          "type": "build",
+          "defense": "observation-post"
+        }
+      },
+      {
+        "text": "tutorial.lion.defender.checkpoint",
+        "highlight": "build-bar",
+        "until": {
+          "type": "build",
+          "defense": "temporary-checkpoint"
+        }
+      },
+      {
+        "text": "tutorial.lion.defender.patrol",
+        "highlight": "build-bar",
+        "until": {
+          "type": "build",
+          "defense": "ranger-patrol"
+        }
+      },
+      {
+        "text": "tutorial.lion.defender.combat",
+        "highlight": "timer",
+        "until": {
+          "type": "phase",
+          "phase": "combat"
+        }
+      },
+      {
+        "text": "tutorial.lion.defender.spotted",
+        "until": {
+          "type": "spotted"
+        }
+      },
+      {
+        "text": "tutorial.lion.defender.intercept",
+        "highlight": "abilities",
+        "until": {
+          "type": "ability",
+          "ability": "intercept"
+        }
+      },
+      {
+        "text": "tutorial.lion.defender.select",
+        "highlight": "assets",
+        "until": {
+          "type": "select",
+          "kind": "defense"
+        }
+      },
+      {
+        "text": "tutorial.lion.defender.upgrade",
+        "highlight": "asset-orders",
+        "until": {
+          "type": "upgrade"
+        }
+      },
+      {
+        "text": "tutorial.lion.defender.done",
+        "until": {
+          "type": "continue"
+        }
+      }
+    ]
+  },
   "unlockedBy": null,
   "timerSeconds": 720,
   "preparationSeconds": 30,

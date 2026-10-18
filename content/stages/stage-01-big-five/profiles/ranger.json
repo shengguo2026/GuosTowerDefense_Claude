@@ -3,6 +3,7 @@
   "side": "defender",
   "name": "profile.ranger.name",
   "description": "profile.ranger.description",
+  "portrait": "PORTRAIT-RANGER",
   "resource": {
     "id": "ranger-supplies",
     "name": "resource.ranger-supplies"

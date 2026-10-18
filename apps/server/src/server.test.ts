@@ -6,6 +6,7 @@ import { PROTOCOL_VERSION, type HealthResponse, type ServerMessage } from '@gtd/
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { createGameServer, listen, type RunningGameServer } from './gameServer';
+import { PlayerMatches, type SinglePlayerWin } from './playerMatches';
 import { findFreePort } from './ports';
 import { SaveManager, defaultSave } from './saveManager';
 import { USER_DATA_FOLDERS, prepareUserData } from './userData';
@@ -90,6 +91,50 @@ describe('SaveManager', () => {
     const save = await new SaveManager(dir).load();
     expect(save.unlocks.stages.s?.completedLevels).toEqual(['a', 'b']);
     expect(save.settings.graphics).toBe('medium');
+  });
+
+  it('merges nested settings and keeps single-player wins with the unlocks', async () => {
+    const saves = new SaveManager(dir);
+    await saves.load();
+    await saves.updateSettings({
+      accessibility: { uiScale: 1.2 },
+      onboarding: { hintsSeen: ['firstBuild'] },
+    });
+    await saves.updateSettings({
+      accessibility: { highContrastRoutes: true },
+      keyBindings: { 'match.pause': 'KeyO' },
+    });
+    await saves.recordWin('stage-01-big-five', 'lion', 'defender', 'medium');
+    await saves.recordWin('stage-01-big-five', 'lion', 'defender', 'medium');
+
+    const save = await new SaveManager(dir).load();
+    expect(save.settings.accessibility).toEqual({
+      uiScale: 1.2,
+      textScale: 1,
+      highContrastRoutes: true,
+      reducedEffects: false,
+    });
+    expect(save.settings.onboarding.hintsSeen).toEqual(['firstBuild']);
+    expect(save.settings.keyBindings).toEqual({ 'match.pause': 'KeyO' });
+    expect(save.unlocks.stages['stage-01-big-five']?.completedLevels).toEqual(['lion']);
+    expect(save.records['stage-01-big-five']?.lion).toEqual({ attacker: [], defender: ['medium'] });
+  });
+
+  it('reads a save from before wins and onboarding were kept', async () => {
+    const old = {
+      version: 1,
+      settings: { language: 'de' },
+      unlocks: { stages: {} },
+      updatedAt: '2026-10-14T00:00:00Z',
+    };
+    await mkdir(join(dir, 'saves'), { recursive: true });
+    await writeFile(join(dir, 'saves', 'save.json'), JSON.stringify(old));
+    const saves = new SaveManager(dir);
+    const save = await saves.load();
+    expect(saves.lastLoadSource).toBe('save');
+    expect(save.settings.language).toBe('de');
+    expect(save.settings.onboarding.tutorialsDone).toEqual([]);
+    expect(save.records).toEqual({});
   });
 });
 
@@ -220,6 +265,24 @@ describe('levels', () => {
     expect(response.headers.get('content-type')).toContain('image/jpeg');
     expect((await fetch(`${server.url}/art/missing.jpg`)).status).toBe(404);
     expect((await fetch(`${server.url}/art/..%2f..%2fsecret.txt`)).status).toBe(403);
+  });
+
+  it('lists the art that exists and reports progress', async () => {
+    const artDir = join(dir, 'art2');
+    await mkdir(artDir, { recursive: true });
+    await writeFile(join(artDir, 'LEVEL-01-LION.png'), 'png');
+    await writeFile(join(artDir, 'LEVEL-01-LION.webp'), 'webp');
+    await writeFile(join(artDir, 'MENU-BG.jpg'), 'jpeg');
+    await writeFile(join(artDir, 'notes.txt'), 'text');
+    const server = await startServer(join(dir, 'ud4'), undefined, artDir);
+    expect(await (await fetch(`${server.url}/api/art`)).json()).toEqual({
+      'LEVEL-01-LION': 'LEVEL-01-LION.webp',
+      'MENU-BG': 'MENU-BG.jpg',
+    });
+    expect(await (await fetch(`${server.url}/api/progress`)).json()).toEqual({
+      completedLevels: {},
+      wins: {},
+    });
   });
 
   it('streams a demo match of a level to a watcher', async () => {
@@ -405,6 +468,37 @@ describe('matches between people', () => {
     player.close();
   });
 
+  it('pauses and speeds up a match against the computer, but not a match between people', async () => {
+    const server = await startServer();
+    const player = new TestClient(server.url);
+    await player.send({ type: 'createMatch', ...lion, seat: 'defender', opponent: 'easy' });
+    expect(await player.next('clock', () => true, true)).toMatchObject({
+      paused: false,
+      speed: 1,
+      canControl: true,
+    });
+    await player.send({ type: 'setPaused', paused: true });
+    await player.next('clock', (m) => m.paused);
+    await new Promise((done) => setTimeout(done, 150));
+    const frozen = player.received.filter((m) => m.type === 'snapshot').length;
+    await new Promise((done) => setTimeout(done, 300));
+    expect(player.received.filter((m) => m.type === 'snapshot').length).toBe(frozen);
+    await player.send({ type: 'setSpeed', speed: 2 });
+    await player.next('clock', (m) => m.speed === 2 && m.paused);
+    await player.send({ type: 'setPaused', paused: false });
+    const resumed = await player.next('snapshot');
+    const later = await player.next('snapshot', (m) => m.snapshot.tick >= resumed.snapshot.tick + 20);
+    expect(later.snapshot.tick).toBeGreaterThan(resumed.snapshot.tick);
+    player.close();
+
+    const people = new TestClient(server.url);
+    await people.send({ type: 'createMatch', ...lion, seat: 'both' });
+    expect(await people.next('clock', () => true, true)).toMatchObject({ canControl: false });
+    await people.send({ type: 'setPaused', paused: true });
+    expect(await people.next('error')).toMatchObject({ code: 'notSinglePlayer' });
+    people.close();
+  });
+
   it('stops a match when everyone has left', async () => {
     const server = await startServer();
     const player = new TestClient(server.url);
@@ -420,6 +514,66 @@ describe('matches between people', () => {
     expect(await observer.next('error')).toMatchObject({ code: 'unknownMatch' });
     player.close();
     observer.close();
+  });
+});
+
+describe('single-player progress', () => {
+  /** Plays a short test-stage match against the easy computer with a manual clock; one big wave wins it. */
+  async function play(options: { tutorial?: boolean; wave: number }): Promise<SinglePlayerWin[]> {
+    const { stages } = await loadAllStages(resolve(import.meta.dirname, '../../../content/stages'));
+    const wins: SinglePlayerWin[] = [];
+    let now = 0;
+    const players = new PlayerMatches(stages, { onWin: (win) => wins.push(win), now: () => now });
+    const send = () => undefined;
+    players.create(
+      {
+        stageId: 'test-stage',
+        levelId: 'meadow',
+        seat: 'attacker',
+        opponent: 'easy',
+        tutorial: options.tutorial,
+      },
+      send,
+    );
+    const host = players.hostOf(send);
+    if (!host) throw new Error('no match');
+    host.stop();
+    let launched = false;
+    while (!host.match.isOver) {
+      now += 500;
+      host.advance();
+      if (!launched && host.match.phase === 'combat') {
+        launched = true;
+        players.command(
+          {
+            type: 'launchWave',
+            side: 'attacker',
+            groups: [
+              {
+                unitTypeId: 'runner',
+                count: options.wave,
+                formation: 'column',
+                routeId: 'hill-path',
+                delaySeconds: 0,
+              },
+            ],
+          },
+          send,
+        );
+      }
+    }
+    return wins;
+  }
+
+  it('records a win against the computer', async () => {
+    expect(await play({ wave: 12 })).toEqual([
+      { stageId: 'test-stage', levelId: 'meadow', side: 'attacker', difficulty: 'easy' },
+    ]);
+  });
+
+  it('records nothing for a loss or a tutorial', async () => {
+    expect(await play({ wave: 4 })).toEqual([]);
+    expect(await play({ wave: 12, tutorial: true })).toEqual([]);
   });
 });
 

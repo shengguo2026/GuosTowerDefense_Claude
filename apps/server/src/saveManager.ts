@@ -1,6 +1,8 @@
 import { mkdir, open, readFile, rename, copyFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { SettingsSchema, type SettingsPatch } from '@gtd/protocol';
+import { DIFFICULTIES, type Difficulty } from '@gtd/ai';
+import { SettingsSchema, type Progress, type SettingsPatch } from '@gtd/protocol';
+import type { Side } from '@gtd/sim';
 import { z } from 'zod';
 
 export const SAVE_VERSION = 1;
@@ -10,6 +12,19 @@ export const SaveSchema = z.object({
   settings: SettingsSchema,
   /** Completed levels per stage; level and difficulty unlocks are derived from this. */
   unlocks: z.object({ stages: z.record(z.string(), z.object({ completedLevels: z.array(z.string()) })) }),
+  /** Single-player wins: per stage, per level, the difficulties each side has beaten. */
+  records: z
+    .record(
+      z.string(),
+      z.record(
+        z.string(),
+        z.object({
+          attacker: z.array(z.enum(DIFFICULTIES)).default([]),
+          defender: z.array(z.enum(DIFFICULTIES)).default([]),
+        }),
+      ),
+    )
+    .default({}),
   updatedAt: z.string(),
 });
 export type SaveData = z.infer<typeof SaveSchema>;
@@ -69,6 +84,8 @@ export class SaveManager {
         ...save.settings,
         ...patch,
         audio: { ...save.settings.audio, ...patch.audio },
+        accessibility: { ...save.settings.accessibility, ...patch.accessibility },
+        onboarding: { ...save.settings.onboarding, ...patch.onboarding },
       });
     });
   }
@@ -78,6 +95,26 @@ export class SaveManager {
       const stage = (save.unlocks.stages[stageId] ??= { completedLevels: [] });
       if (!stage.completedLevels.includes(levelId)) stage.completedLevels.push(levelId);
     });
+  }
+
+  /** A single-player win: completes the level (unlocking the next) and remembers the side and difficulty. */
+  recordWin(stageId: string, levelId: string, side: Side, difficulty: Difficulty): Promise<SaveData> {
+    return this.update((save) => {
+      const stage = (save.unlocks.stages[stageId] ??= { completedLevels: [] });
+      if (!stage.completedLevels.includes(levelId)) stage.completedLevels.push(levelId);
+      const level = ((save.records[stageId] ??= {})[levelId] ??= { attacker: [], defender: [] });
+      if (!level[side].includes(difficulty)) level[side].push(difficulty);
+    });
+  }
+
+  get progress(): Progress {
+    const save = this.data;
+    return {
+      completedLevels: Object.fromEntries(
+        Object.entries(save.unlocks.stages).map(([id, stage]) => [id, stage.completedLevels]),
+      ),
+      wins: save.records,
+    };
   }
 
   /** Applies a change and writes it. Writes run one after another, never interleaved. */

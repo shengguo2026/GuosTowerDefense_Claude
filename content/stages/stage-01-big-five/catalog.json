@@ -3,6 +3,7 @@
     {
       "id": "scout",
       "name": "unit.scout",
+      "icon": "ICON-UNIT-SCOUT",
       "speed": 4.5,
       "cost": 12,
       "capacity": 1,
@@ -13,6 +14,7 @@
     {
       "id": "expedition-team",
       "name": "unit.expedition-team",
+      "icon": "ICON-UNIT-EXPEDITION-TEAM",
       "speed": 3,
       "cost": 20,
       "capacity": 2,
@@ -25,6 +27,7 @@
     {
       "id": "observation-post",
       "name": "defense.observation-post",
+      "icon": "ICON-DEF-OBSERVATION-POST",
       "cost": 60,
       "placement": "buildZone",
       "range": 10,
@@ -34,6 +37,7 @@
     {
       "id": "temporary-checkpoint",
       "name": "defense.temporary-checkpoint",
+      "icon": "ICON-DEF-CHECKPOINT",
       "cost": 40,
       "placement": "any",
       "range": 5,
@@ -46,6 +50,7 @@
     {
       "id": "ranger-patrol",
       "name": "defense.ranger-patrol",
+      "icon": "ICON-UNIT-RANGER-PATROL",
       "cost": 45,
       "mobile": true,
       "placement": "routeNode",
@@ -61,6 +66,7 @@
     {
       "id": "reconnaissance",
       "name": "ability.reconnaissance.name",
+      "icon": "ICON-ABILITY-RECONNAISSANCE",
       "description": "ability.reconnaissance.description",
       "target": "area",
       "effects": [
@@ -76,6 +82,7 @@
     {
       "id": "rapid-reroute",
       "name": "ability.rapid-reroute.name",
+      "icon": "ICON-ABILITY-RAPID-REROUTE",
       "description": "ability.rapid-reroute.description",
       "target": "route",
       "effects": [
@@ -89,6 +96,7 @@
     {
       "id": "rapid-response",
       "name": "ability.rapid-response.name",
+      "icon": "ICON-ABILITY-RAPID-RESPONSE",
       "description": "ability.rapid-response.description",
       "target": "area",
       "effects": [
@@ -105,6 +113,7 @@
     {
       "id": "intercept",
       "name": "ability.intercept.name",
+      "icon": "ICON-ABILITY-INTERCEPT",
       "description": "ability.intercept.description",
       "target": "unit",
       "effects": [

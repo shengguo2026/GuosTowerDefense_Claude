@@ -38,7 +38,7 @@ export function createMatchSetup(pack: StagePack, choice: MatchChoice): MatchSet
       profileId: attacker.id,
       units: pack.catalog.units
         .filter((unit) => attacker.units.includes(unit.id))
-        .map(({ name: _name, ...unit }) => unit),
+        .map(({ name: _name, icon: _icon, ...unit }) => unit),
       abilities: abilitiesOf(pack, attacker.abilities),
       passive: attacker.passive.effects.map(effectOf),
     },
@@ -46,7 +46,7 @@ export function createMatchSetup(pack: StagePack, choice: MatchChoice): MatchSet
       profileId: defender.id,
       defenses: pack.catalog.defenses
         .filter((defense) => defender.defenses.includes(defense.id))
-        .map(({ name: _name, detectionRange, maxCount, ...defense }) => ({
+        .map(({ name: _name, icon: _icon, detectionRange, maxCount, ...defense }) => ({
           ...defense,
           detectionRange: detectionRange ?? defense.range,
           ...(maxCount === undefined ? {} : { maxCount }),

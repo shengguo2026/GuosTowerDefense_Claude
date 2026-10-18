@@ -5,6 +5,7 @@ import {
   withTick,
   type ComputerPlayer,
   type MatchCommand,
+  type MatchSpeed,
   type MatchSummary,
   type Seat,
   type ServerMessage,
@@ -22,8 +23,18 @@ interface PlayerMatch {
   started: ServerMessage;
   players: Map<Send, Seat>;
   computer?: ComputerPlayer;
+  /** A guided tutorial: never counts for progress. */
+  tutorial: boolean;
   /** Where the match's event log was last read, to tell players about their rejected commands. */
   eventIndex: number;
+}
+
+/** A person beat the computer: the stage, level, the person's side and the difficulty. */
+export interface SinglePlayerWin {
+  stageId: string;
+  levelId: string;
+  side: Side;
+  difficulty: Difficulty;
 }
 
 type Result<T> = { ok: true; value: T } | { ok: false; message: ServerMessage };
@@ -37,7 +48,14 @@ export class PlayerMatches {
   private readonly matches = new Map<string, PlayerMatch>();
   private counter = 0;
 
-  constructor(private readonly stages: StagePack[]) {}
+  constructor(
+    private readonly stages: StagePack[],
+    private readonly options: {
+      onWin?(win: SinglePlayerWin): void;
+      /** Injectable clock for tests. */
+      now?: () => number;
+    } = {},
+  ) {}
 
   create(
     request: {
@@ -48,6 +66,7 @@ export class PlayerMatches {
       seat: Seat;
       opponent?: Difficulty;
       showAiReasoning?: boolean;
+      tutorial?: boolean;
     },
     send: Send,
   ): boolean {
@@ -88,6 +107,7 @@ export class PlayerMatches {
       levelId: request.levelId,
       players: new Map(),
       ...(computer ? { computer } : {}),
+      tutorial: request.tutorial === true && computer !== undefined,
       eventIndex: 0,
       started: {
         type: 'matchStarted',
@@ -98,12 +118,35 @@ export class PlayerMatches {
         defenderProfileId,
         ...(computer ? { computer } : {}),
       },
-      host: new MatchHost({ setup, ...controllers, onFrame: (m) => this.frame(match, m) }),
+      host: new MatchHost({
+        setup,
+        ...controllers,
+        onFrame: (m) => this.frame(match, m),
+        onEnd: () => this.ended(match),
+        ...(this.options.now ? { now: this.options.now } : {}),
+      }),
     };
     this.matches.set(matchId, match);
     this.seat(match, request.seat, send);
     match.host.start();
     return true;
+  }
+
+  /** Pause or resume a single-player match (a person against the computer). */
+  setPaused(paused: boolean, send: Send): Result<null> {
+    const match = this.singlePlayerMatchOf(send);
+    if (!match.ok) return match;
+    match.value.host.paused = paused;
+    this.broadcastClock(match.value);
+    return { ok: true, value: null };
+  }
+
+  setSpeed(speed: MatchSpeed, send: Send): Result<null> {
+    const match = this.singlePlayerMatchOf(send);
+    if (!match.ok) return match;
+    match.value.host.speed = speed;
+    this.broadcastClock(match.value);
+    return { ok: true, value: null };
   }
 
   join(matchId: string, seat: Seat, send: Send): Result<null> {
@@ -114,6 +157,7 @@ export class PlayerMatches {
     this.leave(send);
     this.seat(match, seat, send);
     send({ type: 'snapshot', matchId, snapshot: match.host.match.snapshot(viewOf(seat)) });
+    this.broadcastClock(match);
     return { ok: true, value: null };
   }
 
@@ -167,6 +211,43 @@ export class PlayerMatches {
     match.players.set(send, seat);
     send(match.started);
     send({ type: 'joined', matchId: match.matchId, seat });
+    send(this.clockOf(match));
+  }
+
+  /** Single player: the computer plays one side and the person holds the other (pause and speed are allowed). */
+  private singlePlayerMatchOf(send: Send): Result<PlayerMatch> {
+    const match = this.matchOf(send);
+    if (!match) return { ok: false, message: error('notInMatch', 'Join a match first.') };
+    const seat = match.players.get(send) as Seat;
+    if (!match.computer || seat === 'spectator')
+      return { ok: false, message: error('notSinglePlayer', 'Only a match against the computer can pause.') };
+    return { ok: true, value: match };
+  }
+
+  private clockOf(match: PlayerMatch): ServerMessage {
+    return {
+      type: 'clock',
+      matchId: match.matchId,
+      paused: match.host.paused,
+      speed: match.host.speed,
+      canControl: match.computer !== undefined,
+    };
+  }
+
+  private broadcastClock(match: PlayerMatch): void {
+    const message = this.clockOf(match);
+    for (const player of match.players.keys()) player(message);
+  }
+
+  private ended(match: PlayerMatch): void {
+    const result = match.host.match.result;
+    if (!result || !match.computer || match.tutorial || result.winner === match.computer.side) return;
+    this.options.onWin?.({
+      stageId: match.stageId,
+      levelId: match.levelId,
+      side: result.winner,
+      difficulty: match.computer.difficulty,
+    });
   }
 
   private matchOf(send: Send): PlayerMatch | undefined {
@@ -201,7 +282,7 @@ function viewOf(seat: Seat): Side | null {
 }
 
 function error(
-  code: 'unknownMatch' | 'notYourSide' | 'notInMatch' | 'seatTaken',
+  code: 'unknownMatch' | 'notYourSide' | 'notInMatch' | 'seatTaken' | 'notSinglePlayer',
   message: string,
 ): ServerMessage {
   return { type: 'error', code, message };

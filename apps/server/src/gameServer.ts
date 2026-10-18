@@ -1,5 +1,5 @@
 import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { extname, join, normalize, resolve, sep } from 'node:path';
@@ -56,7 +56,13 @@ const MAX_BODY_BYTES = 64 * 1024;
 export function createGameServer(options: GameServerOptions): Server {
   const visibleStages = options.stages.filter((stage) => options.showDevStages || !stage.manifest.devOnly);
   const demos = new DemoMatches(visibleStages);
-  const players = new PlayerMatches(visibleStages);
+  const players = new PlayerMatches(visibleStages, {
+    onWin: (win) => {
+      options.saves
+        .recordWin(win.stageId, win.levelId, win.side, win.difficulty)
+        .catch((error: unknown) => console.error('Could not save the win:', error));
+    },
+  });
   const stageSummaries: StageSummary[] = options.stages
     .filter((stage) => options.showDevStages || !stage.manifest.devOnly)
     .map((stage) => ({
@@ -105,6 +111,8 @@ export function createGameServer(options: GameServerOptions): Server {
       const pack = visibleStages.find((stage) => stage.manifest.id === stageMatch[1]);
       return pack ? sendJson(res, 200, pack) : sendJson(res, 404, { error: 'unknownStage' });
     }
+    if (route === 'GET /api/progress') return sendJson(res, 200, options.saves.progress);
+    if (route === 'GET /api/art') return sendJson(res, 200, await listArt(options.artDir));
     if (url.pathname.startsWith('/api/')) return sendJson(res, 404, { error: 'notFound' });
 
     if (
@@ -192,6 +200,16 @@ export function createGameServer(options: GameServerOptions): Server {
           if (!done.ok) send(done.message);
           return;
         }
+        case 'setPaused': {
+          const done = players.setPaused(message.paused, send);
+          if (!done.ok) send(done.message);
+          return;
+        }
+        case 'setSpeed': {
+          const done = players.setSpeed(message.speed, send);
+          if (!done.ok) send(done.message);
+          return;
+        }
       }
     });
   }
@@ -217,6 +235,25 @@ export function listen(server: Server, port: number, host: string): Promise<Runn
       });
     });
   });
+}
+
+const ART_EXTENSIONS = ['.webp', '.png', '.jpg'];
+
+/**
+ * The Codex pictures that exist, by id and file name (e.g. `LEVEL-01-LION` → `LEVEL-01-LION.webp`), so the client can
+ * show a placeholder for the rest without asking for missing files.
+ */
+async function listArt(artDir: string | undefined): Promise<Record<string, string>> {
+  if (!artDir) return {};
+  const files = await readdir(artDir).catch(() => [] as string[]);
+  const art: Record<string, string> = {};
+  for (const extension of ART_EXTENSIONS) {
+    for (const file of files) {
+      const id = file.slice(0, -extension.length);
+      if (file.endsWith(extension) && /^[A-Z0-9]+(-[A-Z0-9]+)*$/.test(id) && !(id in art)) art[id] = file;
+    }
+  }
+  return art;
 }
 
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
