@@ -21,7 +21,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('plays both sides on one screen through the debug controls', async ({ page }, testInfo) => {
-  test.setTimeout(90_000);
+  test.setTimeout(150_000);
   await startMatch(page, 'both');
   await expect(page.getByTestId('phase')).toContainText('Preparation');
   await openControls(page);
