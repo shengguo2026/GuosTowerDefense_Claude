@@ -65,27 +65,26 @@ test('renders the Lion level with routes, labels and a live demo match within bu
 
 test('camera pans with a drag and zooms with the wheel', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'phone', 'mouse controls are covered on desktop and tablet');
+  // Software rendering on CI can take most of a second per frame, and input waits for frames.
+  test.setTimeout(120_000);
   await page.request.put('/api/settings', { data: { language: 'en', graphics: 'low' } });
   await page.goto('/#lion');
   const canvas = page.getByTestId('level-canvas');
   await expect(canvas).toHaveAttribute('data-rendered', 'true', { timeout: 30_000 });
-  const label = page.locator('.world-label.landmark', { hasText: 'Rocky Ridge' });
-  const before = await label.boundingBox();
+  const ridge = page.locator('.world-label.landmark', { hasText: 'Rocky Ridge' });
+  const junction = page.locator('.world-label.landmark', { hasText: 'Acacia Junction' });
+  const x = async () => (await ridge.boundingBox())!.x;
+  const spread = async () => Math.abs((await junction.boundingBox())!.y - (await ridge.boundingBox())!.y);
+  const before = await x();
   const box = (await canvas.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width / 2 + 200, box.y + box.height / 2 + 60, { steps: 8 });
+  await page.mouse.move(box.x + box.width / 2 + 200, box.y + box.height / 2 + 60, { steps: 4 });
   await page.mouse.up();
-  await page.waitForTimeout(800);
-  const after = await label.boundingBox();
-  expect(Math.abs(after!.x - before!.x)).toBeGreaterThan(60);
+  await expect.poll(async () => Math.abs((await x()) - before), { timeout: 20_000 }).toBeGreaterThan(60);
 
+  // Zooming in pushes the two landmarks further apart on screen.
+  const far = await spread();
   await page.mouse.wheel(0, -600);
-  await page.waitForTimeout(800);
-  const zoomed = await page
-    .locator('.world-label')
-    .evaluateAll(
-      (elements) => elements.filter((e) => (e as HTMLElement).style.visibility !== 'hidden').length,
-    );
-  expect(zoomed).toBeLessThan(7);
+  await expect.poll(spread, { timeout: 20_000 }).toBeGreaterThan(far * 1.1);
 });
