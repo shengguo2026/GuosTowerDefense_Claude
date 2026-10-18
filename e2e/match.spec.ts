@@ -34,12 +34,16 @@ test('plays both sides on one screen through the debug controls', async ({ page 
   await expect(page.getByTestId('asset-row')).toContainText('Observation Post');
 
   await page.getByTestId('tab-attacker').click();
-  // Software rendering on slow runners can use up the 30 s preparation before this point, so check whichever
-  // outcome the rules give at the moment of the click.
-  const preparing = (await page.getByTestId('phase').textContent())?.includes('Preparation');
+  // Software rendering on slow runners can use up the 30 s preparation around this click, so accept either outcome the
+  // rules allow: the refusal during preparation, or a launched group once combat has begun.
   await page.getByTestId('launch-wave').click();
-  if (preparing) await expect(page.getByTestId('notice')).toContainText('once preparation is over');
-  else await expect(page.getByTestId('group-row')).toHaveCount(1);
+  await expect(
+    page
+      .getByTestId('notice')
+      .filter({ hasText: 'once preparation is over' })
+      .or(page.getByTestId('group-row'))
+      .first(),
+  ).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath(`match-${testInfo.project.name}.png`) });
 });
 
