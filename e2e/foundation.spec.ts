@@ -75,3 +75,18 @@ test('renders the 3D scene and takes a layout screenshot', async ({ page }, test
     expect(box!.y + box!.height).toBeLessThanOrEqual(viewport!.height + 1);
   }
 });
+
+test('works on a plain-http Wi-Fi address, where secure-only browser features are missing', async ({
+  page,
+}) => {
+  // Phones open the game as http://<pc address>:<port>, which browsers treat as insecure.
+  await page.addInitScript(() => {
+    Object.defineProperty(crypto, 'randomUUID', { value: undefined });
+  });
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.request.put('/api/settings', { data: { language: 'en' } });
+  await page.goto('/');
+  await expect(page.getByTestId('connection')).toHaveText('Connected');
+  expect(errors).toEqual([]);
+});

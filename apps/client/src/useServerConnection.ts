@@ -24,6 +24,17 @@ export interface ServerConnection {
 
 const RETRY_DELAYS_MS = [500, 1000, 2000, 4000];
 
+/**
+ * `crypto.randomUUID` only exists on secure pages (https or localhost); phones and tablets open the game over plain
+ * http on the PC's Wi-Fi address, so fall back to `getRandomValues`, which works everywhere.
+ */
+function newClientId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join(
+    '',
+  );
+}
+
 /** Keeps a WebSocket to the game server open, reconnecting with a growing delay after a drop. */
 export function useServerConnection(): ServerConnection {
   const [state, setState] = useState({
@@ -39,7 +50,7 @@ export function useServerConnection(): ServerConnection {
     let retryTimer: number | undefined;
     let attempts = 0;
     let stopped = false;
-    const clientId = crypto.randomUUID();
+    const clientId = newClientId();
 
     const connect = () => {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
