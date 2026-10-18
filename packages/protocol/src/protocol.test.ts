@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SettingsSchema, parseClientMessage } from './index';
+import { SettingsPatchSchema, SettingsSchema, parseClientMessage } from './index';
 
 describe('client messages', () => {
   it('accepts a valid hello and rejects junk', () => {
@@ -21,6 +21,16 @@ describe('settings', () => {
       language: null,
       graphics: 'auto',
       audio: { master: 0.8, music: 0.6, effects: 0.8 },
+      keyBindings: {},
+      accessibility: { uiScale: 1, textScale: 1, highContrastRoutes: false, reducedEffects: false },
+      onboarding: { hintsSeen: [], tutorialsDone: [], tutorialOffered: false },
+      playerName: '',
     });
+  });
+
+  it('refuses key codes and scales outside the allowed range', () => {
+    expect(SettingsPatchSchema.safeParse({ keyBindings: { 'match.pause': 'Key P' } }).success).toBe(false);
+    expect(SettingsPatchSchema.safeParse({ accessibility: { uiScale: 3 } }).success).toBe(false);
+    expect(SettingsPatchSchema.safeParse({ keyBindings: { 'match.pause': 'KeyO' } }).success).toBe(true);
   });
 });

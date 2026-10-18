@@ -10,7 +10,8 @@ import type { Point2 } from './paths';
 import { sampleAlong, pathLength } from './paths';
 import type { PresetSettings } from './presets';
 import { buildSavanna } from './savanna/buildSavanna';
-import { SnapshotBuffer } from './snapshotBuffer';
+import { SelectionView, type MapOverlay } from './selectionView';
+import { SnapshotBuffer, type InterpolatedEntity } from './snapshotBuffer';
 
 const SKY_TOP = new THREE.Color(0x6aa7d8);
 const SKY_HORIZON = new THREE.Color(0xf7d9a8);
@@ -45,7 +46,26 @@ export interface LevelViewOptions {
   /** Translates the stage's own text keys (landmark and route names). */
   stageText(key: string): string;
   reducedMotion: boolean;
+  highContrastRoutes?: boolean;
 }
+
+/** What is under a point on the screen: the nearest entity, map node and route within reach, and the ground. */
+export interface MapPick {
+  ground: Point2 | null;
+  entityId: number | null;
+  nodeId: string | null;
+  routeId: string | null;
+}
+
+export interface MapPointerHandler {
+  tap(pick: MapPick, button: number): void;
+  hover?(pick: MapPick): void;
+}
+
+/** How close (in screen pixels) a click must be to count as on an entity, a node or a route. */
+const PICK_ENTITY_PX = 34;
+const PICK_NODE_PX = 30;
+const PICK_ROUTE_PX = 22;
 
 declare global {
   interface Window {
@@ -77,6 +97,12 @@ export class LevelView {
   private readonly world: ReturnType<typeof buildSavanna>;
   private readonly markers: ReturnType<typeof createMarkers>;
   private readonly entities: EntityView;
+  private readonly selection: SelectionView;
+  private positions = new Map<number, InterpolatedEntity>();
+  private readonly routeSamples: { routeId: string; point: THREE.Vector3 }[] = [];
+  private readonly nodePoints: { id: string; point: THREE.Vector3 }[] = [];
+  private readonly raycaster = new THREE.Raycaster();
+  private readonly ground: THREE.Object3D;
   private readonly labels: {
     element: HTMLElement;
     position: THREE.Vector3;
@@ -170,8 +196,26 @@ export class LevelView {
       { x: objectiveNode?.x ?? 0, z: objectiveNode?.z ?? 0, radius: 4.5 },
       buildZones,
       this.world.heightAt,
+      options.highContrastRoutes,
     );
     this.scene.add(this.markers.root);
+    this.selection = new SelectionView(this.world.heightAt);
+    this.scene.add(this.selection.root);
+    for (const route of routes) {
+      const length = pathLength(route.path);
+      for (let at = 0; at <= length; at += 2) {
+        const p = sampleAlong(route.path, at);
+        this.routeSamples.push({
+          routeId: route.id,
+          point: new THREE.Vector3(p.x, this.world.heightAt(p.x, p.z), p.z),
+        });
+      }
+    }
+    for (const node of level.map.nodes)
+      this.nodePoints.push({
+        id: node.id,
+        point: new THREE.Vector3(node.x, this.world.heightAt(node.x, node.z), node.z),
+      });
 
     const blob = createBlobTexture();
     this.owned.push(blob);
@@ -181,6 +225,7 @@ export class LevelView {
 
     this.startCamera = scene.camera ?? { x: 0, z: 0, yaw: -0.6, pitch: 0.7, distance: 90 };
     const ground = this.world.root.getObjectByName('ground') ?? this.world.root;
+    this.ground = ground;
     this.rig = new CameraRig(
       this.camera,
       canvas,
@@ -223,12 +268,100 @@ export class LevelView {
     this.rig.set(this.startCamera);
   }
 
+  /** Moves the camera smoothly to look at a point (minimap clicks, jump to a group). */
+  focus(x: number, z: number): void {
+    this.rig.focus(x, z);
+  }
+
+  get cameraTarget(): Point2 & { yaw: number } {
+    const state = this.rig.state;
+    return { x: state.x, z: state.z, yaw: state.yaw };
+  }
+
+  /** Clicks and pointer moves on the map, already resolved to what is under them. */
+  onPointer(handler: MapPointerHandler | null): void {
+    this.rig.listener = handler
+      ? {
+          tap: (x, y, button) => handler.tap(this.pick(x, y), button),
+          move: (x, y) => {
+            const pick = this.pick(x, y);
+            this.selection.hover(pick.nodeId, pick.ground);
+            handler.hover?.(pick);
+          },
+        }
+      : {};
+  }
+
+  setOverlay(overlay: MapOverlay): void {
+    this.selection.set(overlay);
+    this.rig.edgePan = !overlay.areaRadius && !overlay.buildSites?.length;
+  }
+
+  highlightRoute(routeId: string | null): void {
+    const index = this.options.level.routes.findIndex((route) => route.id === routeId);
+    this.markers.highlight(index >= 0 ? index : null);
+  }
+
+  /** Where a map point shows on the page (browser tests click the map through this), or null when off screen. */
+  screenPoint(x: number, z: number): { x: number; y: number } | null {
+    const rect = this.options.canvas.getBoundingClientRect();
+    const p = this.projected.set(x, this.world.heightAt(x, z), z).project(this.camera);
+    if (p.z > 1 || Math.abs(p.x) > 1 || Math.abs(p.y) > 1) return null;
+    return { x: rect.left + ((p.x + 1) / 2) * rect.width, y: rect.top + ((1 - p.y) / 2) * rect.height };
+  }
+
+  /** Finds what is under a screen point. Entities win over nodes, nodes over routes. */
+  pick(clientX: number, clientY: number): MapPick {
+    const rect = this.options.canvas.getBoundingClientRect();
+    const sx = clientX - rect.left;
+    const sy = clientY - rect.top;
+    const toScreen = (point: THREE.Vector3) => {
+      const p = this.projected.copy(point).project(this.camera);
+      if (p.z > 1) return Infinity;
+      return Math.hypot(((p.x + 1) / 2) * rect.width - sx, ((1 - p.y) / 2) * rect.height - sy);
+    };
+    const nearest = <T>(items: T[], at: (item: T) => THREE.Vector3, limit: number): T | null => {
+      let best: T | null = null;
+      let bestDistance = limit;
+      for (const item of items) {
+        const distance = toScreen(at(item));
+        if (distance < bestDistance) {
+          best = item;
+          bestDistance = distance;
+        }
+      }
+      return best;
+    };
+    const entityPoint = new THREE.Vector3();
+    // Sampled now rather than taken from the last frame, so a slow renderer never hides what just appeared.
+    const entities = [...this.buffer.sample(performance.now()).values()];
+    const entity = nearest(
+      entities,
+      (e) => entityPoint.set(e.x, this.world.heightAt(e.x, e.z) + 1, e.z),
+      PICK_ENTITY_PX,
+    );
+    const node = nearest(this.nodePoints, (n) => n.point, PICK_NODE_PX);
+    const route = nearest(this.routeSamples, (r) => r.point, PICK_ROUTE_PX);
+    this.raycaster.setFromCamera(
+      new THREE.Vector2((sx / rect.width) * 2 - 1, -(sy / rect.height) * 2 + 1),
+      this.camera,
+    );
+    const hit = this.raycaster.intersectObject(this.ground, false)[0];
+    return {
+      ground: hit ? { x: hit.point.x, z: hit.point.z } : null,
+      entityId: entity?.id ?? null,
+      nodeId: node?.id ?? null,
+      routeId: route?.routeId ?? null,
+    };
+  }
+
   dispose(): void {
     this.renderer.setAnimationLoop(null);
     this.observer.disconnect();
     this.rig.dispose();
     this.labels.forEach((label) => label.element.remove());
     this.entities.dispose();
+    this.selection.dispose();
     this.markers.dispose();
     this.world.dispose();
     this.owned.forEach((thing) => thing.dispose());
@@ -267,7 +400,11 @@ export class LevelView {
     this.world.update(elapsed);
     this.markers.update(elapsed);
     const now = performance.now();
-    this.entities.update(this.buffer.latest, this.buffer.sample(now), elapsed);
+    this.positions = this.buffer.sample(now);
+    this.entities.update(this.buffer.latest, this.positions, elapsed);
+    const selectedId = this.selection.selectedId;
+    const selected = selectedId === null ? undefined : this.positions.get(selectedId);
+    this.selection.update(time / 1000, selected ?? null);
 
     this.renderer.render(this.scene, this.camera);
     this.updateLabels();

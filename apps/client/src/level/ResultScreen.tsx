@@ -1,6 +1,7 @@
 import type { Translate } from '@gtd/i18n';
 import type { Seat } from '@gtd/protocol';
 import type { MatchResult, MatchSnapshot, Side } from '@gtd/sim';
+import { Art } from '../art/Art';
 
 interface Props {
   result: MatchResult;
@@ -9,6 +10,8 @@ interface Props {
   t: Translate;
   onPlayAgain(): void;
   onBack(): void;
+  /** A line from Chief Warden Guo for the player (single player). */
+  quip?: { text: string; won: boolean; name: string };
 }
 
 const ATTACKER_STATS = [
@@ -30,7 +33,7 @@ const DEFENDER_STATS = [
  * The 50/50 result screen: Attacker always on the left, Defender on the right, the winner emphasised, and both sides'
  * performance shown, also for the side that lost.
  */
-export function ResultScreen({ result, stats, seat, t, onPlayAgain, onBack }: Props) {
+export function ResultScreen({ result, stats, seat, t, onPlayAgain, onBack, quip }: Props) {
   const half = (side: Side) => {
     const won = result.winner === side;
     const rows: [string, string][] =
@@ -72,6 +75,20 @@ export function ResultScreen({ result, stats, seat, t, onPlayAgain, onBack }: Pr
       <div className="result-banner panel">
         <h1 id="result-title">{t(`result.wins.${result.winner}`)}</h1>
         <p>{t(`result.reason.${result.reason}`)}</p>
+        {quip && (
+          <div className="guo-quip" data-testid="guo-quip">
+            <Art
+              id={quip.won ? 'GUO-2-HAPPY' : 'GUO-3-CONCERNED'}
+              alt={quip.name}
+              ratio={1}
+              className="guo-mini"
+              fallback="G"
+            />
+            <p>
+              <strong>{quip.name}:</strong> {quip.text}
+            </p>
+          </div>
+        )}
         <div className="row">
           <button type="button" className="action" onClick={onPlayAgain} data-testid="play-again">
             {t('result.playAgain')}

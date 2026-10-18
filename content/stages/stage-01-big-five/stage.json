@@ -5,6 +5,8 @@
   "core": true,
   "devOnly": false,
   "title": "stage.title",
+  "description": "stage.description",
+  "picture": "STAGE-01",
   "levels": ["lion"],
   "profiles": {
     "attacker": ["explorer"],

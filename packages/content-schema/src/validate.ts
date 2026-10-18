@@ -12,6 +12,7 @@ export function crossCheck(pack: StagePack): ContentIssue[] {
   };
 
   useText(manifest.title, 'stage.json');
+  if (manifest.description) useText(manifest.description, 'stage.json');
   findDuplicates(manifest.levels).forEach((dup) =>
     add('stage.json', 'levels', `level "${dup}" is listed twice`),
   );
@@ -23,6 +24,25 @@ export function crossCheck(pack: StagePack): ContentIssue[] {
   pack.levels.forEach((level, index) => {
     const file = `levels/${manifest.levels[index]}.json`;
     useText(level.title, file);
+    if (level.description) useText(level.description, file);
+    if (level.briefing) {
+      useText(level.briefing.attacker, file);
+      useText(level.briefing.defender, file);
+    }
+    for (const side of ['attacker', 'defender'] as const) {
+      level.tutorial?.[side]?.forEach((step, i) => {
+        useText(step.text, file);
+        const { until } = step;
+        if (until.type === 'build' && until.defense && !catalog.defenses.some((d) => d.id === until.defense))
+          add(file, `tutorial.${side}.${i}.until.defense`, `unknown defense "${until.defense}"`);
+        if (
+          until.type === 'ability' &&
+          until.ability &&
+          !catalog.abilities.some((a) => a.id === until.ability)
+        )
+          add(file, `tutorial.${side}.${i}.until.ability`, `unknown ability "${until.ability}"`);
+      });
+    }
     if (level.id !== manifest.levels[index]) add(file, 'id', `id "${level.id}" does not match the file name`);
     if (level.unlockedBy !== null) {
       const unlockIndex = manifest.levels.indexOf(level.unlockedBy);

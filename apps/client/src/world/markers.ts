@@ -9,6 +9,8 @@ export const OBJECTIVE_COLOR = 0xffd447;
 export interface MarkerSet {
   root: THREE.Group;
   update(elapsedSeconds: number): void;
+  /** Makes one route stand out (the one a wave is being planned on) and fades the others; null shows all alike. */
+  highlight(routeIndex: number | null): void;
   dispose(): void;
 }
 
@@ -41,6 +43,8 @@ export function createMarkers(
   objective: Point2 & { radius: number },
   buildZones: Point2[],
   heightAt: HeightAt,
+  /** Larger, fully opaque chevrons for players who need stronger route markers (Settings → Accessibility). */
+  highContrast = false,
 ): MarkerSet {
   const root = new THREE.Group();
   root.name = 'markers';
@@ -54,7 +58,8 @@ export function createMarkers(
   chevron.lineTo(0, 0.65);
   chevron.lineTo(-0.7, -0.05);
   const chevronGeometry = new THREE.ShapeGeometry(chevron);
-  chevronGeometry.scale(1.3, 1.3, 1.3);
+  const size = highContrast ? 1.9 : 1.3;
+  chevronGeometry.scale(size, size, size);
   chevronGeometry.rotateX(-Math.PI / 2);
   disposables.push(chevronGeometry);
 
@@ -148,11 +153,19 @@ export function createMarkers(
   root.add(pads);
   disposables.push(padGeometry, padMaterial, { dispose: () => pads.dispose() });
 
+  let highlighted: number | null = null;
   return {
     root,
+    highlight(index) {
+      highlighted = index;
+    },
     update(elapsed) {
       // Gentle pulse so routes read as live paths without distracting.
-      chevronMaterials.forEach((m, i) => (m.opacity = 0.75 + Math.sin(elapsed * 2 + i) * 0.15));
+      chevronMaterials.forEach((m, i) => {
+        const base = highContrast ? 0.97 : 0.75 + Math.sin(elapsed * 2 + i) * 0.15;
+        const faded = highlighted !== null && highlighted !== i;
+        m.opacity = faded ? base * 0.35 : base;
+      });
       dashMaterial.color.setHex(OBJECTIVE_COLOR).multiplyScalar(0.85 + Math.sin(elapsed * 3) * 0.15);
     },
     dispose() {

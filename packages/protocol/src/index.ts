@@ -4,7 +4,7 @@ import type { Command, MatchSnapshot, Side } from '@gtd/sim';
 import { z } from 'zod';
 
 /** Bumped whenever a message changes shape, so an old browser tab gets a clear "please reload" instead of errors. */
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 export const WEBSOCKET_PATH = '/ws';
 
 const language = z.enum(LANGUAGES);
@@ -15,6 +15,22 @@ const language = z.enum(LANGUAGES);
 export const GRAPHICS_PRESETS = ['auto', 'low', 'medium', 'high', 'ultra'] as const;
 export type GraphicsPreset = (typeof GRAPHICS_PRESETS)[number];
 const volume = z.number().min(0).max(1);
+const side = z.enum(['attacker', 'defender']);
+/** A key binding is the physical key position (`KeyboardEvent.code`), so `T Z U` stays the same keys on QWERTZ. */
+const keyCode = z.string().regex(/^[A-Za-z0-9]{1,24}$/);
+const actionName = z.string().regex(/^[a-z][a-zA-Z0-9.]{0,48}$/);
+const scale = z.number().min(0.8).max(1.6);
+
+const accessibilityFields = {
+  /** Size of the whole interface. */
+  uiScale: scale,
+  /** Size of text on top of the interface size. */
+  textScale: scale,
+  /** Stronger, wider route markers on the map. */
+  highContrastRoutes: z.boolean(),
+  /** Fewer moving effects (also follows the system's reduced-motion setting). */
+  reducedEffects: z.boolean(),
+};
 
 export const SettingsSchema = z.object({
   /** null until the player has picked a language on first launch. */
@@ -23,18 +39,60 @@ export const SettingsSchema = z.object({
   audio: z
     .object({ master: volume.default(0.8), music: volume.default(0.6), effects: volume.default(0.8) })
     .default({ master: 0.8, music: 0.6, effects: 0.8 }),
+  /** Keys the player changed; every other action keeps its default key. */
+  keyBindings: z.record(actionName, keyCode).default({}),
+  accessibility: z
+    .object({
+      uiScale: scale.default(1),
+      textScale: scale.default(1),
+      highContrastRoutes: z.boolean().default(false),
+      reducedEffects: z.boolean().default(false),
+    })
+    .default({ uiScale: 1, textScale: 1, highContrastRoutes: false, reducedEffects: false }),
+  /** First-time hints already shown, and the sides whose tutorial was finished or skipped. */
+  onboarding: z
+    .object({
+      hintsSeen: z.array(actionName).max(200).default([]),
+      tutorialsDone: z.array(side).default([]),
+      tutorialOffered: z.boolean().default(false),
+    })
+    .default({ hintsSeen: [], tutorialsDone: [], tutorialOffered: false }),
+  /** Optional name shown in matches and results. */
+  playerName: z.string().trim().max(24).default(''),
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
-/** A partial update; only the given fields change. */
+/** A partial update; only the given fields change (nested groups are merged, `keyBindings` is replaced). */
 export const SettingsPatchSchema = z
   .object({
     language: language.nullable(),
     graphics: z.enum(GRAPHICS_PRESETS),
     audio: z.object({ master: volume, music: volume, effects: volume }).partial(),
+    keyBindings: z.record(actionName, keyCode),
+    accessibility: z.object(accessibilityFields).partial(),
+    onboarding: z
+      .object({
+        hintsSeen: z.array(actionName).max(200),
+        tutorialsDone: z.array(side),
+        tutorialOffered: z.boolean(),
+      })
+      .partial(),
+    playerName: z.string().trim().max(24),
   })
   .partial();
 export type SettingsPatch = z.infer<typeof SettingsPatchSchema>;
+
+// ---- Progress (stored in the save on the PC) ----
+
+/** Single-player wins per level: which difficulties each side has beaten. */
+export type LevelRecord = Record<Side, Difficulty[]>;
+
+export interface Progress {
+  /** Completed levels per stage; a completed level unlocks the next one. */
+  completedLevels: Record<string, string[]>;
+  /** Wins per stage, then per level. */
+  wins: Record<string, Record<string, LevelRecord>>;
+}
 
 // ---- HTTP API ----
 
@@ -134,6 +192,8 @@ export function seatControls(seat: Seat, side: Side): boolean {
   return seat === 'both' || seat === side;
 }
 
+export type MatchSpeed = 1 | 2;
+
 /** The side the computer plays in a match against the AI, and how well. */
 export interface ComputerPlayer {
   side: Side;
@@ -176,11 +236,16 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
     seat: z.enum(SEATS),
     opponent: z.enum(DIFFICULTIES).optional(),
     showAiReasoning: z.boolean().optional(),
+    /** A guided tutorial match: it does not count for progress. */
+    tutorial: z.boolean().optional(),
   }),
   z.object({ type: z.literal('joinMatch'), matchId: contentId, seat: z.enum(SEATS) }),
   z.object({ type: z.literal('leaveMatch') }),
   z.object({ type: z.literal('listMatches') }),
   z.object({ type: z.literal('command'), command: MatchCommandSchema }),
+  /** Single player only (a person against the computer): pause or resume, and 1× or 2× speed (spec §6.2). */
+  z.object({ type: z.literal('setPaused'), paused: z.boolean() }),
+  z.object({ type: z.literal('setSpeed'), speed: z.union([z.literal(1), z.literal(2)]) }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
@@ -200,6 +265,8 @@ export type ServerMessage =
   /** One round of the computer's reasoning, sent only when the match was started with `showAiReasoning`. */
   | { type: 'aiThought'; matchId: string; thought: AiThought }
   | { type: 'joined'; matchId: string; seat: Seat }
+  /** Whether the match clock runs and how fast; `canControl` is true in single player, where pause and speed work. */
+  | { type: 'clock'; matchId: string; paused: boolean; speed: MatchSpeed; canControl: boolean }
   | { type: 'matches'; matches: MatchSummary[] }
   /** Why the simulation refused one of this connection's commands (e.g. `notEnoughResources`). */
   | { type: 'commandRejected'; command: string; reason: string }
@@ -212,7 +279,8 @@ export type ServerMessage =
         | 'unknownMatch'
         | 'notYourSide'
         | 'notInMatch'
-        | 'seatTaken';
+        | 'seatTaken'
+        | 'notSinglePlayer';
       message: string;
     };
 

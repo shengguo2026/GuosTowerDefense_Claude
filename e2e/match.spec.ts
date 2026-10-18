@@ -17,7 +17,9 @@ async function startMatch(page: Page, seat: 'both' | 'attacker' | 'defender') {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.request.put('/api/settings', { data: { language: 'en', graphics: 'auto' } });
+  await page.request.put('/api/settings', {
+    data: { onboarding: { tutorialOffered: true }, language: 'en', graphics: 'auto' },
+  });
 });
 
 test('plays both sides on one screen through the debug controls', async ({ page }, testInfo) => {
@@ -54,7 +56,9 @@ test('two people play a full match from separate screens', async ({ browser }, t
   const defenderContext = await browser.newContext({ viewport: { width: 1180, height: 820 } });
   const attacker = await attackerContext.newPage();
   const defender = await defenderContext.newPage();
-  await attacker.request.put('/api/settings', { data: { language: 'en', graphics: 'low' } });
+  await attacker.request.put('/api/settings', {
+    data: { onboarding: { tutorialOffered: true }, language: 'en', graphics: 'low' },
+  });
 
   await startMatch(attacker, 'attacker');
   await defender.goto('/#lion-match');

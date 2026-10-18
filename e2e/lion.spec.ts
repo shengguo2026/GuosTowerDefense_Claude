@@ -16,7 +16,9 @@ interface RenderInfo {
 }
 
 test('opens the Lion level from the home screen and leaves it again', async ({ page }) => {
-  await page.request.put('/api/settings', { data: { language: 'en', graphics: 'auto' } });
+  await page.request.put('/api/settings', {
+    data: { onboarding: { tutorialOffered: true }, language: 'en', graphics: 'auto' },
+  });
   await page.goto('/');
   await page.getByTestId('open-lion').click();
   await expect(page.getByTestId('level-canvas')).toHaveAttribute('data-rendered', 'true', {
@@ -31,7 +33,9 @@ test('renders the Lion level with routes, labels and a live demo match within bu
   page,
 }, testInfo) => {
   test.setTimeout(90_000);
-  await page.request.put('/api/settings', { data: { language: 'en', graphics: 'auto' } });
+  await page.request.put('/api/settings', {
+    data: { onboarding: { tutorialOffered: true }, language: 'en', graphics: 'auto' },
+  });
   await page.goto('/?debug#lion');
   await expect(page.getByTestId('level-canvas')).toHaveAttribute('data-rendered', 'true', {
     timeout: 30_000,
@@ -67,7 +71,9 @@ test('camera pans with a drag and zooms with the wheel', async ({ page }, testIn
   test.skip(testInfo.project.name === 'phone', 'mouse controls are covered on desktop and tablet');
   // Software rendering on CI can take most of a second per frame, and input waits for frames.
   test.setTimeout(120_000);
-  await page.request.put('/api/settings', { data: { language: 'en', graphics: 'low' } });
+  await page.request.put('/api/settings', {
+    data: { onboarding: { tutorialOffered: true }, language: 'en', graphics: 'low' },
+  });
   await page.goto('/#lion');
   const canvas = page.getByTestId('level-canvas');
   await expect(canvas).toHaveAttribute('data-rendered', 'true', { timeout: 30_000 });

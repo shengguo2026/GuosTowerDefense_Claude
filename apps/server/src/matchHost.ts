@@ -24,6 +24,10 @@ export class MatchHost {
   private timer: NodeJS.Timeout | undefined;
   private last = 0;
   private readonly now: () => number;
+  /** A paused match keeps its timer running (for snapshots) but runs no ticks. */
+  paused = false;
+  /** 1× or 2×: how many simulation seconds pass per real second. */
+  speed: 1 | 2 = 1;
 
   constructor(private readonly options: MatchHostOptions) {
     this.match = new Match(options.setup);
@@ -53,8 +57,10 @@ export class MatchHost {
   /** Runs the ticks that are due; public so tests can drive time by hand. */
   advance(): void {
     const now = this.now();
-    const steps = this.clock.advance(now - this.last);
+    const elapsed = now - this.last;
     this.last = now;
+    if (this.paused) return;
+    const steps = this.clock.advance(elapsed * this.speed);
     const every = this.options.snapshotEveryTicks ?? SNAPSHOT_EVERY_TICKS;
     for (let i = 0; i < steps && !this.match.isOver; i++) this.tick(every);
   }
