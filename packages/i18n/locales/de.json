@@ -35,7 +35,7 @@
   "perf.triangles": "Dreiecke",
   "perf.geometries": "Geometrien",
   "perf.textures": "Texturen",
-  "home.playLion": "Lion zu zweit spielen",
+  "home.playLion": "Lion spielen",
   "level.match": "Match",
   "seat.title": "Wie möchtest du spielen?",
   "seat.newMatch": "Neues Match starten",
@@ -156,5 +156,18 @@
   "result.stat.patrolsDeployed": "Eingesetzte Patrouillen",
   "result.stat.groupsIdentified": "Identifizierte Gruppen",
   "result.playAgain": "Nochmal spielen",
-  "result.back": "Zurück zum Menü"
+  "result.back": "Zurück zum Menü",
+  "seat.vsComputer": "Gegen den Computer spielen",
+  "seat.difficulty": "Schwierigkeit",
+  "difficulty.easy": "Leicht",
+  "difficulty.medium": "Mittel",
+  "difficulty.hard": "Schwer",
+  "seat.playAs.attacker": "Als Angreifer spielen",
+  "seat.playAs.defender": "Als Verteidiger spielen",
+  "seat.showReasoning": "Überlegungen des Computers zeigen (Entwickleransicht)",
+  "seat.computerPlays": "Computer spielt {side} ({difficulty})",
+  "seat.computerSide": "Diese Seite spielt der Computer.",
+  "hud.vsComputer": "gegen Computer · {difficulty}",
+  "ai.reasoning": "Überlegungen des Computers",
+  "ai.waiting": "Warte auf den ersten Zug des Computers …"
 }

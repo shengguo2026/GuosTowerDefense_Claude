@@ -252,7 +252,7 @@ export class Match {
         radius: level.objective.radius,
         heldTicks: Math.floor(this.heldTicks),
         requiredTicks: this.holdTicksRequired,
-        contested: this.contested,
+        contested: this.contested && (viewer !== 'attacker' || this.contestVisibleToAttacker()),
       },
       remainingTicks: Math.max(0, this.endTick - Math.max(this.tickCount, this.preparationTicks)),
       preparationRemainingTicks: Math.max(0, this.preparationTicks - this.tickCount),
@@ -1241,6 +1241,15 @@ export class Match {
       out.sort((a, b) => a.id - b.id);
     }
     return out;
+  }
+
+  /** The Attacker only learns that the objective is contested by seeing the patrol that contests it. */
+  private contestVisibleToAttacker(): boolean {
+    const { objective } = this.setup.level;
+    const centre = this.graph.node(objective.nodeId);
+    return this.activeDefenses().some(
+      (d) => d.mobile && this.visibleToAttacker.has(d.id) && distance(d, centre) <= objective.radius,
+    );
   }
 
   private attackerCopy(defense: DefenseEntity, remembered: boolean): DefenseEntity {

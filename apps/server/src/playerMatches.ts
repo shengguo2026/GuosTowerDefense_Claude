@@ -1,7 +1,9 @@
+import { createAi, type Controller, type Difficulty } from '@gtd/ai';
 import { createMatchSetup, type StagePack } from '@gtd/content-schema';
 import {
   seatControls,
   withTick,
+  type ComputerPlayer,
   type MatchCommand,
   type MatchSummary,
   type Seat,
@@ -19,6 +21,7 @@ interface PlayerMatch {
   host: MatchHost;
   started: ServerMessage;
   players: Map<Send, Seat>;
+  computer?: ComputerPlayer;
   /** Where the match's event log was last read, to tell players about their rejected commands. */
   eventIndex: number;
 }
@@ -26,8 +29,9 @@ interface PlayerMatch {
 type Result<T> = { ok: true; value: T } | { ok: false; message: ServerMessage };
 
 /**
- * Matches between people: each connection takes a seat (one side, both sides on one screen, or watching) and gets
- * snapshots of what that seat may see. A match stops once nobody is connected to it any more.
+ * Matches between people, or a person against the computer: each connection takes a seat (one side, both sides on one
+ * screen, or watching) and gets snapshots of what that seat may see. The computer plays its side from that side's view,
+ * like a person would. A match stops once nobody is connected to it any more.
  */
 export class PlayerMatches {
   private readonly matches = new Map<string, PlayerMatch>();
@@ -42,9 +46,13 @@ export class PlayerMatches {
       attackerProfileId?: string;
       defenderProfileId?: string;
       seat: Seat;
+      opponent?: Difficulty;
+      showAiReasoning?: boolean;
     },
     send: Send,
   ): boolean {
+    // The computer takes the side the person leaves free, so the person must pick one side.
+    if (request.opponent && request.seat !== 'attacker' && request.seat !== 'defender') return false;
     const pack = this.stages.find((stage) => stage.manifest.id === request.stageId);
     if (!pack?.levels.some((level) => level.id === request.levelId)) return false;
     const attackerProfileId = request.attackerProfileId ?? (pack.manifest.profiles.attacker[0] as string);
@@ -62,11 +70,24 @@ export class PlayerMatches {
     }
     this.leave(send);
     const matchId = `match-${++this.counter}`;
+    const computer: ComputerPlayer | undefined = request.opponent
+      ? { side: request.seat === 'attacker' ? 'defender' : 'attacker', difficulty: request.opponent }
+      : undefined;
+    const controllers: { attacker?: Controller; defender?: Controller } = {};
+    if (computer) {
+      const ai = createAi(computer.side, computer.difficulty, setup.seed);
+      if (request.showAiReasoning)
+        ai.onThought = (thought) => {
+          for (const player of match.players.keys()) player({ type: 'aiThought', matchId, thought });
+        };
+      controllers[computer.side] = ai;
+    }
     const match: PlayerMatch = {
       matchId,
       stageId: pack.manifest.id,
       levelId: request.levelId,
       players: new Map(),
+      ...(computer ? { computer } : {}),
       eventIndex: 0,
       started: {
         type: 'matchStarted',
@@ -75,8 +96,9 @@ export class PlayerMatches {
         levelId: request.levelId,
         attackerProfileId,
         defenderProfileId,
+        ...(computer ? { computer } : {}),
       },
-      host: new MatchHost({ setup, onFrame: (m) => this.frame(match, m) }),
+      host: new MatchHost({ setup, ...controllers, onFrame: (m) => this.frame(match, m) }),
     };
     this.matches.set(matchId, match);
     this.seat(match, request.seat, send);
@@ -87,6 +109,8 @@ export class PlayerMatches {
   join(matchId: string, seat: Seat, send: Send): Result<null> {
     const match = this.matches.get(matchId);
     if (!match) return { ok: false, message: error('unknownMatch', 'This match is no longer running.') };
+    if (match.computer && seat !== 'spectator' && seatControls(seat, match.computer.side))
+      return { ok: false, message: error('seatTaken', 'The computer plays that side.') };
     this.leave(send);
     this.seat(match, seat, send);
     send({ type: 'snapshot', matchId, snapshot: match.host.match.snapshot(viewOf(seat)) });
@@ -120,6 +144,7 @@ export class PlayerMatches {
       stageId: match.stageId,
       levelId: match.levelId,
       seats: [...match.players.values()],
+      ...(match.computer ? { computer: match.computer } : {}),
       phase: match.host.match.phase,
     }));
   }
@@ -175,6 +200,9 @@ function viewOf(seat: Seat): Side | null {
   return seat === 'attacker' || seat === 'defender' ? seat : null;
 }
 
-function error(code: 'unknownMatch' | 'notYourSide' | 'notInMatch', message: string): ServerMessage {
+function error(
+  code: 'unknownMatch' | 'notYourSide' | 'notInMatch' | 'seatTaken',
+  message: string,
+): ServerMessage {
   return { type: 'error', code, message };
 }

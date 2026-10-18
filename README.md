@@ -47,6 +47,7 @@ npm run check              # type check, lint, format, unit tests, content valid
 npm run test:e2e           # browser tests at desktop 1920×1080, tablet 1180×820, phone 844×390
 npm run validate:content   # validate every stage pack
 npm run simulate           # headless matches of every level and profile pairing of the test stage
+npm run balance            # 200 AI-vs-AI matches of Lion per difficulty; add --matrix for every pairing
 ```
 
 ## Branches

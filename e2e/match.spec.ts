@@ -84,3 +84,38 @@ test('two people play a full match from separate screens', async ({ browser }, t
   await attacker.screenshot({ path: testInfo.outputPath('result-attacker.png') });
   await defender.screenshot({ path: testInfo.outputPath('result-defender.png') });
 });
+
+test('plays against the computer and shows its reasoning', async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  await page.goto('/#lion-match');
+  await expect(page.getByTestId('seat-picker')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('difficulty-hard').click();
+  await expect(page.getByTestId('difficulty-hard')).toHaveAttribute('aria-checked', 'true');
+  await page.getByTestId('show-ai-reasoning').check();
+  await page.getByTestId('vs-ai-attacker').click();
+  await expect(page.getByTestId('seat-picker')).toBeHidden();
+  await expect(page.getByTestId('computer-badge')).toContainText('Hard');
+  // The computer plays the Ranger: it starts building at once, and says why.
+  // The panel starts folded on small screens.
+  const unfold = page.getByTestId('ai-reasoning').getByRole('button');
+  if ((await unfold.getAttribute('aria-expanded')) === 'false') await unfold.click();
+  await expect(page.getByTestId('ai-thought').first()).toContainText('Build', { timeout: 15_000 });
+  await openControls(page);
+  await expect(page.getByTestId('tab-defender')).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath(`vs-computer-${testInfo.project.name}.png`) });
+});
+
+test('the computer plays a whole match against a person', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'one full match is enough; it runs in real time');
+  test.setTimeout(240_000);
+  await page.goto('/#lion-match');
+  await expect(page.getByTestId('seat-picker')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('difficulty-easy').click();
+  await page.getByTestId('vs-ai-defender').click();
+  await expect(page.getByTestId('computer-badge')).toContainText('Easy');
+  // Nothing is built, so the computer's Explorers walk to the waterhole and hold it.
+  await expect(page.getByTestId('result-screen')).toBeVisible({ timeout: 200_000 });
+  await expect(page.getByTestId('result-attacker')).toHaveClass(/won/);
+  await expect(page.getByTestId('result-defender')).toContainText('Defeat');
+  await page.screenshot({ path: testInfo.outputPath('vs-computer-result.png') });
+});

@@ -35,7 +35,7 @@
   "perf.triangles": "Triangles",
   "perf.geometries": "Geometries",
   "perf.textures": "Textures",
-  "home.playLion": "Play Lion with two players",
+  "home.playLion": "Play Lion",
   "level.match": "Match",
   "seat.title": "How do you want to play?",
   "seat.newMatch": "Start a new match",
@@ -156,5 +156,18 @@
   "result.stat.patrolsDeployed": "Patrols deployed",
   "result.stat.groupsIdentified": "Groups identified",
   "result.playAgain": "Play again",
-  "result.back": "Back to the menu"
+  "result.back": "Back to the menu",
+  "seat.vsComputer": "Play against the computer",
+  "seat.difficulty": "Difficulty",
+  "difficulty.easy": "Easy",
+  "difficulty.medium": "Medium",
+  "difficulty.hard": "Hard",
+  "seat.playAs.attacker": "Play the Attacker",
+  "seat.playAs.defender": "Play the Defender",
+  "seat.showReasoning": "Show the computer's reasoning (developer view)",
+  "seat.computerPlays": "computer plays {side} ({difficulty})",
+  "seat.computerSide": "The computer plays that side.",
+  "hud.vsComputer": "vs computer · {difficulty}",
+  "ai.reasoning": "Computer's reasoning",
+  "ai.waiting": "Waiting for the computer's first move…"
 }

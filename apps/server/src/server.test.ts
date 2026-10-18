@@ -267,12 +267,13 @@ describe('matches between people', () => {
       this.ws.send(JSON.stringify(message));
     }
 
-    /** Waits for a message received from now on that matches. */
+    /** Waits for a message received from now on (or, with `fromStart`, at any time) that matches. */
     async next<T extends ServerMessage['type']>(
       type: T,
       test: (message: Extract<ServerMessage, { type: T }>) => boolean = () => true,
+      fromStart = false,
     ): Promise<Extract<ServerMessage, { type: T }>> {
-      const start = this.received.length;
+      const start = fromStart ? 0 : this.received.length;
       for (let waited = 0; waited < 5000; waited += 20) {
         const found = this.received
           .slice(start)
@@ -360,6 +361,48 @@ describe('matches between people', () => {
     expect(await attacker.next('error')).toMatchObject({ code: 'notYourSide' });
     attacker.close();
     defender.close();
+  });
+
+  it('lets a person play against the computer, which keeps its side and can share its reasoning', async () => {
+    const server = await startServer();
+    const player = new TestClient(server.url);
+    const other = new TestClient(server.url);
+    await player.send({
+      type: 'createMatch',
+      ...lion,
+      seat: 'attacker',
+      opponent: 'hard',
+      showAiReasoning: true,
+    });
+    const { matchId } = await player.next('joined');
+    const started = await player.next('matchStarted', () => true, true);
+    expect(started.computer).toEqual({ side: 'defender', difficulty: 'hard' });
+    const thought = await player.next('aiThought', () => true, true);
+    expect(thought.thought.side).toBe('defender');
+    expect(thought.thought.lines.some((line) => line.startsWith('Build'))).toBe(true);
+    await other.send({ type: 'listMatches' });
+    expect((await other.next('matches')).matches[0]).toMatchObject({
+      matchId,
+      computer: { side: 'defender', difficulty: 'hard' },
+    });
+    await other.send({ type: 'joinMatch', matchId, seat: 'defender' });
+    expect(await other.next('error')).toMatchObject({ code: 'seatTaken' });
+    await other.send({ type: 'joinMatch', matchId, seat: 'spectator' });
+    await other.next('joined');
+    // The computer's builds show up in the full view of a spectator.
+    await other.next('snapshot', (m) => m.snapshot.entities.some((e) => e.kind === 'defense'));
+    await player.send({ type: 'command', command: { type: 'sellDefense', side: 'defender', defenseId: 1 } });
+    expect(await player.next('error')).toMatchObject({ code: 'notYourSide' });
+    player.close();
+    other.close();
+  });
+
+  it('refuses a computer opponent when the person does not pick one side', async () => {
+    const server = await startServer();
+    const player = new TestClient(server.url);
+    await player.send({ type: 'createMatch', ...lion, seat: 'both', opponent: 'easy' });
+    expect(await player.next('error')).toMatchObject({ code: 'unknownLevel' });
+    player.close();
   });
 
   it('stops a match when everyone has left', async () => {
