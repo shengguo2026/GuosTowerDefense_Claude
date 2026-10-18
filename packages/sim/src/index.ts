@@ -7,3 +7,4 @@ export * from './fixedStepClock';
 export * from './hash';
 export * from './types';
 export * from './match';
+export * from './graph';
