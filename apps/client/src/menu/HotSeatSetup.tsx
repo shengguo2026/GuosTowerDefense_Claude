@@ -141,9 +141,9 @@ export function HotSeatSetup({ stages, language, t, initial, onStart, onBack }: 
           <span aria-hidden="true">‹</span> {t('level.back')}
         </button>
         <h1>{t('menu.twoPlayers')}</h1>
+        <p className="hot-intro">{t('hot.intro')}</p>
       </header>
       <div className="setup-body">
-        <p className="hint">{t('hot.intro')}</p>
         <section className="setup-section" aria-labelledby="hot-stage">
           <h2 id="hot-stage">{t('setup.stage')}</h2>
           <div className="card-row">

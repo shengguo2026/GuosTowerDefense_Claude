@@ -2713,7 +2713,15 @@ kbd {
 }
 
 /* Hot-seat setup and briefing */
+.hot-intro {
+  margin: 0;
+  max-width: 70ch;
+  font-size: 0.9em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+/* The two players' boxes share one full row under stage and level. */
 .hot-players {
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
