@@ -47,6 +47,8 @@ export interface LevelViewOptions {
   stageText(key: string): string;
   reducedMotion: boolean;
   highContrastRoutes?: boolean;
+  /** Hot-seat: both players see everything, so undetected groups get a "hidden" mark. */
+  hiddenMarkers?: boolean;
 }
 
 /** What is under a point on the screen: the nearest entity, map node and route within reach, and the ground. */
@@ -58,7 +60,7 @@ export interface MapPick {
 }
 
 export interface MapPointerHandler {
-  tap(pick: MapPick, button: number): void;
+  tap(pick: MapPick, button: number, screen: { x: number; y: number }): void;
   hover?(pick: MapPick): void;
 }
 
@@ -220,7 +222,7 @@ export class LevelView {
     const blob = createBlobTexture();
     this.owned.push(blob);
     const ranges = Object.fromEntries(options.pack.catalog.defenses.map((d) => [d.id, d.range]));
-    this.entities = new EntityView(this.world.heightAt, ranges, blob);
+    this.entities = new EntityView(this.world.heightAt, ranges, blob, options.hiddenMarkers);
     this.scene.add(this.entities.root);
 
     this.startCamera = scene.camera ?? { x: 0, z: 0, yaw: -0.6, pitch: 0.7, distance: 90 };
@@ -282,7 +284,7 @@ export class LevelView {
   onPointer(handler: MapPointerHandler | null): void {
     this.rig.listener = handler
       ? {
-          tap: (x, y, button) => handler.tap(this.pick(x, y), button),
+          tap: (x, y, button) => handler.tap(this.pick(x, y), button, { x, y }),
           move: (x, y) => {
             const pick = this.pick(x, y);
             this.selection.hover(pick.nodeId, pick.ground);
@@ -300,6 +302,11 @@ export class LevelView {
   highlightRoute(routeId: string | null): void {
     const index = this.options.level.routes.findIndex((route) => route.id === routeId);
     this.markers.highlight(index >= 0 ? index : null);
+  }
+
+  /** How many groups carry the hot-seat "hidden" mark right now (for tests). */
+  get hiddenMarks(): number {
+    return this.entities.hiddenCount;
   }
 
   /** Where a map point shows on the page (browser tests click the map through this), or null when off screen. */
@@ -404,7 +411,9 @@ export class LevelView {
     this.entities.update(this.buffer.latest, this.positions, elapsed);
     const selectedId = this.selection.selectedId;
     const selected = selectedId === null ? undefined : this.positions.get(selectedId);
-    this.selection.update(time / 1000, selected ?? null);
+    const markedId = this.selection.markedId;
+    const marked = markedId === null ? undefined : this.positions.get(markedId);
+    this.selection.update(time / 1000, selected ?? null, marked ?? null);
 
     this.renderer.render(this.scene, this.camera);
     this.updateLabels();

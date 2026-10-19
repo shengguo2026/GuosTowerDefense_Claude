@@ -6,7 +6,7 @@ import { Art, initials } from '../art/Art';
 import { useKeyLabel } from '../hud/KeyHint';
 import { KEY_ACTIONS } from '../input/bindings';
 
-const RULE_PAGES = ['basics', 'attacker', 'defender', 'detection', 'controls'] as const;
+const RULE_PAGES = ['basics', 'attacker', 'defender', 'detection', 'hotseat', 'controls'] as const;
 type Page = (typeof RULE_PAGES)[number] | `profile:${string}`;
 
 interface Props {

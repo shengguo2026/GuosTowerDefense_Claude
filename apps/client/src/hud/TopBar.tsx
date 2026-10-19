@@ -35,7 +35,6 @@ export function TopBar({
   onPause,
   onSpeed,
 }: Props) {
-  const held = snapshot ? snapshot.objective.heldTicks / snapshot.objective.requiredTicks : 0;
   return (
     <header className={`hud-top ${side}`} data-testid="hud-top">
       <button
@@ -61,61 +60,9 @@ export function TopBar({
           )}
         </div>
       )}
-      {snapshot && (
-        <div className="hud-clock" data-tutorial="timer">
-          <Tooltip text={snapshot.phase === 'preparation' ? t('hud.tip.prep') : t('hud.tip.timer')}>
-            <span className="clock-text" data-testid="phase">
-              {snapshot.phase === 'preparation'
-                ? t('hud.prepLeft', { time: formatSeconds(snapshot.preparationRemainingTicks) })
-                : formatSeconds(snapshot.remainingTicks)}
-            </span>
-          </Tooltip>
-        </div>
-      )}
-      {snapshot && (
-        <Tooltip text={t(side === 'attacker' ? 'hud.tip.objectiveAttacker' : 'hud.tip.objectiveDefender')}>
-          <div className="hud-objective" data-tutorial="objective" data-testid="objective">
-            <span className="label">{t('level.objective')}</span>
-            <span
-              className="hold-bar"
-              role="progressbar"
-              aria-label={t('level.objective')}
-              aria-valuenow={Math.round(held * 100)}
-              aria-valuemin={0}
-              aria-valuemax={100}
-            >
-              <span style={{ width: `${Math.round(held * 100)}%` }} />
-            </span>
-            {snapshot.objective.contested && <em className="contested">{t('hud.contested')}</em>}
-          </div>
-        </Tooltip>
-      )}
-      {snapshot && (
-        <div className="hud-numbers">
-          <Tooltip text={t('hud.tip.supplies')}>
-            <span className="number">
-              <span className="label">{t('hud.supplies')}</span>
-              <strong data-testid={`${side}-supplies`}>{Math.floor(snapshot.resources[side] ?? 0)}</strong>
-            </span>
-          </Tooltip>
-          <Tooltip text={t('hud.tip.points')}>
-            <span className="number">
-              <span className="label">{t('hud.points')}</span>
-              <strong data-testid="points">{Math.floor(snapshot.points[side] ?? 0)}</strong>
-            </span>
-          </Tooltip>
-          {side === 'attacker' && (
-            <Tooltip text={t('hud.tip.capacity')}>
-              <span className="number">
-                <span className="label">{t('hud.capacity')}</span>
-                <strong data-testid="capacity">
-                  {snapshot.capacity.remaining}/{snapshot.capacity.total}
-                </strong>
-              </span>
-            </Tooltip>
-          )}
-        </div>
-      )}
+      {snapshot && <MatchClock snapshot={snapshot} t={t} />}
+      {snapshot && <ObjectiveBar snapshot={snapshot} side={side} t={t} />}
+      {snapshot && <SideNumbers snapshot={snapshot} side={side} t={t} />}
       {canControlClock && (
         <div className="hud-group clock-buttons">
           <Tooltip text={t('hud.tip.speed')}>
@@ -155,5 +102,89 @@ export function TopBar({
         </div>
       )}
     </header>
+  );
+}
+
+/** Time left, or the preparation time while the Defender builds. */
+export function MatchClock({ snapshot, t }: { snapshot: MatchSnapshot; t: Translate }) {
+  return (
+    <div className="hud-clock" data-tutorial="timer">
+      <Tooltip text={snapshot.phase === 'preparation' ? t('hud.tip.prep') : t('hud.tip.timer')}>
+        <span className="clock-text" data-testid="phase">
+          {snapshot.phase === 'preparation'
+            ? t('hud.prepLeft', { time: formatSeconds(snapshot.preparationRemainingTicks) })
+            : formatSeconds(snapshot.remainingTicks)}
+        </span>
+      </Tooltip>
+    </div>
+  );
+}
+
+/** How long the objective has been held, from the point of view of one side (or neutral in hot-seat). */
+export function ObjectiveBar({
+  snapshot,
+  side,
+  t,
+}: {
+  snapshot: MatchSnapshot;
+  side: Side | null;
+  t: Translate;
+}) {
+  const held = snapshot.objective.heldTicks / snapshot.objective.requiredTicks;
+  return (
+    <Tooltip
+      text={t(
+        side === 'attacker'
+          ? 'hud.tip.objectiveAttacker'
+          : side === 'defender'
+            ? 'hud.tip.objectiveDefender'
+            : 'hot.tip.objective',
+      )}
+    >
+      <div className="hud-objective" data-tutorial="objective" data-testid="objective">
+        <span className="label">{t('level.objective')}</span>
+        <span
+          className="hold-bar"
+          role="progressbar"
+          aria-label={t('level.objective')}
+          aria-valuenow={Math.round(held * 100)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
+          <span style={{ width: `${Math.round(held * 100)}%` }} />
+        </span>
+        {snapshot.objective.contested && <em className="contested">{t('hud.contested')}</em>}
+      </div>
+    </Tooltip>
+  );
+}
+
+/** One side's supplies, points and (Attacker) deployment capacity. */
+export function SideNumbers({ snapshot, side, t }: { snapshot: MatchSnapshot; side: Side; t: Translate }) {
+  return (
+    <div className={`hud-numbers ${side}`}>
+      <Tooltip text={t('hud.tip.supplies')}>
+        <span className="number">
+          <span className="label">{t('hud.supplies')}</span>
+          <strong data-testid={`${side}-supplies`}>{Math.floor(snapshot.resources[side] ?? 0)}</strong>
+        </span>
+      </Tooltip>
+      <Tooltip text={t('hud.tip.points')}>
+        <span className="number">
+          <span className="label">{t('hud.points')}</span>
+          <strong data-testid={`${side}-points`}>{Math.floor(snapshot.points[side] ?? 0)}</strong>
+        </span>
+      </Tooltip>
+      {side === 'attacker' && (
+        <Tooltip text={t('hud.tip.capacity')}>
+          <span className="number">
+            <span className="label">{t('hud.capacity')}</span>
+            <strong data-testid="capacity">
+              {snapshot.capacity.remaining}/{snapshot.capacity.total}
+            </strong>
+          </span>
+        </Tooltip>
+      )}
+    </div>
   );
 }

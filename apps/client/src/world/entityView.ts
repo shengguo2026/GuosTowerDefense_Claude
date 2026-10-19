@@ -33,6 +33,8 @@ export class EntityView {
   private readonly figures: Record<LookName, THREE.InstancedMesh>;
   private readonly rings: THREE.InstancedMesh;
   private readonly blobs: THREE.InstancedMesh;
+  /** Hot-seat shows everything to both players; groups no defense has detected float a "hidden" mark (spec §5.2). */
+  private readonly hiddenMarks: THREE.InstancedMesh | null;
   private readonly defenseMeshes = new Map<number, THREE.Group>();
   private readonly defenseGeometries = new Map<string, THREE.BufferGeometry>();
   private readonly material = createFlatMaterial();
@@ -54,6 +56,7 @@ export class EntityView {
     private readonly heightAt: HeightAt,
     private readonly ranges: DefenseRanges,
     blobTexture: THREE.Texture,
+    hiddenMarkers = false,
   ) {
     this.root.name = 'entities';
     this.figures = Object.fromEntries(
@@ -90,12 +93,27 @@ export class EntityView {
     this.blobs.count = 0;
     this.blobs.frustumCulled = false;
     this.root.add(this.blobs);
+
+    this.hiddenMarks = hiddenMarkers
+      ? new THREE.InstancedMesh(
+          new THREE.OctahedronGeometry(0.55, 0),
+          new THREE.MeshBasicMaterial({ color: 0xdfe6ee, transparent: true, opacity: 0.85, wireframe: true }),
+          MAX_GROUPS,
+        )
+      : null;
+    if (this.hiddenMarks) {
+      this.hiddenMarks.count = 0;
+      this.hiddenMarks.frustumCulled = false;
+      this.hiddenMarks.name = 'hidden-marks';
+      this.root.add(this.hiddenMarks);
+    }
   }
 
   update(snapshot: MatchSnapshot | null, positions: Map<number, InterpolatedEntity>, elapsed: number): void {
     const counts: Record<LookName, number> = { explorer: 0, scout: 0, ranger: 0 };
     let rings = 0;
     let blobs = 0;
+    let hidden = 0;
     const seenDefenses = new Set<number>();
     const d = this.dummy;
 
@@ -140,6 +158,17 @@ export class EntityView {
           this.rings.setColorAt(rings, entity.detection === 'unknown' ? RING_UNSEEN : RING_SEEN);
           this.rings.setMatrixAt(rings++, d.matrix);
         }
+        if (this.hiddenMarks && entity.detection === 'unknown' && hidden < MAX_GROUPS) {
+          d.position.set(
+            at.x,
+            this.heightAt(at.x, at.z) + 3.2 + Math.sin(elapsed * 2 + entity.id) * 0.15,
+            at.z,
+          );
+          d.rotation.set(0, elapsed * 1.5, 0);
+          d.scale.set(1, 1.4, 1);
+          d.updateMatrix();
+          this.hiddenMarks.setMatrixAt(hidden++, d.matrix);
+        }
       } else {
         seenDefenses.add(entity.id);
         if (!this.defenseMeshes.has(entity.id)) this.addDefense(entity as DefenseEntity);
@@ -173,6 +202,15 @@ export class EntityView {
     if (this.rings.instanceColor) this.rings.instanceColor.needsUpdate = true;
     this.blobs.count = blobs;
     this.blobs.instanceMatrix.needsUpdate = true;
+    if (this.hiddenMarks) {
+      this.hiddenMarks.count = hidden;
+      this.hiddenMarks.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  /** How many groups carry the hidden mark (for tests). */
+  get hiddenCount(): number {
+    return this.hiddenMarks?.count ?? 0;
   }
 
   dispose(): void {
@@ -180,7 +218,7 @@ export class EntityView {
       mesh.geometry.dispose();
       mesh.dispose();
     });
-    for (const mesh of [this.rings, this.blobs]) {
+    for (const mesh of [this.rings, this.blobs, ...(this.hiddenMarks ? [this.hiddenMarks] : [])]) {
       mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
       mesh.dispose();

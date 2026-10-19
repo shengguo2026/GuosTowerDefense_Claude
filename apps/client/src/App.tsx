@@ -9,8 +9,11 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { KeysProvider } from './hud/KeyHint';
 import { TutorialOffer } from './hud/Overlays';
 import { LevelScreen } from './level/LevelScreen';
+import { HotSeatScreen } from './match/HotSeatScreen';
 import { MatchScreen } from './match/MatchScreen';
-import type { MatchConfig } from './match/matchConfig';
+import type { HotSeatConfig, MatchConfig } from './match/matchConfig';
+import { isPcWithMouse } from './menu/device';
+import { HotSeatSetup } from './menu/HotSeatSetup';
 import { MainMenu } from './menu/MainMenu';
 import { ManualScreen } from './menu/ManualScreen';
 import { SinglePlayerSetup } from './menu/SinglePlayerSetup';
@@ -25,8 +28,10 @@ type Screen =
   | { name: 'menu' }
   | { name: 'setup' }
   | { name: 'match'; config: MatchConfig }
+  | { name: 'hotseat-setup' }
+  | { name: 'hotseat'; config: HotSeatConfig }
   | { name: 'manual' }
-  /** The M2/M3 level screen: the server's demo match, or a match of two people (seat picker). */
+  /** The M2/M3 level screen: the server's demo match, or the debug seat picker (`#lion-match`). */
   | { name: 'level'; mode: 'demo' | 'play' };
 
 function initialScreen(): Screen {
@@ -57,10 +62,12 @@ export function App() {
   const [manualOver, setManualOver] = useState(false);
   const [offerOpen, setOfferOpen] = useState(false);
   const [lastConfig, setLastConfig] = useState<MatchConfig | undefined>(undefined);
+  const [lastHotSeat, setLastHotSeat] = useState<HotSeatConfig | undefined>(undefined);
   const [pack, setPack] = useState<StagePack | null>(null);
   const [touch] = useState(() => window.matchMedia('(pointer: coarse)').matches);
+  const [hasMouse] = useState(() => isPcWithMouse());
   const lionAvailable = connection.stages.some((stage) => stage.id === LION.stageId);
-  const matchStage = screen.name === 'match' ? screen.config.stageId : null;
+  const matchStage = screen.name === 'match' || screen.name === 'hotseat' ? screen.config.stageId : null;
 
   const toMenu = useCallback(() => {
     setScreen({ name: 'menu' });
@@ -145,7 +152,23 @@ export function App() {
               onSettings={() => setSettingsOpen(true)}
             />
           )}
-          {(screen.name === 'menu' || screen.name === 'setup' || screen.name === 'manual') && <WorldCanvas />}
+          {screen.name === 'hotseat' && pack?.manifest.id === screen.config.stageId && (
+            <HotSeatScreen
+              key={`${screen.config.stageId}/${screen.config.levelId}`}
+              config={screen.config}
+              pack={pack}
+              connection={connection}
+              settings={settings}
+              overlayOpen={overlayOpen}
+              onQuit={toMenu}
+              onManual={() => setManualOver(true)}
+              onSettings={() => setSettingsOpen(true)}
+            />
+          )}
+          {(screen.name === 'menu' ||
+            screen.name === 'setup' ||
+            screen.name === 'hotseat-setup' ||
+            screen.name === 'manual') && <WorldCanvas />}
 
           {screen.name === 'menu' && (
             <header className="top-bar">
@@ -167,9 +190,10 @@ export function App() {
               t={t}
               connection={connection}
               playable={lionAvailable}
+              hotSeatAvailable={hasMouse}
               onSinglePlayer={() => setScreen({ name: 'setup' })}
               onTutorial={() => setOfferOpen(true)}
-              onTwoPlayers={() => setScreen({ name: 'level', mode: 'play' })}
+              onTwoPlayers={() => setScreen({ name: 'hotseat-setup' })}
               onManual={() => setScreen({ name: 'manual' })}
               onSettings={() => setSettingsOpen(true)}
               onDemo={() => setScreen({ name: 'level', mode: 'demo' })}
@@ -186,6 +210,19 @@ export function App() {
               onStart={(config) => {
                 setLastConfig(config);
                 setScreen({ name: 'match', config });
+              }}
+              onBack={toMenu}
+            />
+          )}
+          {screen.name === 'hotseat-setup' && (
+            <HotSeatSetup
+              stages={connection.stages}
+              language={language}
+              t={t}
+              initial={lastHotSeat}
+              onStart={(config) => {
+                setLastHotSeat(config);
+                setScreen({ name: 'hotseat', config });
               }}
               onBack={toMenu}
             />

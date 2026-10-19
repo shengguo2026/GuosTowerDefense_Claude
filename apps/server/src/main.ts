@@ -9,6 +9,7 @@
  *   GTD_NO_OPEN=1  do not open the browser
  */
 import { readFile } from 'node:fs/promises';
+import { networkInterfaces } from 'node:os';
 import { resolve } from 'node:path';
 import { loadAllStages } from '@gtd/content-schema/node';
 import { createGameServer, listen } from './gameServer';
@@ -52,6 +53,12 @@ async function main(): Promise<void> {
   const port = devMode ? firstPort : await findFreePort(firstPort, host);
   const running = await listen(server, port, host);
   console.log(`Game server running at ${running.url}`);
+  // Listening on every interface: say which address a phone or tablet on the same Wi-Fi should open.
+  if (host === '0.0.0.0')
+    for (const address of lanAddresses())
+      console.log(
+        `On a phone or tablet in the same Wi-Fi, open http://${address}:${running.url.split(':').pop()}`,
+      );
   console.log(`User data: ${userDataDir}`);
 
   if (!devMode && process.env.GTD_NO_OPEN !== '1') openBrowser(running.url);
@@ -62,6 +69,14 @@ async function main(): Promise<void> {
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+}
+
+/** The PC's IPv4 addresses in the local network. */
+function lanAddresses(): string[] {
+  return Object.values(networkInterfaces())
+    .flat()
+    .filter((net) => net && net.family === 'IPv4' && !net.internal)
+    .map((net) => (net as { address: string }).address);
 }
 
 main().catch((error: unknown) => {

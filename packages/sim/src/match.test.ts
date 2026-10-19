@@ -203,6 +203,60 @@ describe('movement on the route graph', () => {
     expect(rejections(match)).toEqual(['notHoldingAtJunction', 'noJunctionAhead']);
   });
 
+  it('holds at a chosen junction further ahead and reroutes on arriving at a chosen node', () => {
+    // Two junctions in a row: the route splits at j1 (to a side path) and again at j2.
+    const level: Partial<SimLevel> = {
+      nodes: [
+        { id: 'spawn', x: 0, z: 0, kind: 'spawn' },
+        { id: 'j1', x: 10, z: 0, kind: 'junction' },
+        { id: 'side', x: 15, z: 8 },
+        { id: 'j2', x: 20, z: 0, kind: 'junction' },
+        { id: 'north', x: 30, z: 10 },
+        { id: 'south', x: 30, z: -10 },
+        { id: 'goal', x: 40, z: 0, kind: 'objective' },
+      ],
+      edges: [
+        { from: 'spawn', to: 'j1' },
+        { from: 'j1', to: 'j2' },
+        { from: 'j1', to: 'side' },
+        { from: 'side', to: 'goal' },
+        { from: 'j2', to: 'north' },
+        { from: 'j2', to: 'south' },
+        { from: 'north', to: 'goal' },
+        { from: 'south', to: 'goal' },
+      ],
+      routes: [
+        { id: 'north', nodes: ['spawn', 'j1', 'j2', 'north', 'goal'] },
+        { id: 'south', nodes: ['spawn', 'j1', 'j2', 'south', 'goal'] },
+        { id: 'side', nodes: ['spawn', 'j1', 'side', 'goal'] },
+      ],
+    };
+    const match = newMatch({}, level);
+    skipPreparation(match);
+    launch(match);
+    const id = groups(match)[0]!.id;
+    send(match, { type: 'holdGroup', side: 'attacker', groupId: id, nodeId: 'north' });
+    send(match, { type: 'holdGroup', side: 'attacker', groupId: id, nodeId: 'j2' });
+    runUntil(match, () => group(match, id)?.state === 'holding');
+    expect(group(match, id)).toMatchObject({ x: 20, z: 0, state: 'holding' });
+    // Behind the group now: no hold or switch there any more.
+    send(match, { type: 'advanceGroup', side: 'attacker', groupId: id });
+    send(match, { type: 'holdGroup', side: 'attacker', groupId: id, nodeId: 'j1' });
+    expect(rejections(match)).toEqual(['noJunctionAhead', 'noJunctionAhead']);
+
+    const second = newMatch({}, level);
+    skipPreparation(second);
+    launch(second);
+    const other = groups(second)[0]!.id;
+    send(second, { type: 'rerouteGroup', side: 'attacker', groupId: other, routeId: 'side', nodeId: 'j2' });
+    send(second, { type: 'rerouteGroup', side: 'attacker', groupId: other, routeId: 'south', nodeId: 'j2' });
+    expect(group(second, other)?.pendingRouteId).toBe('south');
+    // It passes j1 on its own route, switches at j2 without stopping and walks the south branch.
+    runUntil(second, () => (group(second, other)?.z ?? 0) < -1);
+    expect(group(second, other)).toMatchObject({ routeId: 'south', state: 'moving' });
+    expect(rejections(second)).toEqual(['routeNotFromHere']);
+  });
+
   it('pays the Attacker a bonus the first time a group passes a checkpoint', () => {
     const match = newMatch();
     skipPreparation(match);

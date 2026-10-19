@@ -9,6 +9,8 @@ export interface MatchHostOptions {
   /** Called at the snapshot rate (and once at the start and end); the owner decides who sees which view. */
   onFrame(match: Match): void;
   onEnd?(): void;
+  /** Called on every timer step while the match is paused, so the owner can end a timed pause. */
+  onPaused?(): void;
   snapshotEveryTicks?: number;
   /** Injectable for tests. */
   now?: () => number;
@@ -59,7 +61,10 @@ export class MatchHost {
     const now = this.now();
     const elapsed = now - this.last;
     this.last = now;
-    if (this.paused) return;
+    if (this.paused) {
+      this.options.onPaused?.();
+      return;
+    }
     const steps = this.clock.advance(elapsed * this.speed);
     const every = this.options.snapshotEveryTicks ?? SNAPSHOT_EVERY_TICKS;
     for (let i = 0; i < steps && !this.match.isOver; i++) this.tick(every);

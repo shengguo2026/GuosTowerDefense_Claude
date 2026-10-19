@@ -518,12 +518,18 @@ describe('matches between people', () => {
 });
 
 describe('single-player progress', () => {
+  const SEED = 1234;
   /** Plays a short test-stage match against the easy computer with a manual clock; one big wave wins it. */
   async function play(options: { tutorial?: boolean; wave: number }): Promise<SinglePlayerWin[]> {
     const { stages } = await loadAllStages(resolve(import.meta.dirname, '../../../content/stages'));
     const wins: SinglePlayerWin[] = [];
     let now = 0;
-    const players = new PlayerMatches(stages, { onWin: (win) => wins.push(win), now: () => now });
+    // A fixed seed: the outcome must not depend on when the test runs.
+    const players = new PlayerMatches(stages, {
+      onWin: (win) => wins.push(win),
+      now: () => now,
+      seed: () => SEED,
+    });
     const send = () => undefined;
     players.create(
       {
@@ -574,6 +580,87 @@ describe('single-player progress', () => {
   it('records nothing for a loss or a tutorial', async () => {
     expect(await play({ wave: 4 })).toEqual([]);
     expect(await play({ wave: 12, tutorial: true })).toEqual([]);
+  });
+});
+
+describe('hot-seat planning pauses', () => {
+  it('gives each player three pauses of up to 20 seconds that either player can end early', async () => {
+    const { stages } = await loadAllStages(resolve(import.meta.dirname, '../../../content/stages'));
+    let now = 0;
+    const players = new PlayerMatches(stages, { now: () => now });
+    const received: ServerMessage[] = [];
+    const send = (message: ServerMessage) => received.push(message);
+    const clock = () => received.filter((m) => m.type === 'clock').at(-1);
+    const errors = () => received.flatMap((m) => (m.type === 'error' ? [m.code] : []));
+    expect(
+      players.create(
+        { stageId: 'stage-01-big-five', levelId: 'lion', seat: 'attacker', hotSeat: true },
+        send,
+      ),
+    ).toBe(false);
+    players.create({ stageId: 'stage-01-big-five', levelId: 'lion', seat: 'both', hotSeat: true }, send);
+    const host = players.hostOf(send);
+    if (!host) throw new Error('no match');
+    host.stop();
+    expect(clock()).toMatchObject({
+      paused: false,
+      canControl: false,
+      planning: { left: { attacker: 3, defender: 3 }, by: null },
+    });
+    expect(players.list()[0]).toMatchObject({ hotSeat: true });
+
+    // Free pause and speed stay single-player only.
+    expect(players.setPaused(true, send).ok).toBe(false);
+    expect(players.setSpeed(2, send).ok).toBe(false);
+
+    // A pause ends by itself after 20 seconds.
+    players.planningPause('attacker', send);
+    expect(clock()).toMatchObject({ paused: true, planning: { by: 'attacker', secondsLeft: 20 } });
+    const tick = host.match.tick;
+    now += 19_000;
+    host.advance();
+    expect(host.match.tick).toBe(tick);
+    expect(clock()).toMatchObject({ paused: true });
+    now += 1_000;
+    host.advance();
+    expect(clock()).toMatchObject({
+      paused: false,
+      planning: { left: { attacker: 2, defender: 3 }, by: null },
+    });
+
+    // The other player can end a pause early; a second pause while one runs is ignored.
+    players.planningPause('defender', send);
+    players.planningPause('attacker', send);
+    expect(clock()).toMatchObject({ planning: { by: 'defender', left: { attacker: 2, defender: 2 } } });
+    players.setPaused(false, send);
+    expect(clock()).toMatchObject({ paused: false, planning: { by: null } });
+    now += 100;
+    host.advance();
+    expect(host.match.tick).toBeGreaterThan(tick);
+
+    for (let i = 0; i < 2; i++) {
+      players.planningPause('attacker', send);
+      players.setPaused(false, send);
+    }
+    expect(players.planningPause('attacker', send)).toMatchObject({ ok: false });
+    expect(errors()).toEqual([]);
+    expect(clock()).toMatchObject({ paused: false, planning: { left: { attacker: 0, defender: 2 } } });
+    players.stopAll();
+  });
+
+  it('refuses planning pauses outside hot-seat', async () => {
+    const { stages } = await loadAllStages(resolve(import.meta.dirname, '../../../content/stages'));
+    const players = new PlayerMatches(stages);
+    const send = () => undefined;
+    players.create(
+      { stageId: 'stage-01-big-five', levelId: 'lion', seat: 'defender', opponent: 'easy' },
+      send,
+    );
+    expect(players.planningPause('defender', send)).toMatchObject({
+      ok: false,
+      message: { type: 'error', code: 'notHotSeat' },
+    });
+    players.stopAll();
   });
 });
 

@@ -2,17 +2,11 @@ import type { AiThought } from '@gtd/ai';
 import type { Action, StagePack } from '@gtd/content-schema';
 import { createTranslator, type Translate } from '@gtd/i18n';
 import type { ComputerPlayer, MatchCommand, MatchSpeed } from '@gtd/protocol';
-import {
-  TARGET_PRIORITIES,
-  type DefenseEntity,
-  type GroupEntity,
-  type MatchSnapshot,
-  type WaveGroupOrder,
-} from '@gtd/sim';
+import { TARGET_PRIORITIES, type DefenseEntity, type GroupEntity, type MatchSnapshot } from '@gtd/sim';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { sounds, type SoundCue } from '../audio/sound';
 import { AbilityBar } from '../hud/AbilityBar';
-import { FORMATIONS, GroupList, GroupOrders, MAX_DRAFT_GROUPS, WaveBuilder } from '../hud/AttackerPanels';
+import { FORMATIONS, GroupList, GroupOrders, WaveBuilder } from '../hud/AttackerPanels';
 import { AssetList, AssetOrders, BuildBar } from '../hud/DefenderPanels';
 import {
   abilityAim,
@@ -36,6 +30,7 @@ import { LevelView, type MapPick } from '../world/levelView';
 import { currentDevice, resolvePreset } from '../world/presets';
 import type { MatchConfig } from './matchConfig';
 import { nextStep, noActions, type PlayerActions } from './tutorial';
+import { useWaveDrafts } from './useWaveDrafts';
 
 const KEPT_THOUGHTS = 40;
 /** How often the HUD redraws from snapshots; the 3D view uses every snapshot. */
@@ -122,16 +117,8 @@ export function MatchScreen({
   const [selection, setSelection] = useState<Selection>(null);
   const [mode, setMode] = useState<MapMode>(null);
   const [buildChoice, setBuildChoice] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<WaveGroupOrder[]>(() => [
-    {
-      unitTypeId: units[0]?.id ?? '',
-      count: 6,
-      formation: 'column',
-      routeId: level?.routes[0]?.id ?? '',
-      delaySeconds: 0,
-    },
-  ]);
-  const [currentDraft, setCurrentDraft] = useState(0);
+  const wave = useWaveDrafts(units, level);
+  const { drafts, current: currentDraft, update: updateDraft } = wave;
   const [hoverRoute, setHoverRoute] = useState<string | null>(null);
   const [hints, setHints] = useState<HintId[]>([]);
   const [tutorialStep, setTutorialStep] = useState(0);
@@ -336,23 +323,6 @@ export function MatchScreen({
     [buildChoice, mode, layout],
   );
 
-  const updateDraft = useCallback(
-    (index: number, patch: Partial<WaveGroupOrder>) =>
-      setDrafts((list) => list.map((d, i) => (i === index ? { ...d, ...patch } : d))),
-    [],
-  );
-  const addDraft = useCallback(() => {
-    setDrafts((list) => {
-      if (list.length >= MAX_DRAFT_GROUPS) return list;
-      const next = [...list, { ...(list[list.length - 1] as WaveGroupOrder) }];
-      setCurrentDraft(next.length - 1);
-      return next;
-    });
-  }, []);
-  const removeDraft = useCallback((index: number) => {
-    setDrafts((list) => (list.length > 1 ? list.filter((_, i) => i !== index) : list));
-    setCurrentDraft(0);
-  }, []);
   const launch = useCallback(
     () => command({ type: 'launchWave', side: 'attacker', groups: drafts }, 'launch'),
     [command, drafts],
@@ -685,7 +655,7 @@ export function MatchScreen({
         return side === 'attacker' ? groupCommand(slot) : assetCommand(slot);
       case 'unit': {
         const unit = units[slot - 1];
-        if (unit) updateDraft(currentDraft, { unitTypeId: unit.id });
+        if (unit) wave.unitKey(unit.id, event.shiftKey);
         return;
       }
       case 'route': {
@@ -694,20 +664,18 @@ export function MatchScreen({
         return;
       }
       case 'wave': {
-        if (slotText === 'formation') {
-          const draft = drafts[currentDraft];
-          const formation =
-            draft && FORMATIONS[(FORMATIONS.indexOf(draft.formation) + 1) % FORMATIONS.length];
-          if (formation) updateDraft(currentDraft, { formation });
-        }
-        if (slotText === 'addGroup') addDraft();
+        if (slotText === 'formation') wave.cycleFormation();
+        if (slotText === 'addGroup') wave.add();
         if (slotText === 'launch') launch();
         return;
       }
       case 'group': {
         if (ownGroups.length === 0) return;
         const index = ownGroups.findIndex((g) => g.id === selectedGroup?.id);
-        const next = ownGroups[(index + 1) % ownGroups.length] as GroupEntity;
+        const step = event.shiftKey ? ownGroups.length - 1 : 1;
+        const next = ownGroups[
+          (Math.max(index, event.shiftKey ? 0 : -1) + step) % ownGroups.length
+        ] as GroupEntity;
         select({ kind: 'group', id: next.id });
         viewRef.current?.focus(next.x, next.z);
         return;
@@ -856,14 +824,14 @@ export function MatchScreen({
         units={units}
         snapshot={snapshot}
         drafts={drafts}
-        current={Math.min(currentDraft, drafts.length - 1)}
+        current={currentDraft}
         compact={compact}
         t={t}
         stageText={stageText}
-        onCurrent={setCurrentDraft}
+        onCurrent={wave.setCurrent}
         onChange={updateDraft}
-        onAdd={addDraft}
-        onRemove={removeDraft}
+        onAdd={wave.add}
+        onRemove={wave.remove}
         onLaunch={launch}
       />
     ) : (
