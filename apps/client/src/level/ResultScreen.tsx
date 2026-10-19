@@ -12,6 +12,8 @@ interface Props {
   onBack(): void;
   /** A line from Chief Warden Guo for the player (single player). */
   quip?: { text: string; won: boolean; name: string };
+  /** Hot-seat: the two players' names, shown on their halves. */
+  names?: Partial<Record<Side, string>>;
 }
 
 const ATTACKER_STATS = [
@@ -33,7 +35,7 @@ const DEFENDER_STATS = [
  * The 50/50 result screen: Attacker always on the left, Defender on the right, the winner emphasised, and both sides'
  * performance shown, also for the side that lost.
  */
-export function ResultScreen({ result, stats, seat, t, onPlayAgain, onBack, quip }: Props) {
+export function ResultScreen({ result, stats, seat, t, onPlayAgain, onBack, quip, names }: Props) {
   const half = (side: Side) => {
     const won = result.winner === side;
     const rows: [string, string][] =
@@ -46,7 +48,10 @@ export function ResultScreen({ result, stats, seat, t, onPlayAgain, onBack, quip
     const mine = seat === side;
     return (
       <section className={`result-half ${side} ${won ? 'won' : 'lost'}`} data-testid={`result-${side}`}>
-        <p className="result-side">{t(`seat.${side}`)}</p>
+        <p className="result-side">
+          {t(`seat.${side}`)}
+          {names?.[side] && <span className="result-name"> · {names[side]}</span>}
+        </p>
         <h2>{won ? t('result.victory') : t('result.defeat')}</h2>
         <dl>
           {rows.map(([key, value]) => (

@@ -65,6 +65,9 @@ interface GroupInternals {
   unseenTicks: number;
   /** The roadblock the group is waiting in front of. */
   blockedBy: number | null;
+  /** A hold or reroute aimed at one node ahead rather than the next junction or shared node. */
+  holdNodeId: string | null;
+  switchNodeId: string | null;
 }
 
 interface PatrolInternals {
@@ -293,14 +296,19 @@ export class Match {
         if (!group) return 'unknownGroup';
         if (group.state === 'holding') return null;
         if (group.state !== 'moving' && group.state !== 'waiting') return 'cannotHold';
-        if (!this.junctionAhead(group)) return 'noJunctionAhead';
+        if (command.nodeId !== undefined) {
+          if (!this.graph.junctions.has(command.nodeId) || !this.nodesAhead(group).includes(command.nodeId))
+            return 'noJunctionAhead';
+        } else if (!this.junctionAhead(group)) return 'noJunctionAhead';
         group.holdAtJunction = true;
+        this.data(group).holdNodeId = command.nodeId ?? null;
         return null;
       }
       case 'advanceGroup': {
         const group = this.ownGroup(command.groupId);
         if (!group) return 'unknownGroup';
         group.holdAtJunction = false;
+        this.data(group).holdNodeId = null;
         if (group.state === 'holding') group.state = 'moving';
         return null;
       }
@@ -308,6 +316,17 @@ export class Match {
         const group = this.ownGroup(command.groupId);
         if (!group) return 'unknownGroup';
         if (!this.graph.routes.has(command.routeId)) return 'unknownRoute';
+        if (command.nodeId !== undefined && group.state !== 'holding') {
+          if (group.state !== 'moving' && group.state !== 'waiting') return 'cannotHold';
+          const target = (this.graph.routes.get(command.routeId) as { nodes: string[] }).nodes;
+          const at = target.indexOf(command.nodeId);
+          if (command.routeId === group.routeId || at < 0 || at >= target.length - 1)
+            return 'routeNotFromHere';
+          if (!this.nodesAhead(group).includes(command.nodeId)) return 'routeNotFromHere';
+          group.pendingRouteId = command.routeId;
+          this.data(group).switchNodeId = command.nodeId;
+          return null;
+        }
         if (group.state !== 'holding') return 'notHoldingAtJunction';
         return this.switchRoute(group, command.routeId) ? null : 'routeNotFromHere';
       }
@@ -470,6 +489,8 @@ export class Match {
         detectedTicks: 0,
         unseenTicks: 0,
         blockedBy: null,
+        holdNodeId: null,
+        switchNodeId: null,
       });
       this.usedRoutes.add(order.routeId);
       wave.groupIds.push(group.id);
@@ -720,6 +741,8 @@ export class Match {
         return () => {
           group.pendingRouteId = routeId;
           group.holdAtJunction = false;
+          this.data(group).switchNodeId = null;
+          this.data(group).holdNodeId = null;
         };
       }
       case 'resource':
@@ -875,12 +898,15 @@ export class Match {
       this.events.push({ tick: this.tickCount, type: 'groupReachedObjective', groupId: group.id });
       return;
     }
-    if (group.pendingRouteId && this.canSwitchAt(group, group.pendingRouteId)) {
+    const switchHere = data.switchNodeId === null || data.switchNodeId === nodeId;
+    if (group.pendingRouteId && switchHere && this.canSwitchAt(group, group.pendingRouteId)) {
       this.switchRoute(group, group.pendingRouteId);
       group.pendingRouteId = null;
     }
-    if (group.holdAtJunction && this.graph.junctions.has(nodeId)) {
+    const holdHere = data.holdNodeId === null || data.holdNodeId === nodeId;
+    if (group.holdAtJunction && holdHere && this.graph.junctions.has(nodeId)) {
       group.holdAtJunction = false;
+      data.holdNodeId = null;
       group.state = 'holding';
       this.events.push({ tick: this.tickCount, type: 'groupHolding', groupId: group.id, nodeId });
     }
@@ -908,13 +934,19 @@ export class Match {
     group.leg = route.nodes.indexOf(node);
     group.legDistance = 0;
     group.pendingRouteId = null;
+    this.data(group).switchNodeId = null;
     this.events.push({ tick: this.tickCount, type: 'groupRerouted', groupId: group.id, routeId });
     return true;
   }
 
   private junctionAhead(group: GroupEntity): boolean {
+    return this.nodesAhead(group).some((id) => this.graph.junctions.has(id));
+  }
+
+  /** Nodes still ahead of a group on its route, without the objective at the end. */
+  private nodesAhead(group: GroupEntity): string[] {
     const nodes = (this.graph.routes.get(group.routeId) as { nodes: string[] }).nodes;
-    return nodes.slice(group.leg + 1, -1).some((id) => this.graph.junctions.has(id));
+    return nodes.slice(group.leg + 1, -1);
   }
 
   private rerouteNodeAhead(group: GroupEntity, routeId: string): boolean {
@@ -938,7 +970,7 @@ export class Match {
     group.state = 'retreating';
     group.holdAtJunction = false;
     group.pendingRouteId = null;
-    this.data(group).blockedBy = null;
+    Object.assign(this.data(group), { blockedBy: null, holdNodeId: null, switchNodeId: null });
     this.events.push({ tick: this.tickCount, type: 'groupRetreating', groupId: group.id });
   }
 

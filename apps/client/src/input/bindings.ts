@@ -1,7 +1,7 @@
 import type { Side } from '@gtd/sim';
 
 /**
- * Keyboard shortcuts for single player (spec §5.2 and §15). Bindings are physical key positions
+ * Keyboard shortcuts for single player and for the Attacker in hot-seat (spec §5.2 and §15). Bindings are physical key positions
  * (`KeyboardEvent.code`), so `T Z U` stays three neighbouring keys on a German QWERTZ keyboard. Ability and command
  * slots follow the profile's own lists, so a new stage gets shortcuts without code.
  */
@@ -27,6 +27,11 @@ export const KEY_ACTIONS: KeyAction[] = [
   ...slots('command', 'keys.command', 'both', ['KeyX', 'KeyC', 'KeyV', 'KeyB', 'KeyN', 'KeyM']),
   ...slots('unit', 'keys.unit', 'attacker', ['Digit1', 'Digit2', 'Digit3', 'Digit4']),
   ...slots('route', 'keys.route', 'attacker', ['KeyT', 'KeyY', 'KeyU']),
+  // The junction cursor on the hot-seat route schematic.
+  { id: 'cursor.up', label: 'keys.cursorUp', side: 'attacker', defaultKey: 'KeyW' },
+  { id: 'cursor.left', label: 'keys.cursorLeft', side: 'attacker', defaultKey: 'KeyA' },
+  { id: 'cursor.down', label: 'keys.cursorDown', side: 'attacker', defaultKey: 'KeyS' },
+  { id: 'cursor.right', label: 'keys.cursorRight', side: 'attacker', defaultKey: 'KeyD' },
   { id: 'wave.formation', label: 'keys.formation', side: 'attacker', defaultKey: 'KeyR' },
   { id: 'wave.addGroup', label: 'keys.addGroup', side: 'attacker', defaultKey: 'Enter' },
   { id: 'wave.launch', label: 'keys.launch', side: 'attacker', defaultKey: 'Space' },

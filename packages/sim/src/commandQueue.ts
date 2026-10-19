@@ -22,11 +22,12 @@ export interface LaunchWaveCommand extends CommandBase {
   groups: WaveGroupOrder[];
 }
 
-/** Stop at the next junction (or stay, when already holding). */
+/** Stop at the next junction, or at a chosen junction further ahead (or stay, when already holding). */
 export interface HoldGroupCommand extends CommandBase {
   type: 'holdGroup';
   side: 'attacker';
   groupId: number;
+  nodeId?: string;
 }
 
 /** Resume a holding group, or cancel a pending hold. */
@@ -36,12 +37,16 @@ export interface AdvanceGroupCommand extends CommandBase {
   groupId: number;
 }
 
-/** Change route while holding at a junction that lies on the new route. */
+/**
+ * Change route while holding at a junction that lies on the new route; or, with `nodeId`, switch to it on arriving at
+ * that node ahead (both routes must pass it).
+ */
 export interface RerouteGroupCommand extends CommandBase {
   type: 'rerouteGroup';
   side: 'attacker';
   groupId: number;
   routeId: string;
+  nodeId?: string;
 }
 
 /** Walk back to the spawn point; part of the capacity and supplies is refunded when the group leaves. */

@@ -7,6 +7,8 @@ interface Props {
   connection: ServerConnection;
   /** Lion (the first level) is installed, so there is something to play. */
   playable: boolean;
+  /** Hot-seat needs a keyboard and a mouse (PC only). */
+  hotSeatAvailable: boolean;
   onSinglePlayer(): void;
   onTutorial(): void;
   onTwoPlayers(): void;
@@ -20,6 +22,7 @@ export function MainMenu({
   t,
   connection,
   playable,
+  hotSeatAvailable,
   onSinglePlayer,
   onTutorial,
   onTwoPlayers,
@@ -59,11 +62,11 @@ export function MainMenu({
             type="button"
             className="menu-button"
             onClick={onTwoPlayers}
-            disabled={!playable}
+            disabled={!playable || !hotSeatAvailable}
             data-testid="menu-two-players"
           >
             <strong>{t('menu.twoPlayers')}</strong>
-            <span>{t('menu.twoPlayersHint')}</span>
+            <span>{hotSeatAvailable ? t('menu.twoPlayersHint') : t('menu.twoPlayersPcOnly')}</span>
           </button>
           <div className="menu-row">
             <button type="button" className="menu-button small" onClick={onManual} data-testid="menu-manual">

@@ -1,6 +1,8 @@
 import { createAi, type Controller, type Difficulty } from '@gtd/ai';
 import { createMatchSetup, type StagePack } from '@gtd/content-schema';
 import {
+  PLANNING_PAUSES,
+  PLANNING_PAUSE_SECONDS,
   seatControls,
   withTick,
   type ComputerPlayer,
@@ -25,6 +27,13 @@ interface PlayerMatch {
   computer?: ComputerPlayer;
   /** A guided tutorial: never counts for progress. */
   tutorial: boolean;
+  /** Two people on one PC: planning pauses (spec §5.2) instead of free pause and speed. */
+  hotSeat?: {
+    left: Record<Side, number>;
+    by: Side | null;
+    /** When the running pause ends by itself (the match clock's milliseconds). */
+    endsAt: number;
+  };
   /** Where the match's event log was last read, to tell players about their rejected commands. */
   eventIndex: number;
 }
@@ -54,6 +63,8 @@ export class PlayerMatches {
       onWin?(win: SinglePlayerWin): void;
       /** Injectable clock for tests. */
       now?: () => number;
+      /** Injectable match seed for tests (normally taken from the clock, so every match plays out differently). */
+      seed?: () => number;
     } = {},
   ) {}
 
@@ -67,11 +78,14 @@ export class PlayerMatches {
       opponent?: Difficulty;
       showAiReasoning?: boolean;
       tutorial?: boolean;
+      hotSeat?: boolean;
     },
     send: Send,
   ): boolean {
     // The computer takes the side the person leaves free, so the person must pick one side.
     if (request.opponent && request.seat !== 'attacker' && request.seat !== 'defender') return false;
+    // Hot-seat: both people share one screen, so one connection plays both sides.
+    if (request.hotSeat && (request.seat !== 'both' || request.opponent)) return false;
     const pack = this.stages.find((stage) => stage.manifest.id === request.stageId);
     if (!pack?.levels.some((level) => level.id === request.levelId)) return false;
     const attackerProfileId = request.attackerProfileId ?? (pack.manifest.profiles.attacker[0] as string);
@@ -82,7 +96,7 @@ export class PlayerMatches {
         levelId: request.levelId,
         attackerProfileId,
         defenderProfileId,
-        seed: Date.now() % 1_000_000,
+        seed: this.options.seed?.() ?? Date.now() % 1_000_000,
       });
     } catch {
       return false;
@@ -108,6 +122,9 @@ export class PlayerMatches {
       players: new Map(),
       ...(computer ? { computer } : {}),
       tutorial: request.tutorial === true && computer !== undefined,
+      ...(request.hotSeat
+        ? { hotSeat: { left: { attacker: PLANNING_PAUSES, defender: PLANNING_PAUSES }, by: null, endsAt: 0 } }
+        : {}),
       eventIndex: 0,
       started: {
         type: 'matchStarted',
@@ -123,6 +140,7 @@ export class PlayerMatches {
         ...controllers,
         onFrame: (m) => this.frame(match, m),
         onEnd: () => this.ended(match),
+        onPaused: () => this.checkPlanningPause(match),
         ...(this.options.now ? { now: this.options.now } : {}),
       }),
     };
@@ -132,8 +150,13 @@ export class PlayerMatches {
     return true;
   }
 
-  /** Pause or resume a single-player match (a person against the computer). */
+  /** Pause or resume a single-player match (a person against the computer); in hot-seat, end a planning pause. */
   setPaused(paused: boolean, send: Send): Result<null> {
+    const hotSeat = this.matchOf(send);
+    if (hotSeat?.hotSeat && !paused && hotSeat.players.get(send) !== 'spectator') {
+      this.endPlanningPause(hotSeat);
+      return { ok: true, value: null };
+    }
     const match = this.singlePlayerMatchOf(send);
     if (!match.ok) return match;
     match.value.host.paused = paused;
@@ -146,6 +169,24 @@ export class PlayerMatches {
     if (!match.ok) return match;
     match.value.host.speed = speed;
     this.broadcastClock(match.value);
+    return { ok: true, value: null };
+  }
+
+  /** Hot-seat: a player pauses the match to plan, if they have a pause left and none is running. */
+  planningPause(side: Side, send: Send): Result<null> {
+    const match = this.matchOf(send);
+    if (!match) return { ok: false, message: error('notInMatch', 'Join a match first.') };
+    const state = match.hotSeat;
+    if (!state || !seatControls(match.players.get(send) as Seat, side))
+      return { ok: false, message: error('notHotSeat', 'Planning pauses are for hot-seat matches.') };
+    if (match.host.paused || match.host.match.isOver) return { ok: true, value: null };
+    if (state.left[side] <= 0)
+      return { ok: false, message: error('noPausesLeft', 'No planning pauses are left.') };
+    state.left[side]--;
+    state.by = side;
+    state.endsAt = this.now() + PLANNING_PAUSE_SECONDS * 1000;
+    match.host.paused = true;
+    this.broadcastClock(match);
     return { ok: true, value: null };
   }
 
@@ -189,6 +230,7 @@ export class PlayerMatches {
       levelId: match.levelId,
       seats: [...match.players.values()],
       ...(match.computer ? { computer: match.computer } : {}),
+      ...(match.hotSeat ? { hotSeat: true as const } : {}),
       phase: match.host.match.phase,
     }));
   }
@@ -225,13 +267,38 @@ export class PlayerMatches {
   }
 
   private clockOf(match: PlayerMatch): ServerMessage {
+    const state = match.hotSeat;
     return {
       type: 'clock',
       matchId: match.matchId,
       paused: match.host.paused,
       speed: match.host.speed,
       canControl: match.computer !== undefined,
+      ...(state
+        ? {
+            planning: {
+              left: { ...state.left },
+              by: state.by,
+              secondsLeft: state.by ? Math.max(0, Math.ceil((state.endsAt - this.now()) / 1000)) : 0,
+            },
+          }
+        : {}),
     };
+  }
+
+  private checkPlanningPause(match: PlayerMatch): void {
+    if (match.hotSeat?.by && this.now() >= match.hotSeat.endsAt) this.endPlanningPause(match);
+  }
+
+  private endPlanningPause(match: PlayerMatch): void {
+    if (!match.hotSeat?.by) return;
+    match.hotSeat.by = null;
+    match.host.paused = false;
+    this.broadcastClock(match);
+  }
+
+  private now(): number {
+    return this.options.now?.() ?? performance.now();
   }
 
   private broadcastClock(match: PlayerMatch): void {
@@ -271,7 +338,7 @@ export class PlayerMatches {
       });
       for (const event of rejected)
         if (seatControls(seat, event.side))
-          send({ type: 'commandRejected', command: event.command, reason: event.reason });
+          send({ type: 'commandRejected', command: event.command, reason: event.reason, side: event.side });
     }
   }
 }
@@ -282,7 +349,14 @@ function viewOf(seat: Seat): Side | null {
 }
 
 function error(
-  code: 'unknownMatch' | 'notYourSide' | 'notInMatch' | 'seatTaken' | 'notSinglePlayer',
+  code:
+    | 'unknownMatch'
+    | 'notYourSide'
+    | 'notInMatch'
+    | 'seatTaken'
+    | 'notSinglePlayer'
+    | 'notHotSeat'
+    | 'noPausesLeft',
   message: string,
 ): ServerMessage {
   return { type: 'error', code, message };

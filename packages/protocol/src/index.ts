@@ -4,7 +4,7 @@ import type { Command, MatchSnapshot, Side } from '@gtd/sim';
 import { z } from 'zod';
 
 /** Bumped whenever a message changes shape, so an old browser tab gets a clear "please reload" instead of errors. */
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 export const WEBSOCKET_PATH = '/ws';
 
 const language = z.enum(LANGUAGES);
@@ -137,9 +137,17 @@ export const MatchCommandSchema = z.discriminatedUnion('type', [
       .min(1)
       .max(8),
   }),
-  z.object({ type: z.literal('holdGroup'), side: attacker, groupId: entityId }),
+  /** `nodeId`: hold at that junction ahead instead of the next one (hot-seat junction cursor). */
+  z.object({ type: z.literal('holdGroup'), side: attacker, groupId: entityId, nodeId: contentId.optional() }),
   z.object({ type: z.literal('advanceGroup'), side: attacker, groupId: entityId }),
-  z.object({ type: z.literal('rerouteGroup'), side: attacker, groupId: entityId, routeId: contentId }),
+  /** `nodeId`: switch on arriving at that node ahead, without stopping (hot-seat junction cursor). */
+  z.object({
+    type: z.literal('rerouteGroup'),
+    side: attacker,
+    groupId: entityId,
+    routeId: contentId,
+    nodeId: contentId.optional(),
+  }),
   z.object({ type: z.literal('retreatGroup'), side: attacker, groupId: entityId }),
   z.object({ type: z.literal('setFormation'), side: attacker, groupId: entityId, formation }),
   z.object({ type: z.literal('placeDefense'), side: defender, defenseTypeId: contentId, nodeId: contentId }),
@@ -194,6 +202,19 @@ export function seatControls(seat: Seat, side: Side): boolean {
 
 export type MatchSpeed = 1 | 2;
 
+/** Hot-seat (spec §5.2): each player may pause the match this many times, for up to this long each. */
+export const PLANNING_PAUSES = 3;
+export const PLANNING_PAUSE_SECONDS = 20;
+
+/** The planning pauses of a hot-seat match: how many each player has left, and the one running now. */
+export interface PlanningPauses {
+  left: Record<Side, number>;
+  /** Who paused the match, while a planning pause runs. */
+  by: Side | null;
+  /** Seconds until the running pause ends by itself. */
+  secondsLeft: number;
+}
+
 /** The side the computer plays in a match against the AI, and how well. */
 export interface ComputerPlayer {
   side: Side;
@@ -208,6 +229,8 @@ export interface MatchSummary {
   seats: Seat[];
   /** Set when the computer plays one side; that seat cannot be joined. */
   computer?: ComputerPlayer;
+  /** Two people on one PC (one seat plays both sides). */
+  hotSeat?: true;
   phase: MatchSnapshot['phase'];
 }
 
@@ -238,6 +261,8 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
     showAiReasoning: z.boolean().optional(),
     /** A guided tutorial match: it does not count for progress. */
     tutorial: z.boolean().optional(),
+    /** Two people on one PC (spec §5.2): needs the `both` seat and no computer; planning pauses instead of pause. */
+    hotSeat: z.boolean().optional(),
   }),
   z.object({ type: z.literal('joinMatch'), matchId: contentId, seat: z.enum(SEATS) }),
   z.object({ type: z.literal('leaveMatch') }),
@@ -246,6 +271,8 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
   /** Single player only (a person against the computer): pause or resume, and 1× or 2× speed (spec §6.2). */
   z.object({ type: z.literal('setPaused'), paused: z.boolean() }),
   z.object({ type: z.literal('setSpeed'), speed: z.union([z.literal(1), z.literal(2)]) }),
+  /** Hot-seat: one player takes a planning pause; `setPaused` with `paused: false` lets either player end it early. */
+  z.object({ type: z.literal('planningPause'), side }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
@@ -265,11 +292,21 @@ export type ServerMessage =
   /** One round of the computer's reasoning, sent only when the match was started with `showAiReasoning`. */
   | { type: 'aiThought'; matchId: string; thought: AiThought }
   | { type: 'joined'; matchId: string; seat: Seat }
-  /** Whether the match clock runs and how fast; `canControl` is true in single player, where pause and speed work. */
-  | { type: 'clock'; matchId: string; paused: boolean; speed: MatchSpeed; canControl: boolean }
+  /**
+   * Whether the match clock runs and how fast; `canControl` is true in single player, where pause and speed work.
+   * Hot-seat matches add their planning pauses.
+   */
+  | {
+      type: 'clock';
+      matchId: string;
+      paused: boolean;
+      speed: MatchSpeed;
+      canControl: boolean;
+      planning?: PlanningPauses;
+    }
   | { type: 'matches'; matches: MatchSummary[] }
   /** Why the simulation refused one of this connection's commands (e.g. `notEnoughResources`). */
-  | { type: 'commandRejected'; command: string; reason: string }
+  | { type: 'commandRejected'; command: string; reason: string; side: Side }
   | {
       type: 'error';
       code:
@@ -280,7 +317,9 @@ export type ServerMessage =
         | 'notYourSide'
         | 'notInMatch'
         | 'seatTaken'
-        | 'notSinglePlayer';
+        | 'notSinglePlayer'
+        | 'notHotSeat'
+        | 'noPausesLeft';
       message: string;
     };
 

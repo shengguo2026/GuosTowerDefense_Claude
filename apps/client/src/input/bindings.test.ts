@@ -27,7 +27,8 @@ describe('key bindings', () => {
     expect(actionForKey('Digit1', 'attacker', DEFAULT_BINDINGS)).toBe('unit.1');
     expect(actionForKey('Digit1', 'defender', DEFAULT_BINDINGS)).toBe('build.1');
     expect(actionForKey('KeyP', 'defender', DEFAULT_BINDINGS)).toBe('match.pause');
-    expect(actionForKey('KeyW', 'attacker', DEFAULT_BINDINGS)).toBeNull();
+    expect(actionForKey('KeyW', 'attacker', DEFAULT_BINDINGS)).toBe('cursor.up');
+    expect(actionForKey('KeyW', 'defender', DEFAULT_BINDINGS)).toBeNull();
   });
 
   it('labels keys in the player layout when known', () => {

@@ -210,6 +210,11 @@ export function createGameServer(options: GameServerOptions): Server {
           if (!done.ok) send(done.message);
           return;
         }
+        case 'planningPause': {
+          const done = players.planningPause(message.side, send);
+          if (!done.ok) send(done.message);
+          return;
+        }
       }
     });
   }

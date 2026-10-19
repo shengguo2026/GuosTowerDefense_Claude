@@ -2466,3 +2466,284 @@ kbd {
 .layout-phone.drawer-open .hud-bottom {
   display: none;
 }
+
+/* Hot-seat (spec §5.2): Attacker panels on the left half, Defender panels on the right half */
+.hotseat-top {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  align-items: center;
+}
+.hot-side,
+.hot-centre {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.hot-side.defender {
+  justify-content: flex-end;
+}
+.hot-centre {
+  justify-content: center;
+}
+.hot-side .badge {
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+}
+.planning-pause {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 22px;
+}
+.planning-pause .pauses-left {
+  min-width: 20px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: white;
+  font-size: 0.8em;
+  text-align: center;
+}
+.hot-side.defender .planning-pause {
+  padding-right: 10px;
+}
+.hot-half {
+  position: absolute;
+  top: 66px;
+  bottom: 232px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 330px;
+  pointer-events: none;
+}
+.hot-half > * {
+  pointer-events: auto;
+}
+.hot-half.attacker {
+  left: 10px;
+}
+.hot-half.defender {
+  right: 10px;
+  width: 290px;
+}
+.hot-half.attacker > .hud-panel {
+  box-shadow:
+    inset 4px 0 0 var(--attacker),
+    var(--shadow);
+}
+.hot-half.defender > .hud-panel {
+  box-shadow:
+    inset -4px 0 0 var(--defender),
+    var(--shadow);
+}
+.hot-half .notice {
+  position: static;
+  transform: none;
+  max-width: none;
+}
+.hot-half .notice .small {
+  margin-left: 8px;
+}
+.hot-half .minimap svg {
+  width: 100%;
+  height: auto;
+  max-height: 200px;
+}
+.hot-bottom {
+  position: absolute;
+  bottom: 10px;
+  width: calc(50% - 15px);
+  pointer-events: none;
+}
+.hot-bottom > * {
+  pointer-events: auto;
+}
+.hot-bottom.attacker {
+  left: 10px;
+}
+.hot-bottom.defender {
+  right: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+.hot-bottom .wave-builder {
+  box-shadow:
+    inset 0 4px 0 var(--attacker),
+    var(--shadow);
+}
+.hot-bottom .build-bar {
+  box-shadow:
+    inset 0 4px 0 var(--defender),
+    var(--shadow);
+}
+.paused-banner.planning {
+  flex-direction: column;
+  white-space: normal;
+  text-align: center;
+}
+.paused-banner .countdown {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.75em;
+  color: var(--ink-soft);
+}
+
+/* Route schematic with the junction cursor */
+.schematic h3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.schematic h3 .keys {
+  display: inline-flex;
+  gap: 3px;
+}
+.schematic h3 .key-hint {
+  position: static;
+}
+.schematic svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  background: #e9dfc4;
+}
+.schematic-node rect,
+.schematic-node circle {
+  fill: white;
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+.schematic-node.junction rect {
+  fill: #ffe7cf;
+}
+.schematic-node.objective circle {
+  fill: #6fb8d8;
+}
+.schematic-node.spawn circle {
+  fill: var(--attacker);
+}
+.schematic-group {
+  fill: var(--attacker);
+  stroke: white;
+  stroke-width: 1.5;
+}
+.schematic-group.hidden {
+  fill: #9aa3ad;
+  stroke-dasharray: 2 2;
+}
+.schematic-group.selected {
+  stroke: var(--ink);
+  stroke-width: 2.5;
+}
+.schematic-cursor {
+  fill: none;
+  stroke: #ff8a1f;
+  stroke-width: 3.5;
+  animation: cursor-pulse 1.2s ease-in-out infinite;
+}
+@keyframes cursor-pulse {
+  50% {
+    stroke-width: 1.5;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .schematic-cursor {
+    animation: none;
+  }
+}
+.schematic-at {
+  margin: 6px 0 0;
+  font-size: 0.82em;
+}
+
+/* Command wheel (Defender right click) */
+.command-wheel {
+  position: fixed;
+  z-index: 40;
+  width: 1px;
+  height: 1px;
+}
+.command-wheel button {
+  position: absolute;
+  left: 0;
+  top: 0;
+  translate: -50% -50%;
+  font: inherit;
+  cursor: pointer;
+}
+.wheel-centre {
+  width: 74px;
+  height: 74px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--defender);
+  color: white;
+  font-size: 0.75em !important;
+  font-weight: 600 !important;
+  box-shadow: var(--shadow);
+}
+.wheel-centre span {
+  display: block;
+  padding: 0 6px;
+  line-height: 1.15;
+}
+.wheel-item {
+  min-width: 92px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-solid);
+  font-size: 0.82em !important;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+}
+.wheel-item:hover:not(:disabled),
+.wheel-item:focus-visible {
+  background: var(--defender);
+  color: white;
+}
+.wheel-item:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Hot-seat setup and briefing */
+.hot-players {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.hot-player.attacker {
+  border-top: 4px solid var(--attacker);
+}
+.hot-player.defender {
+  border-top: 4px solid var(--defender);
+}
+@media (max-width: 900px) {
+  .hot-players {
+    grid-template-columns: 1fr;
+  }
+}
+.briefing-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.briefing-side h2 {
+  margin: 0 0 6px;
+  font-size: 1em;
+}
+.briefing-side.attacker h2 {
+  color: var(--attacker);
+}
+.briefing-side.defender h2 {
+  color: var(--defender);
+}
+.result-name {
+  font-weight: 400;
+}

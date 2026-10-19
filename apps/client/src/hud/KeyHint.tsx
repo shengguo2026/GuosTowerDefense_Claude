@@ -26,6 +26,12 @@ export function KeysProvider({
   return <KeysContext.Provider value={{ bindings, layout, show }}>{children}</KeysContext.Provider>;
 }
 
+/** Leaves out key hints inside it: the hot-seat Defender plays with the mouse only and has no keys (spec §5.2). */
+export function NoKeyHints({ children }: { children: React.ReactNode }) {
+  const keys = useContext(KeysContext);
+  return <KeysContext.Provider value={{ ...keys, show: false }}>{children}</KeysContext.Provider>;
+}
+
 export function useKeyLabel(): (action: string) => string | null {
   const { bindings, layout } = useContext(KeysContext);
   return (action) => {
