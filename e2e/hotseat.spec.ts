@@ -35,9 +35,11 @@ test('two people play at one PC: keyboard Attacker on the left, mouse Defender o
   await expect(page.getByTestId('hotseat-setup')).toBeVisible();
   await page.getByTestId('name-attacker').fill('Lena');
   await page.getByTestId('name-defender').fill('Guo');
+  await page.screenshot({ path: testInfo.outputPath('hotseat-setup.png') });
   await page.getByTestId('to-briefing').click();
   await expect(page.getByTestId('briefing-attacker')).toContainText('Lena');
   await expect(page.getByTestId('briefing-defender')).toContainText('Guo');
+  await page.screenshot({ path: testInfo.outputPath('hotseat-briefing.png') });
   await page.getByTestId('start-match').click();
   await expect(page.getByTestId('level-canvas')).toHaveAttribute('data-rendered', 'true', {
     timeout: 30_000,
@@ -59,6 +61,7 @@ test('two people play at one PC: keyboard Attacker on the left, mouse Defender o
   post = await mapPoint(page, -16, 19);
   await page.mouse.click(post.x, post.y, { button: 'right' });
   await expect(page.getByTestId('command-wheel')).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('hotseat-wheel.png') });
   await page.getByTestId('wheel-upgrade').click();
   await expect(page.getByTestId('command-wheel')).toBeHidden();
   await expect(page.getByTestId('asset-orders')).toContainText('Level 2');

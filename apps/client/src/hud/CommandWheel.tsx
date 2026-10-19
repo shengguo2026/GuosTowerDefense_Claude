@@ -17,7 +17,7 @@ interface Props {
   onClose(): void;
 }
 
-const RADIUS = 78;
+const RADIUS = 112;
 
 /**
  * Right click on an own asset (spec §5.2): the asset's orders in a ring around the pointer, so the Defender never
