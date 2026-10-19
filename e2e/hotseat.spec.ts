@@ -65,6 +65,11 @@ test('two people play at one PC: keyboard Attacker on the left, mouse Defender o
   await page.getByTestId('wheel-upgrade').click();
   await expect(page.getByTestId('command-wheel')).toBeHidden();
   await expect(page.getByTestId('asset-orders')).toContainText('Level 2');
+  // Sell it again through the wheel, so no defense can spot the wave and the hidden mark below does not race it.
+  post = await mapPoint(page, -16, 19);
+  await page.mouse.click(post.x, post.y, { button: 'right' });
+  await page.getByTestId('wheel-sell').click();
+  await expect(page.locator('.minimap-defense')).toHaveCount(0);
 
   // Attacker: W A S D move the junction cursor; 1 adds a member, Shift+1 takes one away; Y picks route 2.
   const cursor = page.getByTestId('schematic-cursor');
