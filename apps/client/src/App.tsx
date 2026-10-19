@@ -12,6 +12,7 @@ import { LevelScreen } from './level/LevelScreen';
 import { HotSeatScreen } from './match/HotSeatScreen';
 import { MatchScreen } from './match/MatchScreen';
 import type { HotSeatConfig, MatchConfig } from './match/matchConfig';
+import { isPcWithMouse } from './menu/device';
 import { HotSeatSetup } from './menu/HotSeatSetup';
 import { MainMenu } from './menu/MainMenu';
 import { ManualScreen } from './menu/ManualScreen';
@@ -64,8 +65,7 @@ export function App() {
   const [lastHotSeat, setLastHotSeat] = useState<HotSeatConfig | undefined>(undefined);
   const [pack, setPack] = useState<StagePack | null>(null);
   const [touch] = useState(() => window.matchMedia('(pointer: coarse)').matches);
-  // Hot-seat needs a keyboard and a mouse: PC only (spec §5.2).
-  const [hasMouse] = useState(() => window.matchMedia('(any-pointer: fine)').matches);
+  const [hasMouse] = useState(() => isPcWithMouse());
   const lionAvailable = connection.stages.some((stage) => stage.id === LION.stageId);
   const matchStage = screen.name === 'match' || screen.name === 'hotseat' ? screen.config.stageId : null;
 
