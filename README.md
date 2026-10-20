@@ -7,9 +7,22 @@ non-lethal defenses to stop them. The PC hosts the game; tablets and phones on t
 - What the game does: [`docs/specification_GuosTowerDefense.md`](docs/specification_GuosTowerDefense.md)
 - How it is built, milestone by milestone: [`docs/implementation_plan_GuosTowerDefense.md`](docs/implementation_plan_GuosTowerDefense.md)
 
+## Play (packaged build)
+
+`npm run package` makes `release/GuosTowerDefense-<version>-win-x64.zip` (add `-- --target linux-x64` or
+`-- --target darwin-arm64` for other systems). The zip holds the game, its own Node.js runtime and `start.bat`: unzip it
+anywhere, double-click `start.bat`, and the browser opens. Nothing needs to be installed. The launcher checks the game
+files and the `user-data` folder, takes the first free port from 3000, waits until the game answers and opens the
+browser. Pictures in `assets/art` are packed as they are on the PC that builds the zip.
+
+**Tablets and phones:** main menu › **Tablet or phone** on the PC. The first time on Windows a screen explains the
+firewall question ("Private networks", "Allow access"); then the PC shows a QR code and the address with the actual port.
+A tablet or phone in the same Wi-Fi opens it and plays single player by touch. The game remembers the choice and shares
+again at the next start; **Stop sharing** closes it. Without this, the game listens only on the PC itself.
+
 ## Play (development build)
 
-Needs [Node.js](https://nodejs.org) 20.19 or newer (LTS). The packaged build in milestone M6 bundles its own runtime.
+Needs [Node.js](https://nodejs.org) 20.19 or newer (LTS).
 
 | Windows | macOS / Linux | What it does |
 |---|---|---|
@@ -36,7 +49,7 @@ packages/test-kit/      headless match runner and scripted controllers
 content/stages/         stage packs (test-stage proves stage independence)
 docs/                   specification, plan, masterplan, art prompts
 e2e/                    Playwright browser tests
-tools/                  launcher and helper scripts
+tools/                  launcher, packaging and helper scripts
 ```
 
 ## Checks
@@ -48,6 +61,7 @@ npm run test:e2e           # browser tests at desktop 1920×1080, tablet 1180×8
 npm run validate:content   # validate every stage pack
 npm run simulate           # headless matches of every level and profile pairing of the test stage
 npm run balance            # 200 AI-vs-AI matches of Lion per difficulty; add --matrix for every pairing
+npm run package            # player zip with bundled Node.js runtime (release/)
 ```
 
 ## Branches

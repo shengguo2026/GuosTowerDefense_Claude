@@ -1,4 +1,5 @@
 import type { StagePack } from '@gtd/content-schema';
+import type { NetworkInfo } from '@gtd/protocol';
 import type { Side } from '@gtd/sim';
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
@@ -16,6 +17,8 @@ import { isPcWithMouse } from './menu/device';
 import { HotSeatSetup } from './menu/HotSeatSetup';
 import { MainMenu } from './menu/MainMenu';
 import { ManualScreen } from './menu/ManualScreen';
+import { RotateHint } from './menu/RotateHint';
+import { ShareScreen } from './menu/ShareScreen';
 import { SinglePlayerSetup } from './menu/SinglePlayerSetup';
 import { WorldCanvas } from './scene/WorldCanvas';
 import { useServerConnection } from './useServerConnection';
@@ -31,6 +34,7 @@ type Screen =
   | { name: 'hotseat-setup' }
   | { name: 'hotseat'; config: HotSeatConfig }
   | { name: 'manual' }
+  | { name: 'share' }
   /** The M2/M3 level screen: the server's demo match, or the debug seat picker (`#lion-match`). */
   | { name: 'level'; mode: 'demo' | 'play' };
 
@@ -66,6 +70,7 @@ export function App() {
   const [pack, setPack] = useState<StagePack | null>(null);
   const [touch] = useState(() => window.matchMedia('(pointer: coarse)').matches);
   const [hasMouse] = useState(() => isPcWithMouse());
+  const [network, setNetwork] = useState<NetworkInfo | null>(null);
   const lionAvailable = connection.stages.some((stage) => stage.id === LION.stageId);
   const matchStage = screen.name === 'match' || screen.name === 'hotseat' ? screen.config.stageId : null;
 
@@ -88,6 +93,19 @@ export function App() {
       cancelled = true;
     };
   }, [matchStage, offerOpen, pack]);
+
+  // Whether this browser is the PC or a tablet or phone that joined it, and where the game is shared (menu line).
+  useEffect(() => {
+    if (screen.name !== 'menu') return;
+    let cancelled = false;
+    api.network().then(
+      (info) => !cancelled && setNetwork(info),
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [screen.name]);
 
   // First launch: offer a tutorial once, after the language is chosen.
   const firstLaunch = loaded && !needsLanguageChoice && !current.onboarding.tutorialOffered && lionAvailable;
@@ -168,6 +186,7 @@ export function App() {
           {(screen.name === 'menu' ||
             screen.name === 'setup' ||
             screen.name === 'hotseat-setup' ||
+            screen.name === 'share' ||
             screen.name === 'manual') && <WorldCanvas />}
 
           {screen.name === 'menu' && (
@@ -191,9 +210,11 @@ export function App() {
               connection={connection}
               playable={lionAvailable}
               hotSeatAvailable={hasMouse}
+              network={network}
               onSinglePlayer={() => setScreen({ name: 'setup' })}
               onTutorial={() => setOfferOpen(true)}
               onTwoPlayers={() => setScreen({ name: 'hotseat-setup' })}
+              onShare={() => setScreen({ name: 'share' })}
               onManual={() => setScreen({ name: 'manual' })}
               onSettings={() => setSettingsOpen(true)}
               onDemo={() => setScreen({ name: 'level', mode: 'demo' })}
@@ -227,6 +248,7 @@ export function App() {
               onBack={toMenu}
             />
           )}
+          {screen.name === 'share' && <ShareScreen t={t} onBack={toMenu} />}
           {screen.name === 'manual' && (
             <ManualScreen stageId={LION.stageId} language={language} t={t} onBack={toMenu} />
           )}
@@ -241,6 +263,7 @@ export function App() {
             </div>
           )}
 
+          {touch && <RotateHint t={t} />}
           {needsLanguageChoice && (
             <LanguagePicker suggested={suggested} onChoose={(choice) => void update({ language: choice })} />
           )}

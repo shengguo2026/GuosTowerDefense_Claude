@@ -9,3 +9,5 @@ playwright-report/
 Thumbs.db
 .vite/
 *.tsbuildinfo
+release/
+.cache/

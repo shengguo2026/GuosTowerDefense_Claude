@@ -5,16 +5,19 @@ import type { AddressInfo } from 'node:net';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import type { StagePack } from '@gtd/content-schema';
 import {
+  NetworkPatchSchema,
   PROTOCOL_VERSION,
   SettingsPatchSchema,
   WEBSOCKET_PATH,
   parseClientMessage,
   type HealthResponse,
+  type NetworkInfo,
   type ServerMessage,
   type StageSummary,
 } from '@gtd/protocol';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DemoMatches } from './demoMatches';
+import { isLoopback, lanAddresses, LanSharing } from './network';
 import { PlayerMatches } from './playerMatches';
 import type { SaveManager } from './saveManager';
 
@@ -28,6 +31,12 @@ export interface GameServerOptions {
   showDevStages?: boolean;
   /** Folder with Codex art and textures, served under /art/. */
   artDir?: string;
+  /** Opens the game to phones and tablets on request; defaults to the PC's real network addresses. */
+  lan?: LanSharing;
+  /** The server listens on every network already (`GTD_HOST=0.0.0.0`): sharing is always on. */
+  listensEverywhere?: boolean;
+  /** Operating system of the PC (for the Windows firewall explainer); defaults to this one. */
+  platform?: NodeJS.Platform;
 }
 
 export interface RunningGameServer {
@@ -77,6 +86,27 @@ export function createGameServer(options: GameServerOptions): Server {
       levelCount: stage.levels.length,
     }));
 
+  const lan = options.lan ?? new LanSharing();
+  /** Phones and tablets connected over the WebSocket, by network address. */
+  const guestSockets = new Map<WebSocket, string>();
+  const port = () => (server.address() as AddressInfo | null)?.port ?? 0;
+
+  function networkInfo(req: IncomingMessage): NetworkInfo {
+    const everywhere = options.listensEverywhere === true;
+    const save = options.saves.data.network;
+    return {
+      host: isLoopback(req.socket.remoteAddress),
+      sharing: everywhere || lan.active,
+      fixed: everywhere,
+      port: port(),
+      addresses: (everywhere ? lanAddresses() : lan.open).map((address) => `http://${address}:${port()}/`),
+      failed: everywhere ? [] : lan.failed,
+      windows: (options.platform ?? process.platform) === 'win32',
+      firewallExplained: save.firewallExplained,
+      guests: new Set(guestSockets.values()).size,
+    };
+  }
+
   const server = createServer((req, res) => {
     handleHttp(req, res).catch((error: unknown) => {
       console.error('Request failed:', error);
@@ -111,6 +141,22 @@ export function createGameServer(options: GameServerOptions): Server {
       const pack = visibleStages.find((stage) => stage.manifest.id === stageMatch[1]);
       return pack ? sendJson(res, 200, pack) : sendJson(res, 404, { error: 'unknownStage' });
     }
+    if (route === 'GET /api/network') {
+      // A new network (another Wi-Fi) may have appeared since sharing started.
+      if (lan.active && !options.listensEverywhere) await lan.start(server, port());
+      return sendJson(res, 200, networkInfo(req));
+    }
+    if (route === 'PUT /api/network') {
+      if (!isLoopback(req.socket.remoteAddress)) return sendJson(res, 403, { error: 'hostOnly' });
+      const patch = NetworkPatchSchema.safeParse(await readJsonBody(req));
+      if (!patch.success) return sendJson(res, 400, { error: 'invalidNetwork', issues: patch.error.issues });
+      if (!options.listensEverywhere) {
+        if (patch.data.sharing) await lan.start(server, port());
+        else await lan.stop();
+      }
+      await options.saves.setSharing(patch.data.sharing);
+      return sendJson(res, 200, networkInfo(req));
+    }
     if (route === 'GET /api/progress') return sendJson(res, 200, options.saves.progress);
     if (route === 'GET /api/art') return sendJson(res, 200, await listArt(options.artDir));
     if (url.pathname.startsWith('/api/')) return sendJson(res, 404, { error: 'notFound' });
@@ -134,9 +180,16 @@ export function createGameServer(options: GameServerOptions): Server {
       socket.destroy();
       return;
     }
-    sockets.handleUpgrade(req, socket, head, (ws) => handleSocket(ws));
+    sockets.handleUpgrade(req, socket, head, (ws) => {
+      if (!isLoopback(req.socket.remoteAddress)) {
+        guestSockets.set(ws, (req.socket.remoteAddress ?? '').replace(/^::ffff:/, ''));
+        ws.once('close', () => guestSockets.delete(ws));
+      }
+      handleSocket(ws);
+    });
   });
   server.on('close', () => {
+    void lan.stop();
     demos.stopAll();
     players.stopAll();
     sockets.close();

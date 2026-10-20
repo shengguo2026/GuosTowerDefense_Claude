@@ -1,9 +1,10 @@
-// Builds the client if needed and starts the game server, which opens the browser.
-// Used by start.bat / start.sh. A packaged build with a bundled Node runtime replaces this in milestone M6.
-import { spawnSync, spawn } from 'node:child_process';
+// Development build: installs the libraries and builds the client if needed, then hands over to the launcher.
+// Used by start.bat / start.sh in the repository; the packaged build (npm run package) brings its own runtime.
+import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { launch } from './launcher.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
@@ -36,10 +37,8 @@ if (!existsSync(builtIndex) || statSync(builtIndex).mtimeMs < sources) {
   run(['run', 'build']);
 }
 
-const server = spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/main.ts'], {
-  cwd: root,
-  stdio: 'inherit',
-  env: process.env,
+await launch({
+  root,
+  serverArgs: ['--import', 'tsx', 'apps/server/src/main.ts'],
+  clientDir: join(root, 'apps/client/dist'),
 });
-server.on('exit', (code) => process.exit(code ?? 0));
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.kill(signal));

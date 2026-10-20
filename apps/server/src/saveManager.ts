@@ -25,6 +25,10 @@ export const SaveSchema = z.object({
       ),
     )
     .default({}),
+  /** Phones and tablets may join (kept across restarts), and the firewall explainer was shown (spec §14, G14). */
+  network: z
+    .object({ shareOnWifi: z.boolean().default(false), firewallExplained: z.boolean().default(false) })
+    .default({ shareOnWifi: false, firewallExplained: false }),
   updatedAt: z.string(),
 });
 export type SaveData = z.infer<typeof SaveSchema>;
@@ -87,6 +91,14 @@ export class SaveManager {
         accessibility: { ...save.settings.accessibility, ...patch.accessibility },
         onboarding: { ...save.settings.onboarding, ...patch.onboarding },
       });
+    });
+  }
+
+  /** Turning sharing on also means the firewall explainer has been seen. */
+  setSharing(sharing: boolean): Promise<SaveData> {
+    return this.update((save) => {
+      save.network.shareOnWifi = sharing;
+      if (sharing) save.network.firewallExplained = true;
     });
   }
 

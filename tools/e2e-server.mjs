@@ -11,7 +11,8 @@ rmSync(userData, { recursive: true, force: true });
 const server = spawn(process.execPath, ['--import', 'tsx', 'apps/server/src/main.ts'], {
   cwd: root,
   stdio: 'inherit',
-  env: { ...process.env, GTD_USER_DATA: userData, GTD_NO_OPEN: '1' },
+  // Windows, so the firewall explainer shows before the game opens to the network.
+  env: { ...process.env, GTD_USER_DATA: userData, GTD_NO_OPEN: '1', GTD_PLATFORM: 'win32' },
 });
 server.on('exit', (code) => process.exit(code ?? 0));
 for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => server.kill(signal));

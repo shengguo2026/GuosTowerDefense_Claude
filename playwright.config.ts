@@ -15,6 +15,8 @@ export default defineConfig({
     trace: 'retain-on-failure',
     launchOptions: {
       args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
+      // The game is local only: a proxy from the environment would stand between the PC and a joining tablet.
+      env: Object.fromEntries(Object.entries(process.env).filter(([name]) => !/proxy/i.test(name))),
       ...(process.env.PLAYWRIGHT_CHROMIUM_PATH
         ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH }
         : {}),
