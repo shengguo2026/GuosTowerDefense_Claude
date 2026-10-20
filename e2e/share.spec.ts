@@ -19,8 +19,35 @@ async function guestPage(browser: Browser, kind: 'tablet' | 'phone', address: st
     deviceScaleFactor: 1,
   });
   const page = await context.newPage();
+  // A guest's own problems (failed requests, errors) are not in the PC's trace: keep them for the failure message.
+  const log: string[] = [];
+  page.on('console', (message) => {
+    if (message.type() === 'error' || message.type() === 'warning')
+      log.push(`${kind} console: ${message.text()}`);
+  });
+  page.on('pageerror', (error) => log.push(`${kind} error: ${error.message}`));
+  page.on('requestfailed', (request) =>
+    log.push(`${kind} request failed: ${request.url()} ${request.failure()?.errorText ?? ''}`),
+  );
+  page.on('response', (response) => {
+    if (response.status() >= 400) log.push(`${kind} ${response.status()}: ${response.url()}`);
+  });
   await page.goto(address);
-  return page;
+  return Object.assign(page, { guestLog: log });
+}
+
+/** Waits for the guest's match to render; on failure says what the guest saw and logged. */
+async function expectMatch(guest: Page & { guestLog: string[] }) {
+  try {
+    await expect(guest.getByTestId('level-canvas')).toHaveAttribute('data-rendered', 'true', {
+      timeout: 30_000,
+    });
+  } catch (error) {
+    const screen = await guest.evaluate(() => document.body.innerText.slice(0, 400)).catch(() => '?');
+    throw new Error(
+      `${(error as Error).message}\nGuest screen: ${screen}\nGuest log:\n${guest.guestLog.join('\n')}`,
+    );
+  }
 }
 
 test.describe('play on tablet or phone', () => {
@@ -75,9 +102,7 @@ test.describe('play on tablet or phone', () => {
     await tablet.getByTestId('side-defender').tap();
     await tablet.getByTestId('to-briefing').tap();
     await tablet.getByTestId('start-match').tap();
-    await expect(tablet.getByTestId('level-canvas')).toHaveAttribute('data-rendered', 'true', {
-      timeout: 30_000,
-    });
+    await expectMatch(tablet);
     await expect(tablet.getByTestId('phase')).toContainText('Preparation', { timeout: 15_000 });
     await tablet.screenshot({ path: testInfo.outputPath('tablet-match.png') });
 
@@ -94,9 +119,7 @@ test.describe('play on tablet or phone', () => {
     await phone.getByTestId('side-attacker').tap();
     await phone.getByTestId('to-briefing').tap();
     await phone.getByTestId('start-match').tap();
-    await expect(phone.getByTestId('level-canvas')).toHaveAttribute('data-rendered', 'true', {
-      timeout: 30_000,
-    });
+    await expectMatch(phone);
     await phone.screenshot({ path: testInfo.outputPath('phone-match.png') });
 
     await expect(page.getByTestId('share-guests')).toContainText('connected', { timeout: 10_000 });
