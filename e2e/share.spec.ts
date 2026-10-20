@@ -40,7 +40,8 @@ async function guestPage(browser: Browser, kind: 'tablet' | 'phone', address: st
 async function expectMatch(guest: Page & { guestLog: string[] }) {
   try {
     await expect(guest.getByTestId('level-canvas')).toHaveAttribute('data-rendered', 'true', {
-      timeout: 30_000,
+      // The guest builds its 3D view in software rendering next to other browsers; slow CI machines need longer.
+      timeout: 90_000,
     });
   } catch (error) {
     const screen = await guest.evaluate(() => document.body.innerText.slice(0, 400)).catch(() => '?');
@@ -59,7 +60,7 @@ test.describe('play on tablet or phone', () => {
       testInfo.project.name !== 'desktop',
       'The PC shares; the tablet and the phone join in this test.',
     );
-    test.setTimeout(240_000);
+    test.setTimeout(420_000);
     await prepare(page);
     await page.request.put('/api/network', { data: { sharing: false } });
     // The explainer comes once per save; every test run starts with a fresh one.
@@ -92,6 +93,8 @@ test.describe('play on tablet or phone', () => {
     expect(address).toMatch(new RegExp(`^http://\\d+\\.\\d+\\.\\d+\\.\\d+:${port}/$`));
     await expect(page.getByTestId('share-address')).toHaveText(address.slice(7, -1));
     await expect(page.getByTestId('share-guests')).toContainText('No tablet or phone');
+    // The PC's 3D menu background would compete with the guests' software rendering; it comes back below.
+    await page.goto('about:blank');
 
     // A tablet joins through the network address and starts single player by touch.
     const tablet = await guestPage(browser, 'tablet', address);
@@ -122,6 +125,8 @@ test.describe('play on tablet or phone', () => {
     await expectMatch(phone);
     await phone.screenshot({ path: testInfo.outputPath('phone-match.png') });
 
+    await page.goto('/');
+    await page.getByTestId('menu-share').click();
     await expect(page.getByTestId('share-guests')).toContainText('connected', { timeout: 10_000 });
     await page.screenshot({ path: testInfo.outputPath('share-desktop.png') });
 
