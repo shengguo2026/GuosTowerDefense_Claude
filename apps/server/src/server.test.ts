@@ -2,10 +2,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { loadAllStages } from '@gtd/content-schema/node';
-import { PROTOCOL_VERSION, type HealthResponse, type ServerMessage } from '@gtd/protocol';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { PROTOCOL_VERSION, type HealthResponse, type NetworkInfo, type ServerMessage } from '@gtd/protocol';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import { createGameServer, listen, type RunningGameServer } from './gameServer';
+import { createGameServer, listen, type GameServerOptions, type RunningGameServer } from './gameServer';
+import { isLoopback, LanSharing, lanAddresses } from './network';
 import { PlayerMatches, type SinglePlayerWin } from './playerMatches';
 import { findFreePort } from './ports';
 import { SaveManager, defaultSave } from './saveManager';
@@ -22,13 +23,18 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-async function startServer(userDataDir = join(dir, 'user-data'), clientDir?: string, artDir?: string) {
+async function startServer(
+  userDataDir = join(dir, 'user-data'),
+  clientDir?: string,
+  artDir?: string,
+  extra: Partial<GameServerOptions> = {},
+) {
   await prepareUserData(userDataDir);
   const saves = new SaveManager(userDataDir);
   await saves.load();
   const { stages } = await loadAllStages(resolve(import.meta.dirname, '../../../content/stages'));
   const server = await listen(
-    createGameServer({ version: '9.9.9', stages, saves, clientDir, artDir, showDevStages: true }),
+    createGameServer({ version: '9.9.9', stages, saves, clientDir, artDir, showDevStages: true, ...extra }),
     0,
     '127.0.0.1',
   );
@@ -668,5 +674,99 @@ describe('findFreePort', () => {
   it('skips a port that is in use', async () => {
     const busy = await startServer();
     expect(await findFreePort(busy.port, '127.0.0.1')).toBeGreaterThan(busy.port);
+  });
+});
+
+describe('playing on tablets and phones', () => {
+  const network = async (url: string) => (await (await fetch(`${url}/api/network`)).json()) as NetworkInfo;
+  const share = (url: string, sharing: boolean) =>
+    fetch(`${url}/api/network`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sharing }),
+    });
+
+  it('picks the Wi-Fi address first and leaves out loopback and self-assigned addresses', () => {
+    const net = (address: string, internal = false) => ({
+      address,
+      internal,
+      family: 'IPv4' as const,
+      netmask: '255.255.255.0',
+      mac: '00:00:00:00:00:00',
+      cidr: null,
+    });
+    expect(
+      lanAddresses({
+        'vEthernet (WSL)': [net('172.20.48.1')],
+        'Loopback Pseudo-Interface 1': [net('127.0.0.1', true)],
+        Ethernet: [net('169.254.10.2')],
+        'Wi-Fi': [net('192.168.1.20')],
+        'VirtualBox Host-Only Network': [net('192.168.56.1')],
+        'Ethernet 2': [net('10.0.0.5')],
+      }),
+    ).toEqual(['192.168.1.20', '10.0.0.5', '172.20.48.1', '192.168.56.1']);
+    expect(isLoopback('::ffff:127.0.0.1')).toBe(true);
+    expect(isLoopback('::1')).toBe(true);
+    expect(isLoopback('192.168.1.20')).toBe(false);
+  });
+
+  it('opens the running game on the network addresses on request and closes it again', async () => {
+    // 127.0.0.2 stands in for the Wi-Fi address: it reaches the same machine without a real network.
+    const lan = new LanSharing(() => ['127.0.0.2']);
+    const server = await startServer(join(dir, 'lan'), undefined, undefined, { lan, platform: 'win32' });
+    const before = await network(server.url);
+    expect(before).toMatchObject({ host: true, sharing: false, windows: true, firewallExplained: false });
+    await expect(fetch(`http://127.0.0.2:${server.port}/api/health`)).rejects.toThrow();
+
+    const on = (await (await share(server.url, true)).json()) as NetworkInfo;
+    expect(on).toMatchObject({ sharing: true, firewallExplained: true, failed: [] });
+    expect(on.addresses).toEqual([`http://127.0.0.2:${server.port}/`]);
+    expect((await fetch(`http://127.0.0.2:${server.port}/api/health`)).status).toBe(200);
+
+    const off = (await (await share(server.url, false)).json()) as NetworkInfo;
+    expect(off).toMatchObject({ sharing: false, addresses: [], firewallExplained: true });
+    await expect(fetch(`http://127.0.0.2:${server.port}/api/health`)).rejects.toThrow();
+  });
+
+  it('remembers sharing in the save, so the next start shares again', async () => {
+    const userData = join(dir, 'lan-save');
+    const first = await startServer(userData, undefined, undefined, { lan: new LanSharing(() => []) });
+    await share(first.url, true);
+    await first.close();
+    const saves = new SaveManager(userData);
+    expect((await saves.load()).network).toEqual({ shareOnWifi: true, firewallExplained: true });
+  });
+
+  it('reports an address it cannot open', async () => {
+    const lan = new LanSharing(() => ['127.0.0.1']);
+    // The game's own port on 127.0.0.1 is taken by the game itself, so sharing there must fail and say so.
+    const server = await startServer(join(dir, 'lan-fail'), undefined, undefined, { lan });
+    const on = (await (await share(server.url, true)).json()) as NetworkInfo;
+    expect(on.failed).toEqual(['127.0.0.1']);
+    expect(on.addresses).toEqual([]);
+  });
+
+  it('always shares when started for every network', async () => {
+    const server = await startServer(join(dir, 'everywhere'), undefined, undefined, {
+      listensEverywhere: true,
+    });
+    expect(await network(server.url)).toMatchObject({ sharing: true, fixed: true });
+  });
+
+  const wifi = lanAddresses()[0];
+  it.skipIf(!wifi)('lets a phone play but only the PC turn sharing on or off', async () => {
+    const lan = new LanSharing(() => [wifi as string]);
+    const server = await startServer(join(dir, 'guest'), undefined, undefined, { lan });
+    await share(server.url, true);
+    const guestUrl = `http://${wifi}:${server.port}`;
+    expect(await network(guestUrl)).toMatchObject({ host: false, sharing: true });
+    expect((await share(guestUrl, false)).status).toBe(403);
+
+    const ws = new WebSocket(`ws://${wifi}:${server.port}/ws`);
+    await new Promise((done, fail) => ws.on('open', done).on('error', fail));
+    expect((await network(server.url)).guests).toBe(1);
+    ws.close();
+    await new Promise((done) => ws.on('close', done));
+    await vi.waitFor(async () => expect((await network(server.url)).guests).toBe(0));
   });
 });

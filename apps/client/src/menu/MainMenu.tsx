@@ -1,4 +1,5 @@
 import type { Translate } from '@gtd/i18n';
+import type { NetworkInfo } from '@gtd/protocol';
 import { Art, useArtUrl } from '../art/Art';
 import type { ServerConnection } from '../useServerConnection';
 
@@ -9,9 +10,12 @@ interface Props {
   playable: boolean;
   /** Hot-seat needs a keyboard and a mouse (PC only). */
   hotSeatAvailable: boolean;
+  /** Who this browser is in the network: the PC that hosts the game, or a tablet or phone that joined it. */
+  network: NetworkInfo | null;
   onSinglePlayer(): void;
   onTutorial(): void;
   onTwoPlayers(): void;
+  onShare(): void;
   onManual(): void;
   onSettings(): void;
   onDemo(): void;
@@ -23,14 +27,22 @@ export function MainMenu({
   connection,
   playable,
   hotSeatAvailable,
+  network,
   onSinglePlayer,
   onTutorial,
   onTwoPlayers,
+  onShare,
   onManual,
   onSettings,
   onDemo,
 }: Props) {
   const background = useArtUrl('MENU-BG');
+  // Only the PC that hosts the game invites tablets and phones; a tablet or phone that joined says where it plays.
+  const host = network?.host === true && hotSeatAvailable;
+  const guest = network?.host === false;
+  const sharedAt = network?.sharing
+    ? network.addresses[0]?.replace(/^http:\/\//, '').replace(/\/$/, '')
+    : undefined;
   return (
     <>
       {background && <Art id="MENU-BG" alt="" className="menu-background" />}
@@ -68,6 +80,12 @@ export function MainMenu({
             <strong>{t('menu.twoPlayers')}</strong>
             <span>{hotSeatAvailable ? t('menu.twoPlayersHint') : t('menu.twoPlayersPcOnly')}</span>
           </button>
+          {host && (
+            <button type="button" className="menu-button" onClick={onShare} data-testid="menu-share">
+              <strong>{t('menu.share')}</strong>
+              <span>{sharedAt ? t('menu.shareOn', { address: sharedAt }) : t('menu.shareHint')}</span>
+            </button>
+          )}
           <div className="menu-row">
             <button type="button" className="menu-button small" onClick={onManual} data-testid="menu-manual">
               <strong>{t('menu.manual')}</strong>
@@ -95,6 +113,11 @@ export function MainMenu({
           {connection.serverVersion && t('connection.serverVersion', { version: connection.serverVersion })}
           {connection.stages.length > 0 && ` · ${t('home.stages', { count: connection.stages.length })}`}
         </p>
+        {guest && (
+          <p className="meta" data-testid="guest-info">
+            {t('menu.guest')}
+          </p>
+        )}
         {connection.error && <p className="error">{connection.error}</p>}
       </main>
     </>

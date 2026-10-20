@@ -1,5 +1,5 @@
 import type { StagePack } from '@gtd/content-schema';
-import type { HealthResponse, Progress, Settings, SettingsPatch } from '@gtd/protocol';
+import type { HealthResponse, NetworkInfo, Progress, Settings, SettingsPatch } from '@gtd/protocol';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
@@ -18,6 +18,15 @@ export const api = {
       body: JSON.stringify(patch),
     }),
   progress: () => request<Progress>('/api/progress'),
+  /** Whether phones and tablets in the PC's network can join, and where. */
+  network: () => request<NetworkInfo>('/api/network'),
+  /** Opens the game to phones and tablets in the PC's network, or closes it (from the PC only). */
+  setSharing: (sharing: boolean) =>
+    request<NetworkInfo>('/api/network', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sharing }),
+    }),
   /** Codex pictures that exist on the PC, by art id. */
   art: () => request<Record<string, string>>('/api/art'),
 };

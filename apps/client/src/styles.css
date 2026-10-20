@@ -2755,3 +2755,227 @@ kbd {
 .result-name {
   font-weight: 400;
 }
+
+/* Play on tablet or phone (M6) */
+.share-screen {
+  gap: 14px;
+}
+.share-card {
+  max-width: 760px;
+}
+.share-card p,
+.share-card li {
+  line-height: 1.45;
+}
+.share-card ol,
+.share-card ul {
+  margin: 8px 0;
+  padding-left: 1.3em;
+}
+.share-intro {
+  align-self: center;
+  width: min(640px, 100%);
+}
+.share-facts li {
+  margin: 4px 0;
+}
+.share-body {
+  display: grid;
+  grid-template-columns: minmax(260px, 380px) minmax(300px, 640px);
+  justify-content: center;
+  align-items: start;
+  gap: 14px;
+}
+.share-code {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.qr-code {
+  display: block;
+  width: min(300px, 100%);
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+.share-address {
+  margin: 0;
+  font-family: Consolas, 'Cascadia Mono', Menlo, monospace;
+  font-size: 1.6em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  user-select: all;
+  word-break: break-all;
+}
+.share-guests {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink-soft);
+}
+.share-guests .dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #a0aec0;
+}
+.share-guests.on {
+  color: var(--ok);
+  font-weight: 700;
+}
+.share-guests.on .dot {
+  background: var(--ok);
+}
+.share-steps h2 {
+  margin-bottom: 4px;
+}
+.share-addresses .card-row {
+  gap: 6px;
+}
+.chip {
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  font-family: Consolas, 'Cascadia Mono', Menlo, monospace;
+  font-size: 0.9em;
+  cursor: pointer;
+}
+.chip.selected {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: white;
+}
+.share-help {
+  margin: 10px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.6);
+}
+.share-help summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+/* Sketch of the Windows firewall dialog: system-dialog look, the answers to pick in orange */
+.firewall-mock {
+  max-width: 520px;
+  background: #fff;
+  border: 1px solid #8a8a8a;
+  box-shadow: var(--shadow);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 0.92em;
+}
+.firewall-mock-title {
+  padding: 8px 12px;
+  background: #f3f3f3;
+  border-bottom: 1px solid #d0d0d0;
+}
+.firewall-mock-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+}
+.firewall-mock-body strong {
+  color: #003399;
+  font-size: 1.1em;
+  font-weight: 400;
+}
+.firewall-mock-body p {
+  margin: 0;
+}
+.firewall-mock-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.firewall-mock-option .box {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 1px solid #555;
+  background: #fff;
+  font-size: 12px;
+  line-height: 1;
+}
+.firewall-mock-option .box.checked {
+  background: #0067c0;
+  border-color: #0067c0;
+  color: #fff;
+}
+.firewall-mock-option em {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--attacker);
+  color: #fff;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+.firewall-mock .pick {
+  outline: 3px solid var(--attacker);
+  outline-offset: 2px;
+}
+.firewall-mock-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+.firewall-mock-buttons span {
+  min-width: 96px;
+  padding: 5px 12px;
+  border: 1px solid #adadad;
+  background: #e1e1e1;
+  text-align: center;
+}
+
+@media (max-width: 900px), (max-height: 480px) {
+  .share-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Tablets and phones held upright (spec §3): ask to turn the device; only in portrait */
+.rotate-hint {
+  display: none;
+}
+@media (orientation: portrait) and (pointer: coarse) {
+  .rotate-hint {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 32px;
+    border: none;
+    background: rgba(27, 36, 51, 0.96);
+    color: #fff;
+    font: inherit;
+    text-align: center;
+  }
+  .rotate-hint strong {
+    font-size: 1.3em;
+    max-width: 22em;
+  }
+  .rotate-hint span {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.9em;
+  }
+}

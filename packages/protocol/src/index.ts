@@ -112,6 +112,32 @@ export interface HealthResponse {
   stages: StageSummary[];
 }
 
+/** `GET /api/network`: whether phones and tablets in the PC's network can join, and where (spec §3). */
+export interface NetworkInfo {
+  /** This browser runs on the PC that hosts the game (only the PC can turn sharing on or off). */
+  host: boolean;
+  /** Phones and tablets in the network can open the game. */
+  sharing: boolean;
+  /** The game was started for every network (`GTD_HOST=0.0.0.0`), so sharing cannot be turned off here. */
+  fixed: boolean;
+  /** The port the game runs on; join addresses use it. */
+  port: number;
+  /** Addresses for phones and tablets, best guess first, such as `http://192.168.1.20:3000/`. */
+  addresses: string[];
+  /** Addresses that could not be opened, for example because another program uses the port there. */
+  failed: string[];
+  /** The PC runs Windows, which asks a firewall question the first time the game opens to the network. */
+  windows: boolean;
+  /** The firewall explainer was shown once already. */
+  firewallExplained: boolean;
+  /** Phones and tablets connected right now (one per network address). */
+  guests: number;
+}
+
+/** `PUT /api/network`, from the PC only. */
+export const NetworkPatchSchema = z.object({ sharing: z.boolean() });
+export type NetworkPatch = z.infer<typeof NetworkPatchSchema>;
+
 // ---- Match commands (checked here, then by the simulation's own rules) ----
 
 const entityId = z.number().int().positive();
