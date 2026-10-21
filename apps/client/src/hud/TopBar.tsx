@@ -1,6 +1,7 @@
 import type { Translate } from '@gtd/i18n';
 import type { ComputerPlayer, MatchSpeed } from '@gtd/protocol';
 import type { MatchSnapshot, Side } from '@gtd/sim';
+import { useEffect, useRef } from 'react';
 import { formatSeconds } from '../level/MatchControls';
 import { KeyHint } from './KeyHint';
 import { Tooltip } from './Tooltip';
@@ -37,8 +38,23 @@ export function TopBar({
   onPause,
   onSpeed,
 }: Props) {
+  const ref = useRef<HTMLElement>(null);
+  // Long resource names can wrap the bar onto a second row on narrow screens; panels below follow its real height.
+  useEffect(() => {
+    const header = ref.current;
+    const screen = header?.parentElement;
+    if (!header || !screen || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() =>
+      screen.style.setProperty('--below-hud-top', `${header.offsetTop + header.offsetHeight + 10}px`),
+    );
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      screen.style.removeProperty('--below-hud-top');
+    };
+  }, []);
   return (
-    <header className={`hud-top ${side}`} data-testid="hud-top">
+    <header ref={ref} className={`hud-top ${side}`} data-testid="hud-top">
       <button
         type="button"
         className="hud-button"

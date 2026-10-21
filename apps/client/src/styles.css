@@ -1456,7 +1456,7 @@ button.primary-small {
 .hud-left,
 .hud-right {
   position: absolute;
-  top: 66px;
+  top: var(--below-hud-top, 66px);
   bottom: 150px;
   width: 270px;
   display: flex;
@@ -1989,7 +1989,7 @@ button.primary-small {
   position: absolute;
   z-index: 30;
   left: 50%;
-  top: 66px;
+  top: var(--below-hud-top, 66px);
   transform: translateX(-50%);
   display: flex;
   gap: 12px;
@@ -2235,7 +2235,7 @@ kbd {
   gap: 8px;
 }
 .layout-tablet .hud-drawer {
-  top: 66px;
+  top: var(--below-hud-top, 66px);
   bottom: 160px;
   left: 0;
   width: 300px;
@@ -2273,7 +2273,7 @@ kbd {
 }
 .layout-tablet .hud-minimap {
   position: absolute;
-  top: 66px;
+  top: var(--below-hud-top, 66px);
   right: 10px;
   width: 180px;
 }
