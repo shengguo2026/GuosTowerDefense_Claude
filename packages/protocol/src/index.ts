@@ -4,7 +4,7 @@ import type { Command, MatchSnapshot, Side } from '@gtd/sim';
 import { z } from 'zod';
 
 /** Bumped whenever a message changes shape, so an old browser tab gets a clear "please reload" instead of errors. */
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 7;
 export const WEBSOCKET_PATH = '/ws';
 
 const language = z.enum(LANGUAGES);
@@ -176,6 +176,13 @@ export const MatchCommandSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('retreatGroup'), side: attacker, groupId: entityId }),
   z.object({ type: z.literal('setFormation'), side: attacker, groupId: entityId, formation }),
+  /** Focus Defense: take apart an asset in sight (`defenseId` left out: the nearest one; `null`: stop). */
+  z.object({
+    type: z.literal('focusDefense'),
+    side: attacker,
+    groupId: entityId,
+    defenseId: entityId.nullable().optional(),
+  }),
   z.object({ type: z.literal('placeDefense'), side: defender, defenseTypeId: contentId, nodeId: contentId }),
   z.object({ type: z.literal('upgradeDefense'), side: defender, defenseId: entityId }),
   z.object({ type: z.literal('repairDefense'), side: defender, defenseId: entityId }),
@@ -209,6 +216,15 @@ export const MatchCommandSchema = z.discriminatedUnion('type', [
     z: z.number().finite().optional(),
     groupId: entityId.optional(),
     routeId: contentId.optional(),
+    nodeId: contentId.optional(),
+  }),
+  /** A command slot with effects, used from the selected group (Attacker) or asset (Defender). */
+  z.object({
+    type: z.literal('useCommand'),
+    side: z.enum(['attacker', 'defender']),
+    commandId: contentId,
+    groupId: entityId.optional(),
+    defenseId: entityId.optional(),
   }),
 ]);
 /** A command as a client sends it; the server adds the tick. */

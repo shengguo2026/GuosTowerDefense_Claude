@@ -183,3 +183,19 @@ export function routePath(route: Route, nodes: Map<string, MapNode>, edges: MapE
 export function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.z - b.z);
 }
+
+/** Shortest distance from a point to a polyline. */
+export function distanceToPolyline(point: Point, points: Point[]): number {
+  let best = Infinity;
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1] as Point;
+    const b = points[i] as Point;
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const lengthSq = dx * dx + dz * dz;
+    const t =
+      lengthSq > 0 ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.z - a.z) * dz) / lengthSq)) : 0;
+    best = Math.min(best, Math.hypot(point.x - (a.x + dx * t), point.z - (a.z + dz * t)));
+  }
+  return points.length === 1 ? distance(point, points[0] as Point) : best;
+}

@@ -1,0 +1,41 @@
+{
+  "id": "wildlife-protector",
+  "side": "defender",
+  "name": "profile.wildlife-protector.name",
+  "description": "profile.wildlife-protector.description",
+  "portrait": "PORTRAIT-PROTECTOR",
+  "resource": {
+    "id": "conservation-supplies",
+    "name": "resource.conservation-supplies"
+  },
+  "points": {
+    "id": "protection-points",
+    "name": "points.protection-points"
+  },
+  "passive": {
+    "name": "profile.wildlife-protector.passive.name",
+    "description": "profile.wildlife-protector.passive.description",
+    "effects": [
+      {
+        "type": "protect",
+        "magnitude": 0.25
+      }
+    ]
+  },
+  "units": [],
+  "defenses": [
+    "protection-tower",
+    "heavy-barrier",
+    "conservation-post",
+    "observation-platform",
+    "slow-field",
+    "warning-barrier",
+    "temporary-fence",
+    "environmental-marker",
+    "protection-team",
+    "maintenance-crew",
+    "relocation-unit"
+  ],
+  "abilities": ["conservation-barrier", "protected-zone", "habitat-lockdown"],
+  "commands": ["upgrade", "repair", "sell", "focus", "guard", "fortify"]
+}

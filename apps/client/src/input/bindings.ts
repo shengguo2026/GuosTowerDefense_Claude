@@ -36,7 +36,21 @@ export const KEY_ACTIONS: KeyAction[] = [
   { id: 'wave.addGroup', label: 'keys.addGroup', side: 'attacker', defaultKey: 'Enter' },
   { id: 'wave.launch', label: 'keys.launch', side: 'attacker', defaultKey: 'Space' },
   { id: 'group.next', label: 'keys.nextGroup', side: 'attacker', defaultKey: 'Tab' },
-  ...slots('build', 'keys.build', 'defender', ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6']),
+  // Up to twelve assets on the number row (the Wildlife Protector has eleven).
+  ...slots('build', 'keys.build', 'defender', [
+    'Digit1',
+    'Digit2',
+    'Digit3',
+    'Digit4',
+    'Digit5',
+    'Digit6',
+    'Digit7',
+    'Digit8',
+    'Digit9',
+    'Digit0',
+    'Minus',
+    'Equal',
+  ]),
   { id: 'asset.next', label: 'keys.nextAsset', side: 'defender', defaultKey: 'Tab' },
 ];
 

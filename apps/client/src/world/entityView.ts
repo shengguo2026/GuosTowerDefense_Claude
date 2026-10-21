@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { createFlatMaterial } from './geometryBuilder';
 import { drapeOnGround } from './markers';
 import { LOOKS, SIDE_COLORS, personGeometry, type LookName } from './models/people';
-import { defenseGeometry } from './models/structures';
+import { defenseGeometry, vehicleGeometry } from './models/structures';
 import type { HeightAt } from './savanna/terrain';
 import type { InterpolatedEntity } from './snapshotBuffer';
 
@@ -12,11 +12,27 @@ const MAX_GROUPS = 64;
 const RING_SEEN = new THREE.Color(SIDE_COLORS.attacker);
 const RING_UNSEEN = new THREE.Color(0x9aa3ad);
 
-/** Which figure a unit type uses; stage packs with other units fall back to the side's default look. */
-function lookFor(unitTypeId: string): LookName {
+/** A person look, or one vehicle for the whole group. */
+type FigureName = LookName | 'vehicle';
+const FIGURES = [...(Object.keys(LOOKS) as LookName[]), 'vehicle'] as const;
+
+/**
+ * Which figure a unit type uses: the catalog's `model` where the client knows it (cameras walk as photographers),
+ * otherwise a guess from the id, falling back to the side's default look.
+ */
+function lookFor(unitTypeId: string, model: string | undefined): FigureName {
+  if (model === 'vehicle') return 'vehicle';
+  if (model === 'camera') return 'photographer';
+  if (model && model in LOOKS) return model as LookName;
   if (unitTypeId.includes('scout')) return 'scout';
   if (unitTypeId.includes('ranger')) return 'ranger';
   return 'explorer';
+}
+
+/** The catalog's model kinds by unit and defense id. */
+export interface EntityModels {
+  units: Record<string, string | undefined>;
+  defenses: Record<string, string | undefined>;
 }
 
 export interface DefenseRanges {
@@ -30,7 +46,9 @@ export interface DefenseRanges {
  */
 export class EntityView {
   readonly root = new THREE.Group();
-  private readonly figures: Record<LookName, THREE.InstancedMesh>;
+  private readonly figures: Record<FigureName, THREE.InstancedMesh>;
+  /** Disrupted assets float a red spark until they work again. */
+  private readonly disruptedMarks: THREE.InstancedMesh;
   private readonly rings: THREE.InstancedMesh;
   private readonly blobs: THREE.InstancedMesh;
   /** Hot-seat shows everything to both players; groups no defense has detected float a "hidden" mark (spec §5.2). */
@@ -57,18 +75,31 @@ export class EntityView {
     private readonly ranges: DefenseRanges,
     blobTexture: THREE.Texture,
     hiddenMarkers = false,
+    private readonly models: EntityModels = { units: {}, defenses: {} },
   ) {
     this.root.name = 'entities';
     this.figures = Object.fromEntries(
-      (Object.keys(LOOKS) as LookName[]).map((look) => {
-        const mesh = new THREE.InstancedMesh(personGeometry(LOOKS[look]), this.material, MAX_FIGURES);
+      FIGURES.map((look) => {
+        const geometry =
+          look === 'vehicle' ? vehicleGeometry(SIDE_COLORS.attacker) : personGeometry(LOOKS[look]);
+        const mesh = new THREE.InstancedMesh(geometry, this.material, MAX_FIGURES);
         mesh.castShadow = true;
         mesh.count = 0;
         mesh.frustumCulled = false;
         this.root.add(mesh);
         return [look, mesh];
       }),
-    ) as unknown as Record<LookName, THREE.InstancedMesh>;
+    ) as unknown as Record<FigureName, THREE.InstancedMesh>;
+
+    this.disruptedMarks = new THREE.InstancedMesh(
+      new THREE.OctahedronGeometry(0.5, 0),
+      new THREE.MeshBasicMaterial({ color: 0xe0483c }),
+      MAX_GROUPS,
+    );
+    this.disruptedMarks.count = 0;
+    this.disruptedMarks.frustumCulled = false;
+    this.disruptedMarks.name = 'disrupted-marks';
+    this.root.add(this.disruptedMarks);
 
     const ringGeometry = new THREE.RingGeometry(1, 1.12, 40);
     ringGeometry.rotateX(-Math.PI / 2);
@@ -110,7 +141,8 @@ export class EntityView {
   }
 
   update(snapshot: MatchSnapshot | null, positions: Map<number, InterpolatedEntity>, elapsed: number): void {
-    const counts: Record<LookName, number> = { explorer: 0, scout: 0, ranger: 0 };
+    const counts = Object.fromEntries(FIGURES.map((f) => [f, 0])) as Record<FigureName, number>;
+    let disrupted = 0;
     let rings = 0;
     let blobs = 0;
     let hidden = 0;
@@ -121,10 +153,12 @@ export class EntityView {
       const at = positions.get(entity.id);
       if (!at) continue;
       if (entity.kind === 'group') {
-        const look = lookFor((entity as GroupEntity).unitTypeId);
+        const unitTypeId = (entity as GroupEntity).unitTypeId;
+        const look = lookFor(unitTypeId, this.models.units[unitTypeId]);
         const mesh = this.figures[look];
-        // A detected but not yet identified group shows up with an unknown size: drawn as one figure.
-        const members = Math.min(Math.max(entity.count, 1), 8);
+        // A detected but not yet identified group shows up with an unknown size: drawn as one figure. A vehicle
+        // carries its whole group.
+        const members = look === 'vehicle' ? 1 : Math.min(Math.max(entity.count, 1), 8);
         const forward = { x: Math.sin(at.heading), z: Math.cos(at.heading) };
         const side = { x: forward.z, z: -forward.x };
         for (let m = 0; m < members && counts[look] < MAX_FIGURES; m++) {
@@ -172,6 +206,17 @@ export class EntityView {
       } else {
         seenDefenses.add(entity.id);
         if (!this.defenseMeshes.has(entity.id)) this.addDefense(entity as DefenseEntity);
+        if ((entity as DefenseEntity).disrupted && disrupted < MAX_GROUPS) {
+          d.position.set(
+            at.x,
+            this.heightAt(at.x, at.z) + 4.2 + Math.sin(elapsed * 3 + entity.id) * 0.2,
+            at.z,
+          );
+          d.rotation.set(0, elapsed * 2, 0);
+          d.scale.set(0.8, 1.3, 0.8);
+          d.updateMatrix();
+          this.disruptedMarks.setMatrixAt(disrupted++, d.matrix);
+        }
         // Patrols walk the route network; their model and reach follow them.
         if (entity.mobile) {
           const group = this.defenseMeshes.get(entity.id) as THREE.Group;
@@ -193,7 +238,9 @@ export class EntityView {
       }
     }
 
-    for (const look of Object.keys(counts) as LookName[]) {
+    this.disruptedMarks.count = disrupted;
+    this.disruptedMarks.instanceMatrix.needsUpdate = true;
+    for (const look of FIGURES) {
       this.figures[look].count = counts[look];
       this.figures[look].instanceMatrix.needsUpdate = true;
     }
@@ -218,7 +265,12 @@ export class EntityView {
       mesh.geometry.dispose();
       mesh.dispose();
     });
-    for (const mesh of [this.rings, this.blobs, ...(this.hiddenMarks ? [this.hiddenMarks] : [])]) {
+    for (const mesh of [
+      this.rings,
+      this.blobs,
+      this.disruptedMarks,
+      ...(this.hiddenMarks ? [this.hiddenMarks] : []),
+    ]) {
       mesh.geometry.dispose();
       (mesh.material as THREE.Material).dispose();
       mesh.dispose();
@@ -235,7 +287,7 @@ export class EntityView {
   private addDefense(defense: DefenseEntity): void {
     let geometry = this.defenseGeometries.get(defense.defenseTypeId);
     if (!geometry) {
-      geometry = defenseGeometry(defense.defenseTypeId);
+      geometry = defenseGeometry(defense.defenseTypeId, this.models.defenses[defense.defenseTypeId]);
       this.defenseGeometries.set(defense.defenseTypeId, geometry);
     }
     const group = new THREE.Group();

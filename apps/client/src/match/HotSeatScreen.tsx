@@ -6,6 +6,7 @@ import {
   type DefenseEntity,
   type GroupEntity,
   type MatchSnapshot,
+  type OrderType,
   type Side,
 } from '@gtd/sim';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -13,11 +14,13 @@ import { sounds, type SoundCue } from '../audio/sound';
 import { AbilityBar } from '../hud/AbilityBar';
 import { GroupList, GroupOrders, WaveBuilder } from '../hud/AttackerPanels';
 import { CommandWheel, type WheelItem } from '../hud/CommandWheel';
+import { commandSlots, extraSlots, slotBlocked, inProfileOrder } from '../hud/commandSlots';
 import { AssetList, AssetOrders, BuildBar } from '../hud/DefenderPanels';
 import {
   abilityAim,
   abilityNeedsGroup,
   freeBuildSites,
+  junctionTargets,
   patrolNodes,
   upgradeCost,
   type MapMode,
@@ -92,23 +95,32 @@ export function HotSeatScreen({
   const attackerProfile = profileOf('attacker');
   const defenderProfile = profileOf('defender');
   const units = useMemo(
-    () => pack.catalog.units.filter((u) => attackerProfile?.units.includes(u.id)),
+    () => inProfileOrder(pack.catalog.units, attackerProfile?.units),
     [pack, attackerProfile],
   );
   const defenseTypes = useMemo(
-    () => pack.catalog.defenses.filter((d) => defenderProfile?.defenses.includes(d.id)),
+    () => inProfileOrder(pack.catalog.defenses, defenderProfile?.defenses),
     [pack, defenderProfile],
   );
   const abilitiesOf = useCallback(
     (side: Side) => {
       const profile = side === 'attacker' ? attackerProfile : defenderProfile;
-      return pack.catalog.abilities.filter((a) => profile?.abilities.includes(a.id));
+      return inProfileOrder(pack.catalog.abilities, profile?.abilities);
     },
     [pack, attackerProfile, defenderProfile],
   );
   const attackerAbilities = useMemo(() => abilitiesOf('attacker'), [abilitiesOf]);
   const defenderAbilities = useMemo(() => abilitiesOf('defender'), [abilitiesOf]);
+  const attackerSlots = useMemo(() => commandSlots(pack, attackerProfile), [pack, attackerProfile]);
+  const defenderSlots = useMemo(() => commandSlots(pack, defenderProfile), [pack, defenderProfile]);
   const keyLabel = useKeyLabel();
+  const namesOf = (side: Side) => {
+    const profile = side === 'attacker' ? attackerProfile : defenderProfile;
+    return {
+      supplies: profile ? stageText(profile.resource.name) : undefined,
+      points: profile?.points ? stageText(profile.points.name) : undefined,
+    };
+  };
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const labelsRef = useRef<HTMLDivElement>(null);
@@ -324,10 +336,11 @@ export function HotSeatScreen({
     const aim = abilityAim(ability);
     const node = level.map.nodes.find((n) => n.id === cursor);
     if (aim === 'now') return command(base, 'ability');
-    if (aim === 'ground' || aim === 'node') {
+    if (aim === 'ground') {
       if (node) command({ ...base, x: node.x, z: node.z }, 'ability');
       return;
     }
+    if (aim === 'node') return command({ ...base, nodeId: cursor }, 'ability');
     if (!selectedGroup) return notify('attacker', t('hud.pickGroupFirst'));
     if (aim === 'route' && abilityNeedsGroup(ability)) {
       setAttackerMode({ type: 'ability', abilityId: ability.id });
@@ -336,23 +349,42 @@ export function HotSeatScreen({
     command({ ...base, groupId: selectedGroup.id }, 'ability');
   };
 
-  const groupCommand = (slot: number) => {
+  const groupOrder = (order: OrderType) => {
     if (!selectedGroup) return notify('attacker', t('hud.pickGroupFirst'));
     const id = selectedGroup.id;
-    if (slot === 1) command({ type: 'holdGroup', side: 'attacker', groupId: id });
-    if (slot === 2) command({ type: 'advanceGroup', side: 'attacker', groupId: id });
-    if (slot === 3) command({ type: 'retreatGroup', side: 'attacker', groupId: id });
-    if (slot === 4) {
+    if (order === 'hold') command({ type: 'holdGroup', side: 'attacker', groupId: id });
+    if (order === 'advance') command({ type: 'advanceGroup', side: 'attacker', groupId: id });
+    if (order === 'retreat') command({ type: 'retreatGroup', side: 'attacker', groupId: id });
+    if (order === 'reroute') {
       setAttackerMode(attackerMode?.type === 'reroute' ? null : { type: 'reroute' });
       notify('attacker', t('hot.help.pickRoute', { keys: routeKeys }));
     }
-    if (slot === 5)
+    if (order === 'formation')
       command({
         type: 'setFormation',
         side: 'attacker',
         groupId: id,
         formation: selectedGroup.formation === 'column' ? 'spread' : 'column',
       });
+    if (order === 'dismantle')
+      command(
+        selectedGroup.focusDefenseId === null
+          ? { type: 'focusDefense', side: 'attacker', groupId: id }
+          : { type: 'focusDefense', side: 'attacker', groupId: id, defenseId: null },
+        'select',
+      );
+  };
+
+  const attackerSlot = (action: Action) => {
+    if (action.order) return groupOrder(action.order);
+    if (!snapshot) return;
+    const blocked = slotBlocked(snapshot, action, 'attacker');
+    if (blocked) return notify('attacker', t('ctl.rejected', { reason: t(`reject.${blocked}`) }));
+    if (!selectedGroup) return notify('attacker', t('hud.pickGroupFirst'));
+    command(
+      { type: 'useCommand', side: 'attacker', commandId: action.id, groupId: selectedGroup.id },
+      'ability',
+    );
   };
 
   const selectGroup = (next: GroupEntity | null) => {
@@ -398,8 +430,11 @@ export function HotSeatScreen({
         if (ability) attackerAbility(ability);
         return;
       }
-      case 'command':
-        return groupCommand(slot);
+      case 'command': {
+        const action = attackerSlots[slot - 1];
+        if (action) attackerSlot(action);
+        return;
+      }
       case 'unit': {
         const unit = units[slot - 1];
         if (unit) wave.unitKey(unit.id, event.shiftKey);
@@ -466,7 +501,15 @@ export function HotSeatScreen({
     notify('defender', t(`hud.aim.${aim}`));
   };
 
-  const assetCommand = (asset: DefenseEntity, order: string) => {
+  const defenderSlot = (asset: DefenseEntity, action: Action) => {
+    if (action.order) return assetCommand(asset, action.order);
+    if (!snapshot) return;
+    const blocked = slotBlocked(snapshot, action, 'defender');
+    if (blocked) return notify('defender', t('ctl.rejected', { reason: t(`reject.${blocked}`) }));
+    command({ type: 'useCommand', side: 'defender', commandId: action.id, defenseId: asset.id }, 'ability');
+  };
+
+  const assetCommand = (asset: DefenseEntity, order: OrderType) => {
     const defenseId = asset.id;
     if (order === 'upgrade') command({ type: 'upgradeDefense', side: 'defender', defenseId }, 'build');
     if (order === 'repair') command({ type: 'repairDefense', side: 'defender', defenseId }, 'build');
@@ -526,10 +569,9 @@ export function HotSeatScreen({
         else if (aim === 'group' && entity?.kind === 'group')
           command({ ...base, groupId: entity.id }, 'ability');
         else if (aim === 'route' && pick.routeId) command({ ...base, routeId: pick.routeId }, 'ability');
-        else if (aim === 'node' && pick.nodeId) {
-          const node = level.map.nodes.find((n) => n.id === pick.nodeId);
-          if (node) command({ ...base, x: node.x, z: node.z }, 'ability');
-        } else return notify('defender', t(`hud.aim.${aim}`));
+        else if (aim === 'node' && pick.nodeId && junctionTargets(level).includes(pick.nodeId))
+          command({ ...base, nodeId: pick.nodeId }, 'ability');
+        else return notify('defender', t(`hud.aim.${aim}`));
         setMode(null);
         return;
       }
@@ -592,6 +634,11 @@ export function HotSeatScreen({
     } else if (mode?.type === 'ability') {
       const ability = defenderAbilities.find((a) => a.id === mode.abilityId);
       if (ability && abilityAim(ability) === 'ground') result.areaRadius = ability.range;
+      if (ability && abilityAim(ability) === 'node')
+        result.buildSites = junctionTargets(level)
+          .map((id) => level.map.nodes.find((n) => n.id === id))
+          .filter((n) => n !== undefined)
+          .map((n) => ({ id: n.id, x: n.x, z: n.z }));
     }
     if (selectedAsset)
       result.selectedRange = defenseTypes.find((d) => d.id === selectedAsset.defenseTypeId)?.range;
@@ -687,6 +734,13 @@ export function HotSeatScreen({
                 { id: 'patrol', label: t('ctl.patrol'), onPick: () => assetCommand(wheelAsset, 'patrol') },
               ]
             : []),
+          // The profile's own command slots (Fortify, Scan …).
+          ...extraSlots(defenderSlots, 'defender').map((action) => ({
+            id: action.id,
+            label: stageText(action.name),
+            disabled: snapshot ? slotBlocked(snapshot, action, 'defender') !== null : true,
+            onPick: () => defenderSlot(wheelAsset, action),
+          })),
         ]
       : [];
 
@@ -722,7 +776,7 @@ export function HotSeatScreen({
             <span className="badge attacker">
               {config.names.attacker || t('seat.attacker')} · {t('hot.keyboard')}
             </span>
-            <SideNumbers snapshot={snapshot} side="attacker" t={t} />
+            <SideNumbers snapshot={snapshot} side="attacker" t={t} names={namesOf('attacker')} />
             {pauseButton('attacker')}
           </div>
         )}
@@ -736,7 +790,7 @@ export function HotSeatScreen({
           <NoKeyHints>
             <div className="hot-side defender">
               {pauseButton('defender')}
-              <SideNumbers snapshot={snapshot} side="defender" t={t} />
+              <SideNumbers snapshot={snapshot} side="defender" t={t} names={namesOf('defender')} />
               <span className="badge defender">
                 {config.names.defender || t('seat.defender')} · {t('hot.mouse')}
               </span>
@@ -765,12 +819,15 @@ export function HotSeatScreen({
                 level={level}
                 units={units}
                 rerouting={attackerMode?.type === 'reroute'}
+                slots={attackerSlots}
+                snapshot={snapshot}
                 t={t}
                 stageText={stageText}
-                onHold={() => groupCommand(1)}
-                onAdvance={() => groupCommand(2)}
-                onRetreat={() => groupCommand(3)}
-                onReroute={(routeId) => (routeId ? attackerRoute(routeId) : groupCommand(4))}
+                onSlot={attackerSlot}
+                onHold={() => groupOrder('hold')}
+                onAdvance={() => groupOrder('advance')}
+                onRetreat={() => groupOrder('retreat')}
+                onReroute={(routeId) => (routeId ? attackerRoute(routeId) : groupOrder('reroute'))}
                 onFormation={(formation) =>
                   command({ type: 'setFormation', side: 'attacker', groupId: selectedGroup.id, formation })
                 }
@@ -826,8 +883,11 @@ export function HotSeatScreen({
                       ? mode.type
                       : null
                   }
+                  slots={defenderSlots}
+                  snapshot={snapshot}
                   t={t}
                   stageText={stageText}
+                  onSlot={(action) => defenderSlot(selectedAsset, action)}
                   onUpgrade={() => assetCommand(selectedAsset, 'upgrade')}
                   onRepair={() => assetCommand(selectedAsset, 'repair')}
                   onSell={() => assetCommand(selectedAsset, 'sell')}

@@ -93,6 +93,26 @@ describe('stage pack loader', () => {
     expect(messages(result).join('\n')).toMatch(/abilities/);
   });
 
+  it('reports command slots and abilities that do not fit the profile’s side', async () => {
+    const result = await loadWithChange('profiles/gatekeeper.json', (profile) => {
+      profile.commands = ['wait', 'sprint', 'brace', 'brace'];
+      profile.abilities = ['rope-barrier', 'call-runner'];
+    });
+    const found = messages(result).join('\n');
+    expect(found).toMatch(/"hold" is not an order of the defender/);
+    expect(found).toMatch(/command "brace" is listed twice/);
+    expect(found).toMatch(/the defender cannot spawn "runner"/);
+  });
+
+  it('reports an ability that stands for an order', async () => {
+    const result = await loadWithChange('catalog.json', (catalog) => {
+      (catalog.abilities as Record<string, unknown>[])[0]!.order = 'hold';
+    });
+    expect(messages(result)).toContainEqual(
+      expect.stringContaining('only command slots can stand for an order'),
+    );
+  });
+
   it('reports texts missing in one language', async () => {
     const result = await loadWithChange('texts/de.json', (texts) => {
       delete texts['unit.runner'];
@@ -142,8 +162,25 @@ describe('stage pack loader', () => {
       defenderProfileId: 'ranger',
       seed: 1,
     });
-    expect(setup.attacker.abilities.map((a) => a.id)).toEqual(['reconnaissance', 'rapid-reroute']);
-    expect(setup.defender.abilities.map((a) => a.id)).toEqual(['rapid-response', 'intercept']);
+    expect(setup.attacker.abilities.map((a) => a.id)).toEqual([
+      'reconnaissance',
+      'rapid-reroute',
+      'field-guide',
+    ]);
+    expect(setup.attacker.commands.map((c) => c.id)).toEqual([
+      'hold',
+      'advance',
+      'retreat',
+      'reroute',
+      'formation',
+      'scout-ahead',
+    ]);
+    expect(setup.attacker.commands[0]).toMatchObject({ order: 'hold', effects: [] });
+    expect(setup.defender.abilities.map((a) => a.id)).toEqual([
+      'rapid-response',
+      'intercept',
+      'emergency-reinforcement',
+    ]);
     expect(setup.attacker.passive).toEqual([
       { type: 'boost', stat: 'speed', magnitude: 0.1, condition: 'knownRoute' },
     ]);

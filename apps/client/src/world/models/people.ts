@@ -21,6 +21,14 @@ export const LOOKS = {
   scout: { cloth: 0xd8c39a, accent: SIDE_COLORS.attacker, hat: 0xc9a46a, backpack: false },
   /** Rangers: olive uniform with blue scarf. */
   ranger: { cloth: 0x5d6b3a, accent: SIDE_COLORS.defender, hat: 0x4a5530, backpack: false },
+  /** Guides: light shirts and wide hats. */
+  guide: { cloth: 0xe6d7b4, accent: SIDE_COLORS.attacker, hat: 0x8a6a3e, backpack: false },
+  /** Trackers: dusty brown, travel light. */
+  tracker: { cloth: 0x9a7b52, accent: SIDE_COLORS.attacker, hat: 0x6e5534, backpack: false },
+  /** Hunters: dark olive with an orange vest band and a heavy pack. */
+  hunter: { cloth: 0x4f5238, accent: SIDE_COLORS.attacker, hat: 0x3d3f2a, backpack: true },
+  /** Photographers: grey vests and camera bags. */
+  photographer: { cloth: 0x8d8f86, accent: SIDE_COLORS.attacker, hat: 0x5f615a, backpack: true },
 } satisfies Record<string, PersonLook>;
 
 export type LookName = keyof typeof LOOKS;

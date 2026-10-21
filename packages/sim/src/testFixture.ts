@@ -63,6 +63,10 @@ const structure = (overrides: Partial<SimDefenseType> & Pick<SimDefenseType, 'id
   maxLevel: 3,
   upgradeCostFactor: 0.75,
   wearPerMemberSecond: 0,
+  disruptible: true,
+  dismantlable: false,
+  seesHidden: false,
+  repairPerSecond: 0,
   ...overrides,
 });
 
@@ -107,6 +111,8 @@ export function fixtureSetup(overrides: Partial<MatchSetup> = {}, level: Partial
           resilience: 3,
           visibility: 'normal',
           sightRange: 12,
+          dismantle: 0,
+          objectiveRate: 1,
         },
         {
           id: 'sneaker',
@@ -116,6 +122,8 @@ export function fixtureSetup(overrides: Partial<MatchSetup> = {}, level: Partial
           resilience: 4,
           visibility: 'stealth',
           sightRange: 8,
+          dismantle: 1,
+          objectiveRate: 1,
         },
       ],
       abilities: [
@@ -138,6 +146,7 @@ export function fixtureSetup(overrides: Partial<MatchSetup> = {}, level: Partial
           cooldownSeconds: 20,
         },
       ],
+      commands: [],
       passive: [],
     },
     defender: {
@@ -163,6 +172,7 @@ export function fixtureSetup(overrides: Partial<MatchSetup> = {}, level: Partial
           cooldownSeconds: 20,
         },
       ],
+      commands: [],
       passive: [],
     },
     ...overrides,

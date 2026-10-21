@@ -22,6 +22,8 @@ const ATTACKER_STATS = [
   'checkpointsPassed',
   'membersReachedObjective',
   'membersRetreated',
+  'defensesDisrupted',
+  'defensesDismantled',
 ] as const;
 const DEFENDER_STATS = [
   'membersTurnedBack',
@@ -29,6 +31,7 @@ const DEFENDER_STATS = [
   'structuresBuilt',
   'patrolsDeployed',
   'groupsIdentified',
+  'abilitiesUsed',
 ] as const;
 
 /**

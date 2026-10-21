@@ -1,10 +1,13 @@
-import type { Level, StagePack } from '@gtd/content-schema';
+import type { Action, Level, StagePack } from '@gtd/content-schema';
 import type { Translate } from '@gtd/i18n';
 import type { Formation, GroupEntity, MatchSnapshot, WaveGroupOrder } from '@gtd/sim';
 import { Art, initials } from '../art/Art';
 import { formatSeconds } from '../level/MatchControls';
 import { ROUTE_COLORS } from '../world/markers';
+import { extraSlots, orderKey } from './commandSlots';
 import { KeyHint } from './KeyHint';
+import { SlotButtons } from './SlotButtons';
+import { StatusChips } from './StatusChips';
 import { Tooltip } from './Tooltip';
 
 export const FORMATIONS: Formation[] = ['column', 'spread'];
@@ -319,6 +322,7 @@ export function GroupList({ units, level, groups, selectedId, t, stageText, onSe
                     />
                     {routeLabel(level, stageText, group.routeId)} · {t(`state.${group.state}`)}
                   </span>
+                  <StatusChips statuses={group.statuses} t={t} />
                 </span>
                 <span className={`detection ${group.detection}`} title={t(`detection.${group.detection}`)}>
                   {group.detection === 'unknown' ? '◌' : '◉'}
@@ -338,8 +342,12 @@ interface GroupOrdersProps {
   level: Level;
   units: StagePack['catalog']['units'];
   rerouting: boolean;
+  /** The profile's command slots (keys X C V B N M) and the snapshot for their cost and recharge. */
+  slots: Action[];
+  snapshot: MatchSnapshot;
   t: Translate;
   stageText: Translate;
+  onSlot(action: Action): void;
   onHold(): void;
   onAdvance(): void;
   onRetreat(): void;
@@ -348,14 +356,20 @@ interface GroupOrdersProps {
   onClose(): void;
 }
 
-/** Orders for the selected group (command slots X C V B …). */
+/**
+ * Orders for the selected group: the base orders every Attacker has, then the profile's own command slots. Keys follow
+ * the profile's slot order (X C V B N M), so a profile that leaves an order off its keys still has the button.
+ */
 export function GroupOrders({
   group,
   level,
   units,
   rerouting,
+  slots,
+  snapshot,
   t,
   stageText,
+  onSlot,
   onHold,
   onAdvance,
   onRetreat,
@@ -381,6 +395,7 @@ export function GroupOrders({
           {routeLabel(level, stageText, group.routeId)} · {t(`state.${group.state}`)}
           {group.holdAtJunction && !holding && ` · ${t('hud.holdingNext')}`}
         </span>
+        <StatusChips statuses={group.statuses} t={t} />
         <button type="button" className="close" aria-label={t('hud.deselect')} onClick={onClose}>
           ×
         </button>
@@ -389,19 +404,19 @@ export function GroupOrders({
         <Tooltip text={t('ctl.tip.hold')}>
           <button type="button" className="order" onClick={onHold} data-testid="order-hold">
             {t('ctl.hold')}
-            <KeyHint action="command.1" />
+            <KeyHint action={orderKey(slots, 'hold')} />
           </button>
         </Tooltip>
         <Tooltip text={t('ctl.tip.advance')}>
           <button type="button" className="order" onClick={onAdvance} data-testid="order-advance">
             {t('ctl.advance')}
-            <KeyHint action="command.2" />
+            <KeyHint action={orderKey(slots, 'advance')} />
           </button>
         </Tooltip>
         <Tooltip text={t('ctl.tip.retreat')}>
           <button type="button" className="order" onClick={onRetreat} data-testid="retreat">
             {t('ctl.retreat')}
-            <KeyHint action="command.3" />
+            <KeyHint action={orderKey(slots, 'retreat')} />
           </button>
         </Tooltip>
         <Tooltip text={t('ctl.tip.reroute')}>
@@ -413,7 +428,7 @@ export function GroupOrders({
             data-testid="order-reroute"
           >
             {t('ctl.reroute')}
-            <KeyHint action="command.4" />
+            <KeyHint action={orderKey(slots, 'reroute')} />
           </button>
         </Tooltip>
         <button
@@ -423,9 +438,22 @@ export function GroupOrders({
           data-testid="order-formation"
         >
           {t(`formation.${group.formation === 'column' ? 'spread' : 'column'}`)}
-          <KeyHint action="command.5" />
+          <KeyHint action={orderKey(slots, 'formation')} />
         </button>
       </div>
+      <SlotButtons
+        slots={slots}
+        shown={extraSlots(slots, 'attacker')}
+        side="attacker"
+        snapshot={snapshot}
+        t={t}
+        stageText={stageText}
+        active={(action) => action.order === 'dismantle' && group.focusDefenseId !== null}
+        label={(action) =>
+          action.order === 'dismantle' && group.focusDefenseId !== null ? t('hud.stopDismantling') : undefined
+        }
+        onUse={onSlot}
+      />
       {rerouting && (
         <div className="route-chips" role="group" aria-label={t('ctl.route')}>
           {otherRoutes.map((route) => (

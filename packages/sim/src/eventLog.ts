@@ -15,7 +15,8 @@ export type MatchEvent =
       routeId: string;
     }
   | { tick: number; type: 'groupHolding'; groupId: number; nodeId: string }
-  | { tick: number; type: 'groupBlocked'; groupId: number; nodeId: string; defenseId: number }
+  /** `defenseId` is null when a closed branch (not a roadblock) stops the group. */
+  | { tick: number; type: 'groupBlocked'; groupId: number; nodeId: string; defenseId: number | null }
   | { tick: number; type: 'groupRerouted'; groupId: number; routeId: string }
   | { tick: number; type: 'groupRetreating'; groupId: number }
   | {
@@ -39,9 +40,19 @@ export type MatchEvent =
   | { tick: number; type: 'defenseUpgraded'; defenseId: number; level: number }
   | { tick: number; type: 'defenseRepaired'; defenseId: number }
   | { tick: number; type: 'defenseSold'; defenseId: number; refund: number }
-  | { tick: number; type: 'defenseDisrupted'; defenseId: number }
+  /** Worn down at a roadblock or dismantled to 0 (`worn`), or put out of action by sabotage for a while. */
+  | { tick: number; type: 'defenseDisrupted'; defenseId: number; by?: 'worn' | 'sabotage' }
+  | { tick: number; type: 'defenseRecovered'; defenseId: number }
+  /** Attacker units took it apart; it is gone. */
+  | { tick: number; type: 'defenseDismantled'; defenseId: number; byGroupId: number | null }
+  /** A temporary asset reached the end of its time. */
+  | { tick: number; type: 'defenseExpired'; defenseId: number }
+  | { tick: number; type: 'branchClosed'; nodeId: string; untilTick: number }
+  | { tick: number; type: 'branchOpened'; nodeId: string }
+  | { tick: number; type: 'groupFocusDefense'; groupId: number; defenseId: number | null }
   | { tick: number; type: 'defenseSeen'; defenseId: number }
   | { tick: number; type: 'abilityUsed'; side: Side; abilityId: string }
+  | { tick: number; type: 'commandUsed'; side: Side; commandId: string; entityId: number }
   | { tick: number; type: 'matchEnded'; result: MatchResult };
 
 export type MatchEventType = MatchEvent['type'];

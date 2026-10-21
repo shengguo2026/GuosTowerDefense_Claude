@@ -1,5 +1,5 @@
 import type { MatchSetup, SimAbility, SimEffect } from '@gtd/sim';
-import type { Effect, StagePack } from './schema';
+import type { Action, Effect, StagePack } from './schema';
 
 export interface MatchChoice {
   levelId: string;
@@ -38,37 +38,63 @@ export function createMatchSetup(pack: StagePack, choice: MatchChoice): MatchSet
       profileId: attacker.id,
       units: pack.catalog.units
         .filter((unit) => attacker.units.includes(unit.id))
-        .map(({ name: _name, icon: _icon, ...unit }) => unit),
+        .map(({ name: _name, icon: _icon, description: _description, model: _model, ...unit }) => unit),
       abilities: abilitiesOf(pack, attacker.abilities),
+      commands: commandsOf(pack, attacker.commands),
       passive: attacker.passive.effects.map(effectOf),
     },
     defender: {
       profileId: defender.id,
       defenses: pack.catalog.defenses
         .filter((defense) => defender.defenses.includes(defense.id))
-        .map(({ name: _name, icon: _icon, detectionRange, maxCount, ...defense }) => ({
-          ...defense,
-          detectionRange: detectionRange ?? defense.range,
-          ...(maxCount === undefined ? {} : { maxCount }),
-        })),
+        .map(
+          ({
+            name: _name,
+            icon: _icon,
+            description: _description,
+            model: _model,
+            detectionRange,
+            maxCount,
+            lifetimeSeconds,
+            ...defense
+          }) => ({
+            ...defense,
+            detectionRange: detectionRange ?? defense.range,
+            ...(maxCount === undefined ? {} : { maxCount }),
+            ...(lifetimeSeconds === undefined ? {} : { lifetimeSeconds }),
+          }),
+        ),
       abilities: abilitiesOf(pack, defender.abilities),
+      commands: commandsOf(pack, defender.commands),
       passive: defender.passive.effects.map(effectOf),
     },
   };
 }
 
 function abilitiesOf(pack: StagePack, ids: string[]): SimAbility[] {
-  return pack.catalog.abilities
-    .filter((ability) => ids.includes(ability.id))
-    .map(({ id, target, effects, range, durationSeconds, cost, cooldownSeconds }) => ({
-      id,
-      target,
-      effects: effects.map(effectOf),
-      range,
-      durationSeconds,
-      cost,
-      cooldownSeconds,
-    }));
+  return pack.catalog.abilities.filter((ability) => ids.includes(ability.id)).map(actionOf);
+}
+
+/** Command slots keep the profile's order: it is the key order (X C V B N M). */
+function commandsOf(pack: StagePack, ids: string[]): SimAbility[] {
+  return ids
+    .map((id) => pack.catalog.commands.find((command) => command.id === id))
+    .filter((command) => command !== undefined)
+    .map(actionOf);
+}
+
+function actionOf(action: Action): SimAbility {
+  const { id, target, effects, order, range, durationSeconds, cost, cooldownSeconds } = action;
+  return {
+    id,
+    target,
+    effects: effects.map(effectOf),
+    ...(order === undefined ? {} : { order }),
+    range,
+    durationSeconds,
+    cost,
+    cooldownSeconds,
+  };
 }
 
 function effectOf(effect: Effect): SimEffect {
@@ -76,6 +102,8 @@ function effectOf(effect: Effect): SimEffect {
   if (effect.magnitude !== undefined) out.magnitude = effect.magnitude;
   if (effect.stat !== undefined) out.stat = effect.stat;
   if (effect.condition !== undefined) out.condition = effect.condition;
+  if (effect.spawn !== undefined) out.spawn = effect.spawn;
+  if (effect.pool !== undefined) out.pool = effect.pool;
   return out;
 }
 

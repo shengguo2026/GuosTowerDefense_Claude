@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { CameraRig } from './cameraRig';
 import type { CameraState } from './cameraMath';
+import { EffectsView } from './effectsView';
 import { EntityView, createBlobTexture } from './entityView';
 import { ROUTE_COLORS, createMarkers } from './markers';
 import type { Point2 } from './paths';
@@ -100,6 +101,7 @@ export class LevelView {
   private readonly markers: ReturnType<typeof createMarkers>;
   private readonly entities: EntityView;
   private readonly selection: SelectionView;
+  private readonly effects: EffectsView;
   private positions = new Map<number, InterpolatedEntity>();
   private readonly routeSamples: { routeId: string; point: THREE.Vector3 }[] = [];
   private readonly nodePoints: { id: string; point: THREE.Vector3 }[] = [];
@@ -203,6 +205,8 @@ export class LevelView {
     this.scene.add(this.markers.root);
     this.selection = new SelectionView(this.world.heightAt);
     this.scene.add(this.selection.root);
+    this.effects = new EffectsView(this.world.heightAt);
+    this.scene.add(this.effects.root);
     for (const route of routes) {
       const length = pathLength(route.path);
       for (let at = 0; at <= length; at += 2) {
@@ -222,7 +226,11 @@ export class LevelView {
     const blob = createBlobTexture();
     this.owned.push(blob);
     const ranges = Object.fromEntries(options.pack.catalog.defenses.map((d) => [d.id, d.range]));
-    this.entities = new EntityView(this.world.heightAt, ranges, blob, options.hiddenMarkers);
+    const { units, defenses } = options.pack.catalog;
+    this.entities = new EntityView(this.world.heightAt, ranges, blob, options.hiddenMarkers, {
+      units: Object.fromEntries(units.map((u) => [u.id, u.model])),
+      defenses: Object.fromEntries(defenses.map((d) => [d.id, d.model])),
+    });
     this.scene.add(this.entities.root);
 
     this.startCamera = scene.camera ?? { x: 0, z: 0, yaw: -0.6, pitch: 0.7, distance: 90 };
@@ -304,6 +312,11 @@ export class LevelView {
     this.markers.highlight(index >= 0 ? index : null);
   }
 
+  /** How many area effects and closed branches are drawn right now (for tests). */
+  get effectMarks(): { areas: number; closures: number } {
+    return this.effects.counts;
+  }
+
   /** How many groups carry the hot-seat "hidden" mark right now (for tests). */
   get hiddenMarks(): number {
     return this.entities.hiddenCount;
@@ -369,6 +382,7 @@ export class LevelView {
     this.labels.forEach((label) => label.element.remove());
     this.entities.dispose();
     this.selection.dispose();
+    this.effects.dispose();
     this.markers.dispose();
     this.world.dispose();
     this.owned.forEach((thing) => thing.dispose());
@@ -409,6 +423,7 @@ export class LevelView {
     const now = performance.now();
     this.positions = this.buffer.sample(now);
     this.entities.update(this.buffer.latest, this.positions, elapsed);
+    this.effects.update(this.buffer.latest, elapsed);
     const selectedId = this.selection.selectedId;
     const selected = selectedId === null ? undefined : this.positions.get(selectedId);
     const markedId = this.selection.markedId;

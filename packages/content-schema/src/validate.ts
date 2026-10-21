@@ -1,5 +1,34 @@
 import type { ContentIssue } from './loader';
-import { LANGUAGES, type StagePack } from './schema';
+import { ATTACKER_ORDERS, DEFENDER_ORDERS, LANGUAGES, type Action, type StagePack } from './schema';
+
+type Side = 'attacker' | 'defender';
+
+/** Effects that do something for a side (see EffectSchema: who an effect works on follows from the side). */
+const EFFECTS_FOR: Record<Side, ReadonlySet<string>> = {
+  attacker: new Set([
+    'slow',
+    'reveal',
+    'conceal',
+    'protect',
+    'disrupt',
+    'boost',
+    'move',
+    'spawn',
+    'resource',
+    'dismantle',
+  ]),
+  defender: new Set([
+    'slow',
+    'reveal',
+    'conceal',
+    'protect',
+    'disrupt',
+    'boost',
+    'spawn',
+    'blockBranch',
+    'resource',
+  ]),
+};
 
 /** Checks that need more than one file: references between levels, profiles, catalog and texts. */
 export function crossCheck(pack: StagePack): ContentIssue[] {
@@ -100,6 +129,9 @@ export function crossCheck(pack: StagePack): ContentIssue[] {
     );
     entries.forEach((entry) => useText(entry.name, 'catalog.json'));
   }
+  [...catalog.units, ...catalog.defenses].forEach(
+    (entry) => entry.description && useText(entry.description, 'catalog.json'),
+  );
   const spawnable = new Set([...catalog.units, ...catalog.defenses].map((entry) => entry.id));
   [...catalog.abilities, ...catalog.commands].forEach((action) => {
     useText(action.description, 'catalog.json');
@@ -109,6 +141,38 @@ export function crossCheck(pack: StagePack): ContentIssue[] {
       }
     });
   });
+  // Abilities and commands share one cooldown list per side, so their ids must not collide.
+  findDuplicates([...catalog.abilities, ...catalog.commands].map((action) => action.id)).forEach((dup) =>
+    add('catalog.json', 'commands', `"${dup}" is both an ability and a command`),
+  );
+  catalog.abilities.forEach((ability) => {
+    if (ability.order)
+      add('catalog.json', `abilities.${ability.id}.order`, 'only command slots can stand for an order');
+  });
+  catalog.commands.forEach((command) => {
+    if (!command.order && !['unit', 'area', 'self'].includes(command.target))
+      add(
+        'catalog.json',
+        `commands.${command.id}.target`,
+        'a command works on its group or asset: unit, area or self',
+      );
+  });
+  const checkAction = (file: string, path: string, action: Action, side: Side) => {
+    action.effects.forEach((effect, i) => {
+      if (!EFFECTS_FOR[side].has(effect.type))
+        add(file, `${path}.effects.${i}`, `"${effect.type}" does nothing for the ${side} ("${action.id}")`);
+      if (effect.type === 'spawn' && effect.spawn) {
+        const list: { id: string }[] = side === 'attacker' ? catalog.units : catalog.defenses;
+        if (!list.some((entry) => entry.id === effect.spawn))
+          add(file, `${path}.effects.${i}`, `the ${side} cannot spawn "${effect.spawn}"`);
+      }
+    });
+    if (action.order) {
+      const orders: readonly string[] = side === 'attacker' ? ATTACKER_ORDERS : DEFENDER_ORDERS;
+      if (!orders.includes(action.order))
+        add(file, `${path}.order`, `"${action.order}" is not an order of the ${side}`);
+    }
+  };
 
   // Profiles
   const ids = (entries: { id: string }[]) => new Set(entries.map((entry) => entry.id));
@@ -130,6 +194,7 @@ export function crossCheck(pack: StagePack): ContentIssue[] {
       useText(key, file);
     }
     useText(profile.passive.description, file);
+    if (profile.points) useText(profile.points.name, file);
     if (profile.side === 'attacker' && profile.units.length === 0)
       add(file, 'units', 'an Attacker profile needs units');
     if (profile.side === 'defender' && profile.defenses.length === 0) {
@@ -140,6 +205,22 @@ export function crossCheck(pack: StagePack): ContentIssue[] {
         if (!known[list].has(ref)) add(file, `${list}.${i}`, `unknown ${list.slice(0, -1)} "${ref}"`);
       });
     }
+    findDuplicates(profile.commands).forEach((dup) =>
+      add(file, 'commands', `command "${dup}" is listed twice`),
+    );
+    profile.abilities.forEach((ref, i) => {
+      const ability = catalog.abilities.find((a) => a.id === ref);
+      if (ability) checkAction(file, `abilities.${i}`, ability, profile.side);
+    });
+    profile.commands.forEach((ref, i) => {
+      const command = catalog.commands.find((c) => c.id === ref);
+      if (command) checkAction(file, `commands.${i}`, command, profile.side);
+    });
+    profile.passive.effects.forEach((effect, i) => {
+      const passives = profile.side === 'attacker' ? ['boost', 'conceal'] : ['boost', 'protect', 'reveal'];
+      if (!passives.includes(effect.type))
+        add(file, `passive.effects.${i}`, `a ${profile.side} passive can be ${passives.join(', ')}`);
+    });
   });
 
   // Texts: every player-facing text exists in every language (spec §1).

@@ -1,3 +1,4 @@
+import { inProfileOrder } from '../hud/commandSlots';
 import type { Level, StagePack } from '@gtd/content-schema';
 import type { Translate } from '@gtd/i18n';
 import { seatControls, type MatchCommand, type Seat } from '@gtd/protocol';
@@ -97,8 +98,8 @@ function SideSummary({ snapshot, side, t }: { snapshot: MatchSnapshot; side: Sid
 
 function AttackerControls({ pack, level, snapshot, attackerProfileId, t, stageText, send }: Props) {
   const profile = pack.profiles.find((p) => p.id === attackerProfileId);
-  const units = pack.catalog.units.filter((u) => profile?.units.includes(u.id));
-  const abilities = pack.catalog.abilities.filter((a) => profile?.abilities.includes(a.id));
+  const units = inProfileOrder(pack.catalog.units, profile?.units);
+  const abilities = inProfileOrder(pack.catalog.abilities, profile?.abilities);
   const firstUnit = units[0]?.id ?? '';
   const firstRoute = level.routes[0]?.id ?? '';
   const [orders, setOrders] = useState<WaveGroupOrder[]>([
@@ -369,6 +370,7 @@ function AbilityRow({
     const node = places.find((n) => n.id === place);
     const command: MatchCommand = { type: 'useAbility', side, abilityId: ability.id };
     if (ability.target === 'area' && node) Object.assign(command, { x: node.x, z: node.z });
+    if (ability.target === 'junction' && node) Object.assign(command, { nodeId: node.id });
     if (ability.target === 'unit' || ability.target === 'route') {
       if (chosenGroup !== null) Object.assign(command, { groupId: chosenGroup });
     }
@@ -425,8 +427,8 @@ function AbilityRow({
 
 function DefenderControls({ pack, level, snapshot, defenderProfileId, t, stageText, send }: Props) {
   const profile = pack.profiles.find((p) => p.id === defenderProfileId);
-  const types = pack.catalog.defenses.filter((d) => profile?.defenses.includes(d.id));
-  const abilities = pack.catalog.abilities.filter((a) => profile?.abilities.includes(a.id));
+  const types = inProfileOrder(pack.catalog.defenses, profile?.defenses);
+  const abilities = inProfileOrder(pack.catalog.abilities, profile?.abilities);
   const [typeId, setTypeId] = useState(types[0]?.id ?? '');
   const type = types.find((d) => d.id === typeId);
   const routeNodes = new Set(level.routes.flatMap((r) => r.nodes));

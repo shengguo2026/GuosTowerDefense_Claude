@@ -125,8 +125,8 @@ test('plays the Attacker: picks a route on the map, launches with the keyboard a
   await expect(page.getByTestId('route-riverbed')).toHaveAttribute('aria-checked', 'false');
   await tapMap(page, -13, 27, touch);
   await expect(page.getByTestId('route-riverbed')).toHaveAttribute('aria-checked', 'true');
-  // Key 2 picks the second unit, T the first route.
-  await page.keyboard.press('Digit2');
+  // Key 3 picks the third unit (Scout, Guide, Expedition Team …), T the first route.
+  await page.keyboard.press('Digit3');
   await expect(page.getByTestId('unit-expedition-team')).toHaveAttribute('aria-checked', 'true');
   await page.keyboard.press('KeyT');
   await expect(page.getByTestId('route-ridge')).toHaveAttribute('aria-checked', 'true');

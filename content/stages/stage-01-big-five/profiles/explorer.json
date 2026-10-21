@@ -8,6 +8,10 @@
     "id": "expedition-supplies",
     "name": "resource.expedition-supplies"
   },
+  "points": {
+    "id": "recon-points",
+    "name": "points.recon-points"
+  },
   "passive": {
     "name": "profile.explorer.passive.name",
     "description": "profile.explorer.passive.description",
@@ -20,8 +24,8 @@
       }
     ]
   },
-  "units": ["scout", "expedition-team"],
+  "units": ["scout", "guide", "expedition-team", "expedition-vehicle"],
   "defenses": [],
-  "abilities": ["reconnaissance", "rapid-reroute"],
-  "commands": []
+  "abilities": ["reconnaissance", "rapid-reroute", "field-guide"],
+  "commands": ["hold", "advance", "retreat", "reroute", "formation", "scout-ahead"]
 }

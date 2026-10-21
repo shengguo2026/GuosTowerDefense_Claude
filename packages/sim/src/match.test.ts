@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Match, hashValue, secondsToTicks, type Command, type WaveGroupOrder } from './index';
-import { fixtureSetup } from './testFixture';
-import type { DefenseEntity, GroupEntity, MatchSetup, SimLevel } from './types';
+import { FIXTURE_DEFENSES, fixtureSetup } from './testFixture';
+import type { DefenseEntity, GroupEntity, MatchSetup, SimAbility, SimDefenseType, SimLevel } from './types';
 
 type CommandInput = Command extends infer C ? (C extends Command ? Omit<C, 'tick'> : never) : never;
 
@@ -60,6 +60,25 @@ function defenses(match: Match): DefenseEntity[] {
 function group(match: Match, id: number): GroupEntity | undefined {
   return groups(match).find((g) => g.id === id);
 }
+
+function within(at: { x: number; z: number }, point: { x: number; z: number }, range: number): boolean {
+  return Math.hypot(at.x - point.x, at.z - point.z) <= range;
+}
+
+function ability(overrides: Partial<SimAbility> & Pick<SimAbility, 'id' | 'target' | 'effects'>): SimAbility {
+  return { range: 10, durationSeconds: 5, cost: 0, cooldownSeconds: 10, ...overrides };
+}
+
+const fence: SimDefenseType = {
+  ...FIXTURE_DEFENSES[0]!,
+  id: 'fence',
+  cost: 20,
+  placement: 'routeNode',
+  range: 3,
+  detectionRange: 4,
+  pressurePerSecond: 0,
+  dismantlable: true,
+};
 
 function eventsOf<T extends Command['type'] | string>(match: Match, type: T) {
   return match.events.all().filter((e) => e.type === type);
@@ -619,7 +638,7 @@ describe('abilities', () => {
     send(match, { type: 'useAbility', side: 'attacker', abilityId: 'intercept', groupId: 1 });
     send(match, { type: 'useAbility', side: 'defender', abilityId: 'response', x: 0, z: 0 });
     send(match, { type: 'useAbility', side: 'attacker', abilityId: 'reroute' });
-    expect(rejections(match)).toEqual(['cooldown', 'unknownAbility', 'notEnoughPoints', 'missingTarget']);
+    expect(rejections(match)).toEqual(['cooldown', 'unknownAbility', 'notEnoughPoints', 'unknownRoute']);
   });
 
   it('Rapid Reroute switches route at the next junction without stopping', () => {
@@ -698,34 +717,34 @@ describe('abilities', () => {
     expect(rejections(match)).toEqual(['notVisible']);
   });
 
-  it('runs resource abilities and rejects effects the engine does not support yet', () => {
+  it('runs resource abilities and closes a branch for a while, never every route', () => {
     const setup = fixtureSetup();
     setup.attacker.abilities.push(
-      {
-        id: 'drop',
-        target: 'self',
-        effects: [{ type: 'resource', magnitude: 30 }],
-        range: 0,
-        durationSeconds: 0,
-        cost: 0,
-        cooldownSeconds: 10,
-      },
-      {
-        id: 'wall',
-        target: 'junction',
-        effects: [{ type: 'blockBranch' }],
-        range: 0,
-        durationSeconds: 5,
-        cost: 0,
-        cooldownSeconds: 10,
-      },
+      ability({ id: 'drop', target: 'self', effects: [{ type: 'resource', magnitude: 30 }] }),
+    );
+    setup.defender.abilities.push(
+      ability({ id: 'wall', target: 'junction', effects: [{ type: 'blockBranch' }], durationSeconds: 20 }),
+      ability({ id: 'wall-2', target: 'junction', effects: [{ type: 'blockBranch' }], durationSeconds: 20 }),
     );
     const match = new Match(setup);
     const before = match.snapshot().resources.attacker as number;
     send(match, { type: 'useAbility', side: 'attacker', abilityId: 'drop' });
+    expect((match.snapshot().resources.attacker as number) - before).toBeCloseTo(30.05, 5);
     send(match, { type: 'useAbility', side: 'attacker', abilityId: 'wall' });
-    expect((match.snapshot().resources.attacker as number) - before).toBeCloseTo(30.1, 5);
-    expect(rejections(match)).toEqual(['unsupportedEffect']);
+    expect(rejections(match)).toEqual(['unknownAbility']);
+
+    skipPreparation(match);
+    send(match, { type: 'useAbility', side: 'defender', abilityId: 'wall', nodeId: 'north' });
+    expect(match.snapshot().closures.map((c) => c.nodeId)).toEqual(['north']);
+    send(match, { type: 'useAbility', side: 'defender', abilityId: 'wall-2', nodeId: 'south' });
+    expect(rejections(match)).toEqual(['unknownAbility', 'wouldBlockAllRoutes']);
+
+    launch(match, order({ count: 1 }));
+    runUntil(match, () => groups(match)[0]?.state === 'blocked', 30);
+    expect(groups(match)[0]?.state).toBe('blocked');
+    runUntil(match, () => eventsOf(match, 'branchOpened').length > 0, 30);
+    run(match, 0.5);
+    expect(groups(match)[0]?.state).toBe('moving');
   });
 });
 
@@ -843,5 +862,280 @@ describe('victory and defeat', () => {
       return hashValue(match.events.all());
     };
     expect(play()).toBe(play());
+  });
+});
+
+describe('disruption and dismantling', () => {
+  const sabotage = ability({
+    id: 'sabotage',
+    target: 'area',
+    effects: [{ type: 'disrupt' }],
+    range: 6,
+    durationSeconds: 4,
+  });
+
+  it('sabotages an asset for a while when a group is near, and the asset recovers', () => {
+    const setup = fixtureSetup();
+    setup.attacker.abilities.push(sabotage);
+    const match = new Match(setup);
+    place(match, 'post', 'north-zone');
+    skipPreparation(match);
+    send(match, { type: 'useAbility', side: 'attacker', abilityId: 'sabotage', x: 20, z: 13 });
+    expect(rejections(match)).toEqual(['noGroupNear']);
+
+    launch(match, order({ count: 1 }));
+    runUntil(match, () => within(groups(match)[0]!, { x: 20, z: 13 }, 10), 30);
+    send(match, { type: 'useAbility', side: 'attacker', abilityId: 'sabotage', x: 20, z: 13 });
+    expect(rejections(match)).toEqual(['noGroupNear']);
+    const post = defenses(match)[0]!;
+    expect(post.disrupted).toBe(true);
+    expect(post.statuses).toContain('disrupted');
+    expect(eventsOf(match, 'defenseDisrupted')).toMatchObject([{ defenseId: post.id, by: 'sabotage' }]);
+    expect(match.snapshot().stats.attacker.defensesDisrupted).toBe(1);
+    run(match, 4);
+    expect(defenses(match)[0]!.disrupted).toBe(false);
+    expect(eventsOf(match, 'defenseRecovered')).toHaveLength(1);
+  });
+
+  it('protection shortens sabotage', () => {
+    const recoveredAfter = (protect: boolean) => {
+      const setup = fixtureSetup();
+      setup.attacker.abilities.push(sabotage);
+      if (protect) setup.defender.passive = [{ type: 'protect', magnitude: 0.5 }];
+      const match = new Match(setup);
+      place(match, 'post', 'north-zone');
+      skipPreparation(match);
+      launch(match, order({ count: 1 }));
+      runUntil(match, () => within(groups(match)[0]!, { x: 20, z: 13 }, 10), 30);
+      send(match, { type: 'useAbility', side: 'attacker', abilityId: 'sabotage', x: 20, z: 13 });
+      const from = match.tick;
+      runUntil(match, () => eventsOf(match, 'defenseRecovered').length > 0, 10);
+      return match.tick - from;
+    };
+    expect(recoveredAfter(true)).toBeCloseTo(recoveredAfter(false) / 2, -1);
+  });
+
+  it('Focus Defense takes a dismantlable asset apart and then moves on', () => {
+    const setup = fixtureSetup();
+    setup.defender.defenses = [...FIXTURE_DEFENSES, fence];
+    setup.attacker.units = setup.attacker.units.map((u) =>
+      u.id === 'sneaker' ? { ...u, dismantle: 20 } : u,
+    );
+    const match = new Match(setup);
+    place(match, 'fence', 'north');
+    place(match, 'post', 'north-zone');
+    skipPreparation(match);
+    launch(match, order({ count: 1 }), order({ unitTypeId: 'sneaker', count: 1 }));
+    const [walker, sneaker] = groups(match).map((g) => g.id) as [number, number];
+    runUntil(match, () => within(group(match, sneaker)!, { x: 20, z: 10 }, 7), 30);
+    send(match, { type: 'focusDefense', side: 'attacker', groupId: walker });
+    send(match, {
+      type: 'focusDefense',
+      side: 'attacker',
+      groupId: sneaker,
+      defenseId: defenses(match)[1]!.id,
+    });
+    expect(rejections(match)).toEqual(['cannotDismantle', 'notDismantlable']);
+    send(match, { type: 'focusDefense', side: 'attacker', groupId: sneaker });
+    expect(group(match, sneaker)!.focusDefenseId).toBe(defenses(match)[0]!.id);
+    runUntil(match, () => group(match, sneaker)?.state === 'dismantling', 20);
+    expect(group(match, sneaker)?.state).toBe('dismantling');
+    runUntil(match, () => eventsOf(match, 'defenseDismantled').length > 0, 20);
+    expect(defenses(match).map((d) => d.defenseTypeId)).toEqual(['post']);
+    expect(match.snapshot().stats.attacker.defensesDismantled).toBe(1);
+    run(match, 0.1);
+    expect(group(match, sneaker)?.state).toBe('moving');
+    expect(group(match, sneaker)?.focusDefenseId).toBeNull();
+  });
+
+  it('a Defender disrupt pins a detected group in place', () => {
+    const setup = fixtureSetup();
+    setup.defender.abilities.push(
+      ability({ id: 'pin', target: 'unit', effects: [{ type: 'disrupt' }], range: 0, durationSeconds: 2 }),
+    );
+    const match = new Match(setup);
+    place(match, 'post', 'north-zone');
+    skipPreparation(match);
+    launch(match, order({ count: 1 }));
+    runUntil(match, () => groups(match)[0]!.detection !== 'unknown', 30);
+    const id = groups(match)[0]!.id;
+    send(match, { type: 'useAbility', side: 'defender', abilityId: 'pin', groupId: id });
+    const x = group(match, id)!.x;
+    run(match, 1.5);
+    expect(group(match, id)!.x).toBe(x);
+    expect(group(match, id)!.statuses).toContain('pinned');
+    run(match, 1);
+    expect(group(match, id)!.x).toBeGreaterThan(x);
+  });
+});
+
+describe('spawns and temporary assets', () => {
+  it('a Defender ability puts down a temporary asset that expires', () => {
+    const setup = fixtureSetup();
+    setup.defender.defenses = [...FIXTURE_DEFENSES, fence];
+    setup.defender.abilities.push(
+      ability({
+        id: 'drop-fence',
+        target: 'junction',
+        effects: [{ type: 'spawn', spawn: 'fence' }],
+        durationSeconds: 3,
+      }),
+    );
+    const match = new Match(setup);
+    send(match, { type: 'useAbility', side: 'defender', abilityId: 'drop-fence', nodeId: 'north' });
+    expect(defenses(match)).toMatchObject([{ defenseTypeId: 'fence', nodeId: 'north' }]);
+    run(match, 3);
+    expect(defenses(match)).toHaveLength(0);
+    expect(eventsOf(match, 'defenseExpired')).toHaveLength(1);
+  });
+
+  it('an Attacker ability sends extra members from its capacity', () => {
+    const setup = fixtureSetup();
+    setup.attacker.abilities.push(
+      ability({
+        id: 'reinforce',
+        target: 'self',
+        effects: [{ type: 'spawn', spawn: 'walker', magnitude: 3 }],
+      }),
+    );
+    const match = new Match(setup);
+    skipPreparation(match);
+    const capacity = match.snapshot().capacity.remaining;
+    send(match, { type: 'useAbility', side: 'attacker', abilityId: 'reinforce' });
+    expect(groups(match)).toMatchObject([{ unitTypeId: 'walker', count: 3, routeId: 'north' }]);
+    expect(match.snapshot().capacity.remaining).toBe(capacity - 3);
+  });
+});
+
+describe('stealth, sensors and reveal', () => {
+  // A short-sighted watch post beside the north route: the route passes it at 3 m.
+  const watch = (seesHidden: boolean): SimDefenseType => ({
+    ...FIXTURE_DEFENSES[0]!,
+    id: 'watch',
+    detectionRange: 5,
+    pressurePerSecond: 0,
+    seesHidden,
+  });
+  const detected = (
+    unitTypeId: string,
+    seesHidden: boolean,
+    edit: (setup: MatchSetup) => void = () => {},
+  ) => {
+    const setup = fixtureSetup();
+    setup.defender.defenses = [watch(seesHidden)];
+    edit(setup);
+    const match = new Match(setup);
+    place(match, 'watch', 'north-zone');
+    skipPreparation(match);
+    launch(match, order({ unitTypeId, count: 1 }));
+    runUntil(match, () => groups(match)[0]?.state === 'atObjective', 60);
+    return eventsOf(match, 'groupDetected').length > 0;
+  };
+
+  it('a Stealth unit slips past a plain post but not past a sensor', () => {
+    expect(detected('walker', false)).toBe(true);
+    expect(detected('sneaker', false)).toBe(false);
+    expect(detected('sneaker', true)).toBe(true);
+  });
+
+  it('Low Profile hides plain units too', () => {
+    expect(
+      detected('walker', false, (setup) => {
+        setup.attacker.passive = [{ type: 'conceal', magnitude: 0.5 }];
+      }),
+    ).toBe(false);
+  });
+
+  it('a route reveal shows every group on that route, with no post in range', () => {
+    const setup = fixtureSetup();
+    setup.defender.abilities.push(
+      ability({ id: 'scan', target: 'route', effects: [{ type: 'reveal' }], range: 0, durationSeconds: 10 }),
+    );
+    const match = new Match(setup);
+    skipPreparation(match);
+    launch(match, order({ unitTypeId: 'sneaker', count: 1 }));
+    send(match, { type: 'useAbility', side: 'defender', abilityId: 'scan', routeId: 'north' });
+    run(match, 0.1);
+    expect(groups(match)[0]!.detection).not.toBe('unknown');
+  });
+});
+
+describe('command slots', () => {
+  it('runs effect commands from the selected group and leaves orders to their own commands', () => {
+    const setup = fixtureSetup();
+    setup.attacker.commands = [
+      ability({ id: 'hold', target: 'unit', effects: [], order: 'hold', cooldownSeconds: 0 }),
+      ability({ id: 'rush', target: 'unit', effects: [{ type: 'boost', stat: 'speed', magnitude: 0.5 }] }),
+    ];
+    const match = new Match(setup);
+    skipPreparation(match);
+    launch(match, order({ count: 1 }), order({ count: 1, routeId: 'south' }));
+    run(match, 0.5);
+    const [plain, rushed] = groups(match).map((g) => g.id) as [number, number];
+    send(match, { type: 'useCommand', side: 'attacker', commandId: 'hold', groupId: rushed });
+    send(match, { type: 'useCommand', side: 'attacker', commandId: 'nope', groupId: rushed });
+    expect(rejections(match)).toEqual(['orderCommand', 'unknownCommand']);
+    send(match, { type: 'useCommand', side: 'attacker', commandId: 'rush', groupId: rushed });
+    expect(eventsOf(match, 'commandUsed')).toMatchObject([{ commandId: 'rush', entityId: rushed }]);
+    const start = { plain: group(match, plain)!.legDistance, rushed: group(match, rushed)!.legDistance };
+    run(match, 1);
+    expect(group(match, rushed)!.statuses).toContain('boosted');
+    expect(group(match, rushed)!.legDistance - start.rushed).toBeGreaterThan(
+      group(match, plain)!.legDistance - start.plain,
+    );
+    expect(match.snapshot().cooldowns.rush).toBeGreaterThan(0);
+  });
+
+  it('a Defender command protects the selected asset', () => {
+    const setup = fixtureSetup();
+    setup.defender.commands = [ability({ id: 'fortify', target: 'unit', effects: [{ type: 'protect' }] })];
+    const match = new Match(setup);
+    place(match, 'post', 'north-zone');
+    send(match, {
+      type: 'useCommand',
+      side: 'defender',
+      commandId: 'fortify',
+      defenseId: defenses(match)[0]!.id,
+    });
+    expect(defenses(match)[0]!.statuses).toContain('protected');
+  });
+});
+
+describe('maintenance and holding', () => {
+  it('a maintenance crew keeps a roadblock in shape', () => {
+    const conditionAfter = (crew: boolean) => {
+      const setup = fixtureSetup();
+      setup.defender.defenses = [
+        ...FIXTURE_DEFENSES,
+        { ...FIXTURE_DEFENSES[0]!, id: 'crew', pressurePerSecond: 0, repairPerSecond: 20 },
+      ];
+      const match = new Match(setup);
+      place(match, 'barrier', 'north');
+      place(match, 'barrier', 'south');
+      if (crew) place(match, 'crew', 'north-zone');
+      skipPreparation(match);
+      launch(match, order({ count: 2 }));
+      runUntil(match, () => groups(match)[0]?.state === 'blocked', 30);
+      run(match, 2);
+      return defenses(match).find((d) => d.nodeId === 'north')!.condition;
+    };
+    expect(conditionAfter(false)).toBeLessThan(100);
+    expect(conditionAfter(true)).toBeGreaterThan(conditionAfter(false));
+  });
+
+  it('units built for holding complete the objective faster', () => {
+    const completedAt = (objectiveRate: number) => {
+      const setup = fixtureSetup();
+      setup.attacker.units = setup.attacker.units.map((u) => ({ ...u, objectiveRate }));
+      const match = new Match(setup);
+      skipPreparation(match);
+      launch(match, order({ count: 1 }));
+      runUntil(match, () => match.isOver, 120);
+      return match.tick;
+    };
+    const plain = completedAt(1);
+    const quick = completedAt(2);
+    expect(quick).toBeLessThan(plain);
+    expect(plain - quick).toBeCloseTo(secondsToTicks(2.5), -1);
   });
 });

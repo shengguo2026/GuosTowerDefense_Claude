@@ -1456,7 +1456,7 @@ button.primary-small {
 .hud-left,
 .hud-right {
   position: absolute;
-  top: 66px;
+  top: var(--below-hud-top, 66px);
   bottom: 150px;
   width: 270px;
   display: flex;
@@ -1591,6 +1591,55 @@ button.primary-small {
 }
 .order:disabled {
   opacity: 0.5;
+}
+.order.slot {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border-style: dashed;
+}
+.order.slot[aria-disabled='true'] {
+  opacity: 0.6;
+}
+.slot-meta {
+  font-size: 0.8em;
+  opacity: 0.75;
+}
+/* Running effects: a symbol and a word on a tinted chip (colour is never the only sign). */
+.status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 2px;
+}
+.status-chip {
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #f4f1ea;
+  color: var(--ink);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.status-chip.status-slowed,
+.status-chip.status-pinned {
+  background: #dfe9fb;
+}
+.status-chip.status-boosted {
+  background: #fde7d6;
+}
+.status-chip.status-revealed {
+  background: #fff3c4;
+}
+.status-chip.status-concealed {
+  background: #e7e4f2;
+}
+.status-chip.status-protected {
+  background: #dcf1e3;
+}
+.status-chip.status-disrupted {
+  background: #f9d9d6;
 }
 .priority {
   position: relative;
@@ -1940,7 +1989,7 @@ button.primary-small {
   position: absolute;
   z-index: 30;
   left: 50%;
-  top: 66px;
+  top: var(--below-hud-top, 66px);
   transform: translateX(-50%);
   display: flex;
   gap: 12px;
@@ -2186,7 +2235,7 @@ kbd {
   gap: 8px;
 }
 .layout-tablet .hud-drawer {
-  top: 66px;
+  top: var(--below-hud-top, 66px);
   bottom: 160px;
   left: 0;
   width: 300px;
@@ -2224,7 +2273,7 @@ kbd {
 }
 .layout-tablet .hud-minimap {
   position: absolute;
-  top: 66px;
+  top: var(--below-hud-top, 66px);
   right: 10px;
   width: 180px;
 }
@@ -2462,6 +2511,10 @@ kbd {
 .layout-phone .hud-bottom > .ability-bar {
   flex: none;
   align-self: flex-end;
+}
+/* Phones: a third ability stacks higher than the wave panel; the panel keeps its own height so the map stays free. */
+.layout-phone .hud-bottom {
+  align-items: flex-end;
 }
 .layout-phone.drawer-open .hud-bottom {
   display: none;

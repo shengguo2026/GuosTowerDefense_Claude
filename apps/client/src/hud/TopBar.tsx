@@ -1,6 +1,7 @@
 import type { Translate } from '@gtd/i18n';
 import type { ComputerPlayer, MatchSpeed } from '@gtd/protocol';
 import type { MatchSnapshot, Side } from '@gtd/sim';
+import { useEffect, useRef } from 'react';
 import { formatSeconds } from '../level/MatchControls';
 import { KeyHint } from './KeyHint';
 import { Tooltip } from './Tooltip';
@@ -14,6 +15,7 @@ interface Props {
   speed: MatchSpeed;
   canControlClock: boolean;
   compact: boolean;
+  names?: ResourceNames;
   t: Translate;
   onMenu(): void;
   onPause(): void;
@@ -30,13 +32,29 @@ export function TopBar({
   speed,
   canControlClock,
   compact,
+  names,
   t,
   onMenu,
   onPause,
   onSpeed,
 }: Props) {
+  const ref = useRef<HTMLElement>(null);
+  // Long resource names can wrap the bar onto a second row on narrow screens; panels below follow its real height.
+  useEffect(() => {
+    const header = ref.current;
+    const screen = header?.parentElement;
+    if (!header || !screen || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() =>
+      screen.style.setProperty('--below-hud-top', `${header.offsetTop + header.offsetHeight + 10}px`),
+    );
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      screen.style.removeProperty('--below-hud-top');
+    };
+  }, []);
   return (
-    <header className={`hud-top ${side}`} data-testid="hud-top">
+    <header ref={ref} className={`hud-top ${side}`} data-testid="hud-top">
       <button
         type="button"
         className="hud-button"
@@ -62,7 +80,7 @@ export function TopBar({
       )}
       {snapshot && <MatchClock snapshot={snapshot} t={t} />}
       {snapshot && <ObjectiveBar snapshot={snapshot} side={side} t={t} />}
-      {snapshot && <SideNumbers snapshot={snapshot} side={side} t={t} />}
+      {snapshot && <SideNumbers snapshot={snapshot} side={side} t={t} names={names} />}
       {canControlClock && (
         <div className="hud-group clock-buttons">
           <Tooltip text={t('hud.tip.speed')}>
@@ -159,19 +177,35 @@ export function ObjectiveBar({
   );
 }
 
+/** What the profile calls its two resources (Expedition Supplies, Recon Points …). */
+export interface ResourceNames {
+  supplies?: string;
+  points?: string;
+}
+
 /** One side's supplies, points and (Attacker) deployment capacity. */
-export function SideNumbers({ snapshot, side, t }: { snapshot: MatchSnapshot; side: Side; t: Translate }) {
+export function SideNumbers({
+  snapshot,
+  side,
+  t,
+  names,
+}: {
+  snapshot: MatchSnapshot;
+  side: Side;
+  t: Translate;
+  names?: ResourceNames;
+}) {
   return (
     <div className={`hud-numbers ${side}`}>
       <Tooltip text={t('hud.tip.supplies')}>
         <span className="number">
-          <span className="label">{t('hud.supplies')}</span>
+          <span className="label">{names?.supplies ?? t('hud.supplies')}</span>
           <strong data-testid={`${side}-supplies`}>{Math.floor(snapshot.resources[side] ?? 0)}</strong>
         </span>
       </Tooltip>
       <Tooltip text={t('hud.tip.points')}>
         <span className="number">
-          <span className="label">{t('hud.points')}</span>
+          <span className="label">{names?.points ?? t('hud.points')}</span>
           <strong data-testid={`${side}-points`}>{Math.floor(snapshot.points[side] ?? 0)}</strong>
         </span>
       </Tooltip>

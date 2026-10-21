@@ -15,5 +15,5 @@
   "units": [],
   "defenses": ["watch-light", "gate-post"],
   "abilities": ["signal-flare", "supply-drop"],
-  "commands": []
+  "commands": ["brace"]
 }

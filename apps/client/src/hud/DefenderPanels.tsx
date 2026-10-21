@@ -1,7 +1,8 @@
-import type { StagePack } from '@gtd/content-schema';
+import type { Action, StagePack } from '@gtd/content-schema';
 import type { Translate } from '@gtd/i18n';
 import {
   TARGET_PRIORITIES,
+  TICK_RATE,
   type DefenseEntity,
   type GroupEntity,
   type MatchSnapshot,
@@ -10,7 +11,10 @@ import {
 import { Art, initials } from '../art/Art';
 import { nodeName } from '../level/MatchControls';
 import { repairCost, upgradeCost } from './hudState';
+import { extraSlots, orderKey } from './commandSlots';
 import { KeyHint } from './KeyHint';
+import { SlotButtons } from './SlotButtons';
+import { StatusChips } from './StatusChips';
 import { Tooltip } from './Tooltip';
 
 type DefenseType = StagePack['catalog']['defenses'][number];
@@ -116,12 +120,13 @@ export function AssetList({ types, assets, selectedId, t, stageText, onSelect }:
                   <strong>{type ? stageText(type.name) : asset.defenseTypeId}</strong>
                   <span className="muted">
                     {nodeName(asset.nodeId)} · {t('ctl.level', { level: asset.level })}
-                    {asset.condition <= 0
+                    {asset.disrupted
                       ? ` · ${t('ctl.disrupted')}`
                       : asset.condition < 100
                         ? ` · ${Math.round(asset.condition)}%`
                         : ''}
                   </span>
+                  <StatusChips statuses={asset.statuses.filter((s) => s !== 'disrupted')} t={t} />
                 </span>
                 {asset.condition < 100 && (
                   <span
@@ -150,8 +155,12 @@ interface AssetOrdersProps {
   groups: GroupEntity[];
   supplies: number;
   mode: 'focus' | 'guard' | 'patrol' | null;
+  /** The profile's command slots (keys X C V B N M) and the snapshot for their cost and recharge. */
+  slots: Action[];
+  snapshot: MatchSnapshot;
   t: Translate;
   stageText: Translate;
+  onSlot(action: Action): void;
   onUpgrade(): void;
   onRepair(): void;
   onSell(): void;
@@ -163,15 +172,21 @@ interface AssetOrdersProps {
   onClose(): void;
 }
 
-/** Orders for the selected asset: upgrade, repair, sell, targeting and, for patrols, where to go. */
+/**
+ * Orders for the selected asset: upgrade, repair, sell, targeting and, for patrols, where to go; then the profile's own
+ * command slots. Keys follow the profile's slot order.
+ */
 export function AssetOrders({
   asset,
   type,
   groups,
   supplies,
   mode,
+  slots,
+  snapshot,
   t,
   stageText,
+  onSlot,
   onUpgrade,
   onRepair,
   onSell,
@@ -186,6 +201,10 @@ export function AssetOrders({
   const upgrade = type ? upgradeCost(type, asset.level) : 0;
   const repair = type ? repairCost(type, asset.condition) : 0;
   const focused = groups.find((g) => g.id === asset.focusGroupId);
+  const secondsLeft =
+    asset.expiresAtTick === null
+      ? null
+      : Math.max(0, Math.ceil((asset.expiresAtTick - snapshot.tick) / TICK_RATE));
   return (
     <section
       className="hud-panel orders"
@@ -197,11 +216,13 @@ export function AssetOrders({
         <strong>{type ? stageText(type.name) : asset.defenseTypeId}</strong>
         <span className="muted">
           {nodeName(asset.nodeId)} · {t('ctl.level', { level: asset.level })} ·{' '}
-          {asset.condition <= 0
+          {asset.disrupted
             ? t('ctl.disrupted')
             : t('ctl.condition', { condition: Math.round(asset.condition) })}
           {asset.blocking && ` · ${t('ctl.blocking')}`}
+          {secondsLeft !== null && ` · ${t('hud.expiresIn', { seconds: secondsLeft })}`}
         </span>
+        <StatusChips statuses={asset.statuses.filter((s) => s !== 'disrupted')} t={t} />
         <button type="button" className="close" aria-label={t('hud.deselect')} onClick={onClose}>
           ×
         </button>
@@ -217,7 +238,7 @@ export function AssetOrders({
             data-testid="order-upgrade"
           >
             {canUpgrade ? t('hud.upgradeFor', { cost: upgrade }) : t('hud.maxLevel')}
-            <KeyHint action="command.1" />
+            <KeyHint action={orderKey(slots, 'upgrade')} />
           </button>
         </Tooltip>
         <Tooltip text={t('ctl.tip.repair')}>
@@ -229,13 +250,13 @@ export function AssetOrders({
             data-testid="order-repair"
           >
             {asset.condition >= 100 ? t('ctl.repair') : t('hud.repairFor', { cost: repair })}
-            <KeyHint action="command.2" />
+            <KeyHint action={orderKey(slots, 'repair')} />
           </button>
         </Tooltip>
         <Tooltip text={t('ctl.tip.sell')}>
           <button type="button" className="order" onClick={onSell} data-testid="order-sell">
             {t('hud.sellFor', { refund: Math.round(asset.spent * 0.5) })}
-            <KeyHint action="command.3" />
+            <KeyHint action={orderKey(slots, 'sell')} />
           </button>
         </Tooltip>
       </div>
@@ -253,7 +274,7 @@ export function AssetOrders({
               </option>
             ))}
           </select>
-          <KeyHint action="command.4" />
+          <KeyHint action={orderKey(slots, 'priority')} />
         </label>
         {focused ? (
           <button type="button" className="order" onClick={onClearFocus}>
@@ -268,7 +289,7 @@ export function AssetOrders({
               data-testid="order-focus"
             >
               {t('ctl.focus')}
-              <KeyHint action="command.5" />
+              <KeyHint action={orderKey(slots, 'focus')} />
             </button>
           </Tooltip>
         )}
@@ -283,7 +304,7 @@ export function AssetOrders({
               data-testid="order-guard"
             >
               {t('ctl.guard')}
-              <KeyHint action="command.6" />
+              <KeyHint action={orderKey(slots, 'guard')} />
             </button>
           </Tooltip>
           <Tooltip text={t('ctl.tip.patrol')}>
@@ -294,10 +315,20 @@ export function AssetOrders({
               data-testid="order-patrol"
             >
               {t('ctl.patrol')}
+              <KeyHint action={orderKey(slots, 'patrol')} />
             </button>
           </Tooltip>
         </div>
       )}
+      <SlotButtons
+        slots={slots}
+        shown={extraSlots(slots, 'defender')}
+        side="defender"
+        snapshot={snapshot}
+        t={t}
+        stageText={stageText}
+        onUse={onSlot}
+      />
     </section>
   );
 }

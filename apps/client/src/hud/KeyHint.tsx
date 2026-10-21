@@ -40,10 +40,10 @@ export function useKeyLabel(): (action: string) => string | null {
   };
 }
 
-/** The key that triggers an action, drawn as a small key cap on a button. */
-export function KeyHint({ action }: { action: string }) {
+/** The key that triggers an action, drawn as a small key cap on a button (nothing for an action without a key). */
+export function KeyHint({ action }: { action: string | undefined }) {
   const { bindings, layout, show } = useContext(KeysContext);
-  const code = bindings[action];
+  const code = action ? bindings[action] : undefined;
   if (!show || !code) return null;
   return (
     <kbd className="key-hint" aria-hidden="true">

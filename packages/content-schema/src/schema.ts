@@ -204,38 +204,79 @@ export const EFFECT_TYPES = [
   'spawn',
   'blockBranch',
   'resource',
+  'dismantle',
 ] as const;
 export const TARGET_TYPES = ['self', 'area', 'unit', 'route', 'junction'] as const;
+/** What a boost raises; without a stat, groups move faster and mobile assets move and press harder. */
+export const BOOST_STATS = [
+  'speed',
+  'detectionRange',
+  'sightRange',
+  'pressure',
+  'holdRate',
+  'dismantle',
+] as const;
+export const EFFECT_CONDITIONS = ['knownRoute', 'atObjective'] as const;
+/** Engine orders a command slot can stand for, per side. */
+export const ATTACKER_ORDERS = ['hold', 'advance', 'retreat', 'reroute', 'formation', 'dismantle'] as const;
+export const DEFENDER_ORDERS = ['upgrade', 'repair', 'sell', 'priority', 'focus', 'guard', 'patrol'] as const;
 
+/**
+ * One building block. Who it works on follows from the side using it: the Attacker's slow, conceal, protect and
+ * boost work on its groups, its reveal, disrupt and dismantle on defenses; the Defender's slow, reveal and disrupt
+ * (pin) work on groups, its conceal, protect and boost on its own assets.
+ */
 export const EffectSchema = z.object({
   type: z.enum(EFFECT_TYPES),
-  /** Strength of the effect; its meaning depends on the type (e.g. 0.3 = 30% slow). */
+  /**
+   * Strength of the effect; its meaning depends on the type (e.g. 0.3 = 30% slow, 50 condition taken off by
+   * `dismantle`, 3 members for an Attacker `spawn`, 30 supplies for `resource`).
+   */
   magnitude: z.number().optional(),
   /** For `spawn`: the unit or defense id to create. */
   spawn: id.optional(),
   /** For `boost`: what is raised (default speed). */
-  stat: z.enum(['speed', 'detectionRange']).optional(),
-  /** For passives: when the effect applies, e.g. `knownRoute` (a route an earlier wave already used). */
-  condition: z.enum(['knownRoute']).optional(),
+  stat: z.enum(BOOST_STATS).optional(),
+  /** When the effect counts, e.g. `knownRoute` (a route an earlier wave already used) or `atObjective`. */
+  condition: z.enum(EFFECT_CONDITIONS).optional(),
+  /** For `resource`: supplies (default) or points. */
+  pool: z.enum(['supplies', 'points']).optional(),
 });
 
-export const ActionSchema = z.object({
-  id,
-  name: textKey,
-  icon: artId.optional(),
-  description: textKey,
-  target: z.enum(TARGET_TYPES),
-  effects: z.array(EffectSchema).min(1),
-  range: z.number().nonnegative().default(0),
-  durationSeconds: z.number().nonnegative().default(0),
-  cost: z.number().nonnegative().default(0),
-  cooldownSeconds: z.number().nonnegative().default(0),
-});
+export const ActionSchema = z
+  .object({
+    id,
+    name: textKey,
+    icon: artId.optional(),
+    description: textKey,
+    /**
+     * Abilities: where the player aims. Command slots work from the selected group or asset: `unit` on it, `area`
+     * around it, `self` on all of the side's.
+     */
+    target: z.enum(TARGET_TYPES),
+    effects: z.array(EffectSchema).default([]),
+    /** A command slot that stands for an engine order (hold, reroute, upgrade …) instead of effects. */
+    order: z.enum([...ATTACKER_ORDERS, ...DEFENDER_ORDERS]).optional(),
+    range: z.number().nonnegative().default(0),
+    durationSeconds: z.number().nonnegative().default(0),
+    cost: z.number().nonnegative().default(0),
+    cooldownSeconds: z.number().nonnegative().default(0),
+  })
+  .refine((action) => action.effects.length > 0 || action.order !== undefined, {
+    message: 'needs at least one effect or an order',
+    path: ['effects'],
+  });
+
+/** Which model the 3D view draws (the client falls back to a plain one for kinds it does not know). */
+const model = z.string().regex(/^[a-z][a-zA-Z0-9]*$/);
 
 export const UnitSchema = z.object({
   id,
   name: textKey,
   icon: artId.optional(),
+  /** One or two sentences: what the unit is good at. */
+  description: textKey.optional(),
+  model: model.optional(),
   speed: z.number().positive(),
   /** Supplies per member. */
   cost: z.number().nonnegative(),
@@ -246,12 +287,19 @@ export const UnitSchema = z.object({
   visibility: z.enum(['normal', 'concealed', 'stealth']).default('normal'),
   /** How close the unit must come to a defense to see it. */
   sightRange: z.number().positive().default(12),
+  /** Condition per second each member takes off a dismantlable defense it works on. */
+  dismantle: z.number().nonnegative().default(0),
+  /** Factor on how fast the unit wins hold time at the objective. */
+  objectiveRate: z.number().positive().default(1),
 });
 
 export const DefenseSchema = z.object({
   id,
   name: textKey,
   icon: artId.optional(),
+  /** One or two sentences: what the asset is good at. */
+  description: textKey.optional(),
+  model: model.optional(),
   cost: z.number().nonnegative(),
   /** Mobile assets (patrols) move along the route graph. */
   mobile: z.boolean().default(false),
@@ -273,6 +321,16 @@ export const DefenseSchema = z.object({
   upgradeCostFactor: z.number().nonnegative().default(0.75),
   /** Condition a roadblock loses per second for each member pushing against it. */
   wearPerMemberSecond: z.number().nonnegative().default(0),
+  /** Attacker sabotage can put it out of action for a while (spec §8: disruptible, dismantlable, both or neither). */
+  disruptible: z.boolean().default(true),
+  /** Attacker units can take it apart; at 0 condition it is removed. */
+  dismantlable: z.boolean().default(false),
+  /** A sensor: detects Concealed and Stealth units as easily as normal ones. */
+  seesHidden: z.boolean().default(false),
+  /** A temporary asset is removed after this long. */
+  lifetimeSeconds: z.number().positive().optional(),
+  /** Condition per second it gives back to worn (not yet disrupted) assets in its reach (maintenance). */
+  repairPerSecond: z.number().nonnegative().default(0),
 });
 
 export const CatalogSchema = z.object({
@@ -288,7 +346,10 @@ export const ProfileSchema = z.object({
   name: textKey,
   description: textKey,
   portrait: artId.optional(),
+  /** First resource (supplies): units or defenses are bought with it. */
   resource: z.object({ id, name: textKey }),
+  /** Second resource (points): abilities and command slots cost it. */
+  points: z.object({ id, name: textKey }).optional(),
   passive: z.object({ name: textKey, description: textKey, effects: z.array(EffectSchema).default([]) }),
   /** Attacker profiles list units, Defender profiles list defenses. */
   units: z.array(id).default([]),

@@ -1,0 +1,29 @@
+{
+  "id": "field-researcher",
+  "side": "defender",
+  "name": "profile.field-researcher.name",
+  "description": "profile.field-researcher.description",
+  "portrait": "PORTRAIT-RESEARCHER",
+  "resource": {
+    "id": "research-supplies",
+    "name": "resource.research-supplies"
+  },
+  "points": {
+    "id": "analysis-points",
+    "name": "points.analysis-points"
+  },
+  "passive": {
+    "name": "profile.field-researcher.passive.name",
+    "description": "profile.field-researcher.passive.description",
+    "effects": [
+      {
+        "type": "reveal",
+        "magnitude": 0.5
+      }
+    ]
+  },
+  "units": [],
+  "defenses": ["sensor-beacon", "observation-station", "research-team", "surveillance-drone"],
+  "abilities": ["area-scan", "route-analysis", "deep-analysis"],
+  "commands": ["upgrade", "repair", "sell", "priority", "guard", "scan"]
+}
