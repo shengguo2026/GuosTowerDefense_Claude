@@ -2,16 +2,24 @@ import type { AiThought } from '@gtd/ai';
 import type { Action, StagePack } from '@gtd/content-schema';
 import { createTranslator, type Translate } from '@gtd/i18n';
 import type { ComputerPlayer, MatchCommand, MatchSpeed } from '@gtd/protocol';
-import { TARGET_PRIORITIES, type DefenseEntity, type GroupEntity, type MatchSnapshot } from '@gtd/sim';
+import {
+  TARGET_PRIORITIES,
+  type DefenseEntity,
+  type GroupEntity,
+  type MatchSnapshot,
+  type OrderType,
+} from '@gtd/sim';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { sounds, type SoundCue } from '../audio/sound';
 import { AbilityBar } from '../hud/AbilityBar';
 import { FORMATIONS, GroupList, GroupOrders, WaveBuilder } from '../hud/AttackerPanels';
+import { commandSlots, slotBlocked, inProfileOrder } from '../hud/commandSlots';
 import { AssetList, AssetOrders, BuildBar } from '../hud/DefenderPanels';
 import {
   abilityAim,
   abilityNeedsGroup,
   freeBuildSites,
+  junctionTargets,
   patrolNodes,
   type MapMode,
   type Selection,
@@ -86,18 +94,16 @@ export function MatchScreen({
   const profile = pack.profiles.find(
     (p) => p.id === (side === 'attacker' ? config.attackerProfileId : config.defenderProfileId),
   );
-  const units = useMemo(
-    () => pack.catalog.units.filter((u) => profile?.units.includes(u.id)),
-    [pack, profile],
-  );
+  const units = useMemo(() => inProfileOrder(pack.catalog.units, profile?.units), [pack, profile]);
   const defenseTypes = useMemo(
-    () => pack.catalog.defenses.filter((d) => profile?.defenses.includes(d.id)),
+    () => inProfileOrder(pack.catalog.defenses, profile?.defenses),
     [pack, profile],
   );
   const abilities = useMemo(
-    () => pack.catalog.abilities.filter((a) => profile?.abilities.includes(a.id)),
+    () => inProfileOrder(pack.catalog.abilities, profile?.abilities),
     [pack, profile],
   );
+  const slots = useMemo(() => commandSlots(pack, profile), [pack, profile]);
   const layout = useLayout();
   const compact = layout === 'phone';
 
@@ -265,6 +271,7 @@ export function MatchScreen({
         retreatGroup: 'retreat',
         setFormation: 'formation',
         setPriority: 'priority',
+        focusDefense: 'dismantle',
       };
       const order = cmd.type === 'orderDefense' ? cmd.order.type : (orders[cmd.type] as string | undefined);
       if (order) record((a) => a.orders.add(order));
@@ -329,7 +336,6 @@ export function MatchScreen({
   );
 
   // ── Map clicks and taps ──────────────────────────────────────────────
-  const nodeById = useCallback((id: string) => level?.map.nodes.find((n) => n.id === id), [level]);
   const tap = (pick: MapPick, button: number) => {
     if (!level || !snapshot || ended) return;
     if (button === 2) {
@@ -364,10 +370,9 @@ export function MatchScreen({
         const aim = abilityAim(ability);
         if (aim === 'ground' && pick.ground)
           command({ ...base, x: pick.ground.x, z: pick.ground.z }, 'ability');
-        else if (aim === 'node' && pick.nodeId) {
-          const node = nodeById(pick.nodeId);
-          if (node) command({ ...base, x: node.x, z: node.z }, 'ability');
-        } else if (aim === 'route' && pick.routeId)
+        else if (aim === 'node' && pick.nodeId && junctionTargets(level).includes(pick.nodeId))
+          command({ ...base, nodeId: pick.nodeId }, 'ability');
+        else if (aim === 'route' && pick.routeId)
           command(
             { ...base, routeId: pick.routeId, ...(mode.groupId ? { groupId: mode.groupId } : {}) },
             'ability',
@@ -454,8 +459,9 @@ export function MatchScreen({
       const ability = abilities.find((a) => a.id === mode.abilityId);
       if (ability && abilityAim(ability) === 'ground') result.areaRadius = ability.range;
       if (ability && abilityAim(ability) === 'node')
-        result.buildSites = level.map.nodes
-          .filter((n) => n.kind === 'junction')
+        result.buildSites = junctionTargets(level)
+          .map((id) => level.map.nodes.find((n) => n.id === id))
+          .filter((n) => n !== undefined)
           .map((n) => ({ id: n.id, x: n.x, z: n.z }));
     }
     if (selectedAsset)
@@ -554,7 +560,7 @@ export function MatchScreen({
         raise.push(side === 'attacker' ? 'objectiveAttacker' : 'objectiveDefender');
       }
       if (side === 'attacker' && groups.some((g) => g.state === 'blocked')) raise.push('blocked');
-      if (side === 'defender' && defenses.some((d) => d.condition <= 0)) raise.push('disrupted');
+      if (side === 'defender' && defenses.some((d) => d.disrupted)) raise.push('disrupted');
       const readyAgain = abilities.some(
         (a) => (before.cooldowns[a.id] ?? 0) > 0 && (snapshot.cooldowns[a.id] ?? 0) <= 0,
       );
@@ -590,34 +596,57 @@ export function MatchScreen({
     if (canControlClock && !holdForTutorial) send({ type: 'setPaused', paused: false });
   }, [canControlClock, holdForTutorial, send]);
 
-  const groupCommand = (slot: number) => {
-    if (!selectedGroup) return;
+  const groupOrder = (order: OrderType) => {
+    if (!selectedGroup) return setNotice(t('hud.pickGroupFirst'));
     const groupId = selectedGroup.id;
-    if (slot === 1) command({ type: 'holdGroup', side: 'attacker', groupId });
-    if (slot === 2) command({ type: 'advanceGroup', side: 'attacker', groupId });
-    if (slot === 3) command({ type: 'retreatGroup', side: 'attacker', groupId });
-    if (slot === 4) setMode({ type: 'reroute', groupId });
-    if (slot === 5) {
+    if (order === 'hold') command({ type: 'holdGroup', side: 'attacker', groupId });
+    if (order === 'advance') command({ type: 'advanceGroup', side: 'attacker', groupId });
+    if (order === 'retreat') command({ type: 'retreatGroup', side: 'attacker', groupId });
+    if (order === 'reroute') setMode(mode?.type === 'reroute' ? null : { type: 'reroute', groupId });
+    if (order === 'formation') {
       const formation = FORMATIONS[(FORMATIONS.indexOf(selectedGroup.formation) + 1) % FORMATIONS.length];
       if (formation) command({ type: 'setFormation', side: 'attacker', groupId, formation });
     }
+    // Focus Defense: the nearest asset in sight that can be taken apart; again to stop.
+    if (order === 'dismantle')
+      command(
+        selectedGroup.focusDefenseId === null
+          ? { type: 'focusDefense', side: 'attacker', groupId }
+          : { type: 'focusDefense', side: 'attacker', groupId, defenseId: null },
+        'select',
+      );
   };
-  const assetCommand = (slot: number) => {
-    if (!selectedAsset) return;
+  const assetOrder = (order: OrderType) => {
+    if (!selectedAsset) return setNotice(t('hud.pickAssetFirst'));
     const defenseId = selectedAsset.id;
-    if (slot === 1) command({ type: 'upgradeDefense', side: 'defender', defenseId }, 'build');
-    if (slot === 2) command({ type: 'repairDefense', side: 'defender', defenseId }, 'build');
-    if (slot === 3) {
+    if (order === 'upgrade') command({ type: 'upgradeDefense', side: 'defender', defenseId }, 'build');
+    if (order === 'repair') command({ type: 'repairDefense', side: 'defender', defenseId }, 'build');
+    if (order === 'sell') {
       command({ type: 'sellDefense', side: 'defender', defenseId });
       setSelection(null);
     }
-    if (slot === 4) {
+    if (order === 'priority') {
       const priority =
         TARGET_PRIORITIES[(TARGET_PRIORITIES.indexOf(selectedAsset.priority) + 1) % TARGET_PRIORITIES.length];
       if (priority) command({ type: 'setPriority', side: 'defender', defenseId, priority });
     }
-    if (slot === 5) setMode({ type: 'focus', defenseId });
-    if (slot === 6 && selectedAsset.mobile) setMode({ type: 'guard', defenseId });
+    if (order === 'focus') setMode(mode?.type === 'focus' ? null : { type: 'focus', defenseId });
+    if ((order === 'guard' || order === 'patrol') && selectedAsset.mobile)
+      setMode(mode?.type === order ? null : { type: order, defenseId });
+  };
+  /** A command slot: an order goes through its own command, anything else is used from the selection. */
+  const runSlot = (action: Action) => {
+    if (action.order) return side === 'attacker' ? groupOrder(action.order) : assetOrder(action.order);
+    if (!snapshot) return;
+    const blocked = slotBlocked(snapshot, action, side);
+    if (blocked) return setNotice(t('ctl.rejected', { reason: t(`reject.${blocked}`) }));
+    if (side === 'attacker') {
+      if (!selectedGroup) return setNotice(t('hud.pickGroupFirst'));
+      command({ type: 'useCommand', side, commandId: action.id, groupId: selectedGroup.id }, 'ability');
+    } else {
+      if (!selectedAsset) return setNotice(t('hud.pickAssetFirst'));
+      command({ type: 'useCommand', side, commandId: action.id, defenseId: selectedAsset.id }, 'ability');
+    }
   };
 
   const keyRef = useRef<(event: KeyboardEvent) => void>(() => undefined);
@@ -651,8 +680,11 @@ export function MatchScreen({
         if (ability) triggerAbility(ability);
         return;
       }
-      case 'command':
-        return side === 'attacker' ? groupCommand(slot) : assetCommand(slot);
+      case 'command': {
+        const action = slots[slot - 1];
+        if (action) runSlot(action);
+        return;
+      }
       case 'unit': {
         const unit = units[slot - 1];
         if (unit) wave.unitKey(unit.id, event.shiftKey);
@@ -762,11 +794,14 @@ export function MatchScreen({
       level={level}
       units={units}
       rerouting={mode?.type === 'reroute'}
+      slots={slots}
+      snapshot={snapshot as MatchSnapshot}
       t={t}
       stageText={stageText}
-      onHold={() => groupCommand(1)}
-      onAdvance={() => groupCommand(2)}
-      onRetreat={() => groupCommand(3)}
+      onSlot={runSlot}
+      onHold={() => groupOrder('hold')}
+      onAdvance={() => groupOrder('advance')}
+      onRetreat={() => groupOrder('retreat')}
       onReroute={(routeId) =>
         routeId
           ? command({ type: 'rerouteGroup', side: 'attacker', groupId: selectedGroup.id, routeId }, 'select')
@@ -784,11 +819,14 @@ export function MatchScreen({
       groups={groups}
       supplies={snapshot?.resources.defender ?? 0}
       mode={mode?.type === 'focus' || mode?.type === 'guard' || mode?.type === 'patrol' ? mode.type : null}
+      slots={slots}
+      snapshot={snapshot as MatchSnapshot}
       t={t}
       stageText={stageText}
-      onUpgrade={() => assetCommand(1)}
-      onRepair={() => assetCommand(2)}
-      onSell={() => assetCommand(3)}
+      onSlot={runSlot}
+      onUpgrade={() => assetOrder('upgrade')}
+      onRepair={() => assetOrder('repair')}
+      onSell={() => assetOrder('sell')}
       onPriority={(priority) =>
         command({ type: 'setPriority', side: 'defender', defenseId: selectedAsset.id, priority })
       }
@@ -875,6 +913,10 @@ export function MatchScreen({
         speed={speed}
         canControlClock={canControlClock}
         compact={compact}
+        names={{
+          supplies: profile ? stageText(profile.resource.name) : undefined,
+          points: profile?.points ? stageText(profile.points.name) : undefined,
+        }}
         t={t}
         onMenu={openMenu}
         onPause={togglePause}

@@ -13,6 +13,24 @@ describe('client messages', () => {
     expect(parseClientMessage('{"type":"launch"}')).toBeNull();
     expect(parseClientMessage('not json')).toBeNull();
   });
+
+  it('carries Focus Defense, command slots and junction abilities, and checks their sides', () => {
+    const command = (body: object) => parseClientMessage(JSON.stringify({ type: 'command', command: body }));
+    expect(command({ type: 'focusDefense', side: 'attacker', groupId: 3 })).not.toBeNull();
+    expect(command({ type: 'focusDefense', side: 'attacker', groupId: 3, defenseId: null })).not.toBeNull();
+    expect(command({ type: 'focusDefense', side: 'defender', groupId: 3 })).toBeNull();
+    expect(
+      command({ type: 'useCommand', side: 'defender', commandId: 'fortify', defenseId: 2 }),
+    ).not.toBeNull();
+    expect(
+      command({
+        type: 'useAbility',
+        side: 'defender',
+        abilityId: 'habitat-lockdown',
+        nodeId: 'acacia-junction',
+      }),
+    ).toMatchObject({ command: { nodeId: 'acacia-junction' } });
+  });
 });
 
 describe('settings', () => {

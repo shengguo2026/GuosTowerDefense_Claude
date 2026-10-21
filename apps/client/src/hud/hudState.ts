@@ -51,6 +51,11 @@ export function freeBuildSites(
   return buildSites(level, type).filter((n) => type?.mobile || !taken.has(n.id));
 }
 
+/** Route nodes a junction ability (a closure, a dropped barrier) can be aimed at: not a spawn, not the objective. */
+export function junctionTargets(level: Level): string[] {
+  return patrolNodes(level).filter((id) => id !== level.objective.nodeId);
+}
+
 /** Route-graph nodes a patrol may be sent to. */
 export function patrolNodes(level: Level): string[] {
   const spawns = new Set(level.routes.map((r) => r.nodes[0]));

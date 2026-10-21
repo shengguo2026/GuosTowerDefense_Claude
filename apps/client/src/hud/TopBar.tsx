@@ -14,6 +14,7 @@ interface Props {
   speed: MatchSpeed;
   canControlClock: boolean;
   compact: boolean;
+  names?: ResourceNames;
   t: Translate;
   onMenu(): void;
   onPause(): void;
@@ -30,6 +31,7 @@ export function TopBar({
   speed,
   canControlClock,
   compact,
+  names,
   t,
   onMenu,
   onPause,
@@ -62,7 +64,7 @@ export function TopBar({
       )}
       {snapshot && <MatchClock snapshot={snapshot} t={t} />}
       {snapshot && <ObjectiveBar snapshot={snapshot} side={side} t={t} />}
-      {snapshot && <SideNumbers snapshot={snapshot} side={side} t={t} />}
+      {snapshot && <SideNumbers snapshot={snapshot} side={side} t={t} names={names} />}
       {canControlClock && (
         <div className="hud-group clock-buttons">
           <Tooltip text={t('hud.tip.speed')}>
@@ -159,19 +161,35 @@ export function ObjectiveBar({
   );
 }
 
+/** What the profile calls its two resources (Expedition Supplies, Recon Points …). */
+export interface ResourceNames {
+  supplies?: string;
+  points?: string;
+}
+
 /** One side's supplies, points and (Attacker) deployment capacity. */
-export function SideNumbers({ snapshot, side, t }: { snapshot: MatchSnapshot; side: Side; t: Translate }) {
+export function SideNumbers({
+  snapshot,
+  side,
+  t,
+  names,
+}: {
+  snapshot: MatchSnapshot;
+  side: Side;
+  t: Translate;
+  names?: ResourceNames;
+}) {
   return (
     <div className={`hud-numbers ${side}`}>
       <Tooltip text={t('hud.tip.supplies')}>
         <span className="number">
-          <span className="label">{t('hud.supplies')}</span>
+          <span className="label">{names?.supplies ?? t('hud.supplies')}</span>
           <strong data-testid={`${side}-supplies`}>{Math.floor(snapshot.resources[side] ?? 0)}</strong>
         </span>
       </Tooltip>
       <Tooltip text={t('hud.tip.points')}>
         <span className="number">
-          <span className="label">{t('hud.points')}</span>
+          <span className="label">{names?.points ?? t('hud.points')}</span>
           <strong data-testid={`${side}-points`}>{Math.floor(snapshot.points[side] ?? 0)}</strong>
         </span>
       </Tooltip>

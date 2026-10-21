@@ -3,10 +3,20 @@ import { createTranslator, type Language, type Translate } from '@gtd/i18n';
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { Art, initials } from '../art/Art';
-import { useKeyLabel } from '../hud/KeyHint';
+import { commandSlots, inProfileOrder } from '../hud/commandSlots';
+import { KeyHint, useKeyLabel } from '../hud/KeyHint';
 import { KEY_ACTIONS } from '../input/bindings';
 
-const RULE_PAGES = ['basics', 'attacker', 'defender', 'detection', 'hotseat', 'devices', 'controls'] as const;
+const RULE_PAGES = [
+  'basics',
+  'attacker',
+  'defender',
+  'detection',
+  'effects',
+  'hotseat',
+  'devices',
+  'controls',
+] as const;
 type Page = (typeof RULE_PAGES)[number] | `profile:${string}`;
 
 interface Props {
@@ -150,9 +160,10 @@ function ProfilePage({
 }) {
   const profile = pack.profiles.find((p) => p.id === profileId);
   if (!profile) return null;
-  const units = pack.catalog.units.filter((u) => profile.units.includes(u.id));
-  const defenses = pack.catalog.defenses.filter((d) => profile.defenses.includes(d.id));
-  const abilities = pack.catalog.abilities.filter((a) => profile.abilities.includes(a.id));
+  const units = inProfileOrder(pack.catalog.units, profile.units);
+  const defenses = inProfileOrder(pack.catalog.defenses, profile.defenses);
+  const abilities = inProfileOrder(pack.catalog.abilities, profile.abilities);
+  const commands = commandSlots(pack, profile);
   return (
     <>
       <div className="profile-head">
@@ -170,7 +181,10 @@ function ProfilePage({
           <p>
             <strong>{stageText(profile.passive.name)}:</strong> {stageText(profile.passive.description)}
           </p>
-          <p className="muted">{t('manual.resource', { name: stageText(profile.resource.name) })}</p>
+          <p className="muted">
+            {t('manual.resource', { name: stageText(profile.resource.name) })}
+            {profile.points && ` · ${t('manual.points', { name: stageText(profile.points.name) })}`}
+          </p>
         </div>
       </div>
       {units.length > 0 && (
@@ -189,6 +203,7 @@ function ProfilePage({
                 />
                 <div>
                   <strong>{stageText(u.name)}</strong>
+                  {u.description && <span>{stageText(u.description)}</span>}
                   <span className="muted">
                     {t('manual.unitStats', {
                       cost: u.cost,
@@ -196,6 +211,8 @@ function ProfilePage({
                       speed: u.speed,
                       resilience: u.resilience,
                     })}
+                    {u.visibility !== 'normal' && ` · ${t(`manual.visibility.${u.visibility}`)}`}
+                    {u.dismantle > 0 && ` · ${t('manual.dismantles')}`}
                   </span>
                 </div>
               </li>
@@ -219,6 +236,7 @@ function ProfilePage({
                 />
                 <div>
                   <strong>{stageText(d.name)}</strong>
+                  {d.description && <span>{stageText(d.description)}</span>}
                   <span className="muted">
                     {t('manual.defenseStats', {
                       cost: d.cost,
@@ -228,6 +246,10 @@ function ProfilePage({
                     {d.mobile && ` · ${t('manual.mobile')}`}
                     {d.blocksNode && ` · ${t('manual.blocks')}`}
                     {d.maxCount !== undefined && ` · ${t('manual.maxCount', { count: d.maxCount })}`}
+                    {d.seesHidden && ` · ${t('manual.seesHidden')}`}
+                    {d.dismantlable && ` · ${t('manual.dismantlable')}`}
+                    {d.lifetimeSeconds !== undefined &&
+                      ` · ${t('manual.lifetime', { seconds: d.lifetimeSeconds })}`}
                   </span>
                 </div>
               </li>
@@ -257,6 +279,36 @@ function ProfilePage({
           </li>
         ))}
       </ul>
+      {commands.length > 0 && (
+        <>
+          <h3>{t('manual.commands')}</h3>
+          <ul className="manual-cards">
+            {commands.map((c, i) => (
+              <li key={c.id}>
+                <Art
+                  id={c.icon}
+                  alt=""
+                  ratio={1}
+                  tone={profile.side}
+                  className="mini-icon"
+                  fallback={String(i + 1)}
+                />
+                <div>
+                  <strong>
+                    {stageText(c.name)} <KeyHint action={`command.${i + 1}`} />
+                  </strong>
+                  <span>{stageText(c.description)}</span>
+                  {!c.order && (
+                    <span className="muted">
+                      {t('manual.abilityStats', { cost: c.cost, cooldown: c.cooldownSeconds })}
+                    </span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </>
   );
 }
