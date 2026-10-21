@@ -37,3 +37,12 @@ export const MAX_LAUNCH_DELAY_SECONDS = 30;
 export const DEFAULT_EFFECT_MAGNITUDE = 0.3;
 /** Hold progress per tick while a Defender patrol is inside the objective zone. */
 export const CONTESTED_HOLD_RATE = 0.5;
+/** How close a group must be to a defense to work on it (Focus Defense). */
+export const DISMANTLE_REACH = 8;
+/** Width of the band along a route that a route-wide effect covers, for things standing beside the route. */
+export const ROUTE_EFFECT_REACH = 6;
+/** Radius of a junction-target effect that gives no range. */
+export const JUNCTION_EFFECT_REACH = 6;
+/** Default strength of `conceal` (detection distance lost) and `protect` (pressure or wear taken off). */
+export const DEFAULT_CONCEAL = 0.5;
+export const DEFAULT_PROTECT = 0.4;

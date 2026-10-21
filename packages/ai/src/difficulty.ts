@@ -95,7 +95,9 @@ export const ATTACKER_TUNING: Record<Difficulty, AttackerTuning> = {
 export const DEFENDER_TUNING: Record<Difficulty, DefenderTuning> = {
   easy: {
     thinkEveryTicks: 40,
-    readsMap: false,
+    // Weighs the map, but more than half its builds go to a random legal spot (with six or more assets to choose
+    // from, never weighing at all would leave it with almost nothing that presses).
+    readsMap: true,
     reserve: 30,
     upgrades: false,
     repairs: false,
@@ -103,7 +105,7 @@ export const DEFENDER_TUNING: Record<Difficulty, DefenderTuning> = {
     intercepts: false,
     rapidResponse: false,
     intercept: false,
-    mistakeChance: 0.3,
+    mistakeChance: 0.6,
   },
   medium: {
     thinkEveryTicks: 20,
@@ -115,7 +117,7 @@ export const DEFENDER_TUNING: Record<Difficulty, DefenderTuning> = {
     intercepts: false,
     rapidResponse: false,
     intercept: true,
-    mistakeChance: 0.12,
+    mistakeChance: 0.2,
   },
   hard: {
     thinkEveryTicks: 8,

@@ -578,7 +578,7 @@ describe('single-player progress', () => {
   }
 
   it('records a win against the computer', async () => {
-    expect(await play({ wave: 12 })).toEqual([
+    expect(await play({ wave: 16 })).toEqual([
       { stageId: 'test-stage', levelId: 'meadow', side: 'attacker', difficulty: 'easy' },
     ]);
   });

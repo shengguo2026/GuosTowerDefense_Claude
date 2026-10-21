@@ -2,21 +2,28 @@ import {
   COMMAND_SIDES,
   CommandQueue,
   type Command,
+  type FocusDefenseCommand,
   type LaunchWaveCommand,
   type OrderDefenseCommand,
   type PlaceDefenseCommand,
   type UseAbilityCommand,
+  type UseCommandCommand,
 } from './commandQueue';
 import {
   BLOCK_STANDOFF,
   CONTESTED_HOLD_RATE,
+  DEFAULT_CONCEAL,
   DEFAULT_EFFECT_MAGNITUDE,
+  DEFAULT_PROTECT,
+  DISMANTLE_REACH,
   FORMATIONS,
   IDENTIFY_SECONDS,
+  JUNCTION_EFFECT_REACH,
   LOSE_DETECTION_SECONDS,
   MAX_GROUPS_PER_WAVE,
   MAX_LAUNCH_DELAY_SECONDS,
   REPAIR_COST_SHARE,
+  ROUTE_EFFECT_REACH,
   SELL_REFUND,
   SPEED_VARIATION,
   TICK_SECONDS,
@@ -27,14 +34,28 @@ import {
 } from './constants';
 import { EntityStore } from './entityStore';
 import { EventLog } from './eventLog';
-import { RouteGraph, distance, pointOnPolyline, type Leg, type Point } from './graph';
+import {
+  RouteGraph,
+  distance,
+  distanceToPolyline,
+  pointOnPolyline,
+  polylineLength,
+  type Leg,
+  type Point,
+} from './graph';
 import { Rng } from './rng';
+import { StatusBook } from './statusBook';
 import {
   TARGET_PRIORITIES,
   type AreaEffect,
+  type BoostStat,
+  type Closure,
   type DefenseEntity,
   type DefenseOrder,
+  type DefenseStatus,
+  type EffectType,
   type GroupEntity,
+  type GroupStatus,
   type MatchEntity,
   type MatchResult,
   type MatchSetup,
@@ -55,15 +76,10 @@ interface GroupInternals {
   knownRoute: boolean;
   delayTicks: number;
   passedCheckpoints: Set<string>;
-  slowUntil: number;
-  slowMagnitude: number;
-  boostUntil: number;
-  boostMagnitude: number;
-  concealUntil: number;
-  revealedUntil: number;
   detectedTicks: number;
   unseenTicks: number;
-  /** The roadblock the group is waiting in front of. */
+  /** The node the group waits in front of, and the roadblock there (null for a closed branch). */
+  blockedAt: string | null;
   blockedBy: number | null;
   /** A hold or reroute aimed at one node ahead rather than the next junction or shared node. */
   holdNodeId: string | null;
@@ -84,17 +100,72 @@ interface WaveRecord {
   turnedBack: number;
 }
 
-interface ActiveArea extends Omit<AreaEffect, 'remainingTicks'> {
+/** Where an ability or command works: an area, along a route, everything of the side, or one group or asset. */
+type Selector =
+  | { kind: 'area'; x: number; z: number; radius: number }
+  | { kind: 'route'; routeId: string; radius: number }
+  | { kind: 'all' }
+  | { kind: 'entity'; id: number };
+
+/** An ability or command whose lasting effects are in force: each tick everything it covers gets them again. */
+interface Zone {
+  abilityId: string;
+  side: Side;
+  selector: Selector;
+  effects: SimEffect[];
   untilTick: number;
+  /** For the map. */
+  x: number;
+  z: number;
+  radius: number;
 }
 
-const ON_FIELD = new Set<GroupEntity['state']>(['moving', 'holding', 'blocked', 'atObjective']);
+/** Effects that last while their zone does; the others happen once, when the ability is used. */
+const KEEP = Symbol('lasting effect');
+const LASTING: ReadonlySet<EffectType> = new Set(['slow', 'reveal', 'conceal', 'protect', 'boost']);
+
+const ON_FIELD = new Set<GroupEntity['state']>([
+  'moving',
+  'holding',
+  'blocked',
+  'dismantling',
+  'atObjective',
+]);
+
+/** Who an effect works on, by the side using it: the Attacker's groups or the Defender's assets. */
+function recipientsOf(side: Side, type: EffectType): 'groups' | 'defenses' | null {
+  switch (type) {
+    case 'slow':
+      return 'groups';
+    case 'reveal':
+    case 'disrupt':
+      return side === 'attacker' ? 'defenses' : 'groups';
+    case 'dismantle':
+      return side === 'attacker' ? 'defenses' : null;
+    case 'conceal':
+    case 'protect':
+    case 'boost':
+      return side === 'attacker' ? 'groups' : 'defenses';
+    default:
+      return null;
+  }
+}
+
+/** Status key of a boost: a stat, or the plain boost (groups: speed; mobile assets: speed and pressure). */
+function boostKey(effect: SimEffect): string {
+  return `boost:${effect.stat ?? 'plain'}`;
+}
 
 /**
  * One match of the simulation. Call `enqueue` with commands and `step` once per tick; the match never reads the clock
  * and draws randomness only from its seed, so it runs the same on the server, in headless tests and in replays.
  *
- * Nobody is ever harmed: pressure from defenses turns members back one at a time, and they walk off the map.
+ * Nobody is ever harmed: pressure from defenses turns members back one at a time, and they walk off the map. Defenses
+ * are only ever disrupted (out of action for a while) or dismantled (removed).
+ *
+ * Abilities and command slots are read from data (spec §2.1): the target type says where an ability works, each
+ * effect says what happens there. Lasting effects are kept as zones that refresh the statuses of everything they
+ * cover every tick, so a group walking into a revealed area is revealed too.
  */
 export class Match {
   readonly events = new EventLog();
@@ -105,16 +176,17 @@ export class Match {
   private readonly unitTypes: Map<string, SimUnitType>;
   private readonly defenseTypes: Map<string, SimDefenseType>;
   private readonly abilities: Record<Side, Map<string, SimAbility>>;
+  private readonly slotCommands: Record<Side, Map<string, SimAbility>>;
   private readonly preparationTicks: number;
   private readonly endTick: number;
   private readonly holdTicksRequired: number;
-  private readonly identifyTicks = secondsToTicks(IDENTIFY_SECONDS);
-  private readonly loseTicks = secondsToTicks(LOSE_DETECTION_SECONDS);
+  private readonly identifyTicks: number;
+  private readonly loseTicks: number;
   private readonly resources: Record<Side, number>;
   private readonly points: Record<Side, number>;
   private readonly groupData = new Map<number, GroupInternals>();
   private readonly patrolData = new Map<number, PatrolInternals>();
-  private readonly defenseBoosts = new Map<number, { untilTick: number; magnitude: number }>();
+  private readonly status = new StatusBook();
   private readonly waves = new Map<number, WaveRecord>();
   private readonly cooldownUntil: Record<Side, Map<string, number>> = {
     attacker: new Map(),
@@ -124,8 +196,11 @@ export class Match {
   /** What the Attacker remembers of each structure it has seen: a copy from the last time it was in sight. */
   private readonly seenDefenses = new Map<number, DefenseEntity>();
   private readonly visibleToAttacker = new Set<number>();
-  private readonly defenseRevealedUntil = new Map<number, number>();
-  private areas: ActiveArea[] = [];
+  /** Assets put out of action by sabotage right now (to notice when they come back). */
+  private readonly sabotaged = new Set<number>();
+  private readonly closures = new Map<string, number>();
+  private readonly routePoints = new Map<string, Point[]>();
+  private zones: Zone[] = [];
   private readonly stats: SideStats = {
     attacker: {
       wavesLaunched: 0,
@@ -135,6 +210,8 @@ export class Match {
       membersRetreated: 0,
       checkpointsPassed: 0,
       capacityUsed: 0,
+      defensesDisrupted: 0,
+      defensesDismantled: 0,
       bestObjectiveProgress: 0,
     },
     defender: {
@@ -144,6 +221,7 @@ export class Match {
       patrolsDeployed: 0,
       upgrades: 0,
       groupsIdentified: 0,
+      abilitiesUsed: 0,
     },
   };
   private capacityRemaining: number;
@@ -164,6 +242,23 @@ export class Match {
       attacker: new Map(setup.attacker.abilities.map((ability) => [ability.id, ability])),
       defender: new Map(setup.defender.abilities.map((ability) => [ability.id, ability])),
     };
+    this.slotCommands = {
+      attacker: new Map((setup.attacker.commands ?? []).map((command) => [command.id, command])),
+      defender: new Map((setup.defender.commands ?? []).map((command) => [command.id, command])),
+    };
+    for (const route of level.routes) {
+      const points: Point[] = [];
+      for (const leg of this.graph.routeLegs(route.id))
+        points.push(...(points.length ? leg.points.slice(1) : leg.points));
+      this.routePoints.set(route.id, points);
+    }
+    // Behavioral Analysis: the Defender identifies groups sooner and keeps track of them longer.
+    const analysis = this.passive('defender', 'reveal');
+    this.identifyTicks = Math.max(
+      1,
+      Math.round(secondsToTicks(IDENTIFY_SECONDS) * (1 - Math.min(0.9, analysis))),
+    );
+    this.loseTicks = Math.round(secondsToTicks(LOSE_DETECTION_SECONDS) * (1 + analysis));
     this.preparationTicks = secondsToTicks(level.preparationSeconds);
     this.endTick = this.preparationTicks + secondsToTicks(level.timerSeconds);
     this.holdTicksRequired = secondsToTicks(level.objective.holdSeconds);
@@ -203,7 +298,8 @@ export class Match {
       this.events.push({ tick: this.tickCount, type: 'combatStarted' });
     for (const command of this.commands.drain(this.tickCount)) this.apply(command);
     this.addIncome();
-    this.areas = this.areas.filter((area) => area.untilTick > this.tickCount);
+    this.expireEffects();
+    this.applyZones();
     this.releaseWaitingGroups();
     this.releaseBlockedGroups();
     this.moveGroups();
@@ -212,7 +308,10 @@ export class Match {
     this.updateAttackerSight();
     this.applyPressure();
     this.wearRoadblocks();
+    this.workOnDefenses();
+    this.maintain();
     this.updateObjective();
+    this.refreshStatuses();
     if (this.outcome) return;
     if (this.tickCount >= this.endTick) this.end({ winner: 'defender', reason: 'timerExpired' });
     else if (this.phase === 'combat' && this.capacityExhausted())
@@ -231,7 +330,7 @@ export class Match {
     const cooldowns: Record<string, number> = {};
     for (const side of ['attacker', 'defender'] as const) {
       if (!own(side)) continue;
-      for (const id of this.abilities[side].keys())
+      for (const id of [...this.abilities[side].keys(), ...this.slotCommands[side].keys()])
         cooldowns[id] = Math.max(0, (this.cooldownUntil[side].get(id) ?? 0) - this.tickCount);
     }
     const sideValues = (values: Record<Side, number>) => {
@@ -262,9 +361,19 @@ export class Match {
       launchCooldownRemainingTicks: Math.max(0, this.launchReadyTick - this.tickCount),
       activeWaves: this.activeWaveCount(),
       cooldowns,
-      areaEffects: this.areas
-        .filter((area) => own(area.side))
-        .map(({ untilTick, ...area }) => ({ ...area, remainingTicks: untilTick - this.tickCount })),
+      areaEffects: this.zones
+        .filter((zone) => own(zone.side))
+        .map((zone): AreaEffect => ({
+          abilityId: zone.abilityId,
+          side: zone.side,
+          x: zone.x,
+          z: zone.z,
+          radius: zone.radius,
+          ...(zone.selector.kind === 'route' ? { routeId: zone.selector.routeId } : {}),
+          effects: zone.effects.map((e) => e.type),
+          remainingTicks: zone.untilTick - this.tickCount,
+        })),
+      closures: this.viewClosures(viewer),
       entities: this.viewEntities(viewer),
       stats: structuredClone(this.stats),
     };
@@ -287,7 +396,12 @@ export class Match {
 
   /** Returns a rejection reason, or null when the command was carried out. */
   private applyCommand(command: Command): string | null {
-    if (command.type !== 'useAbility' && COMMAND_SIDES[command.type] !== command.side) return 'wrongSide';
+    if (
+      command.type !== 'useAbility' &&
+      command.type !== 'useCommand' &&
+      COMMAND_SIDES[command.type] !== command.side
+    )
+      return 'wrongSide';
     switch (command.type) {
       case 'launchWave':
         return this.launchWave(command);
@@ -310,6 +424,10 @@ export class Match {
         group.holdAtJunction = false;
         this.data(group).holdNodeId = null;
         if (group.state === 'holding') group.state = 'moving';
+        if (group.state === 'dismantling') {
+          group.state = 'moving';
+          group.focusDefenseId = null;
+        }
         return null;
       }
       case 'rerouteGroup': {
@@ -344,6 +462,8 @@ export class Match {
         group.formation = command.formation;
         return null;
       }
+      case 'focusDefense':
+        return this.focusDefense(command);
       case 'placeDefense':
         return this.placeDefense(command);
       case 'upgradeDefense': {
@@ -386,9 +506,7 @@ export class Match {
         if (!defense) return 'unknownDefense';
         const refund = Math.round(defense.spent * SELL_REFUND);
         this.resources.defender += refund;
-        this.entities.remove(defense.id);
-        this.patrolData.delete(defense.id);
-        this.defenseBoosts.delete(defense.id);
+        this.removeDefense(defense);
         this.events.push({ tick: this.tickCount, type: 'defenseSold', defenseId: defense.id, refund });
         return null;
       }
@@ -416,6 +534,8 @@ export class Match {
       }
       case 'useAbility':
         return this.useAbility(command);
+      case 'useCommand':
+        return this.useCommand(command);
     }
   }
 
@@ -452,59 +572,17 @@ export class Match {
     const known = new Set(this.usedRoutes);
     for (const order of command.groups) {
       const unit = this.unitTypes.get(order.unitTypeId) as SimUnitType;
-      const spawn = this.graph.node(this.graph.routes.get(order.routeId)?.nodes[0] as string);
-      const delayTicks = secondsToTicks(order.delaySeconds);
-      const group = this.entities.create((id): GroupEntity => ({
-        id,
-        kind: 'group',
+      const group = this.createGroup(
         waveId,
-        unitTypeId: unit.id,
-        count: order.count,
-        formation: order.formation,
-        routeId: order.routeId,
-        leg: 0,
-        legDistance: 0,
-        state: delayTicks > 0 ? 'waiting' : 'moving',
-        holdAtJunction: false,
-        pendingRouteId: null,
-        pressure: 0,
-        detection: 'unknown',
-        slowed: false,
-        boosted: false,
-        x: spawn.x,
-        z: spawn.z,
-      }));
-      this.groupData.set(group.id, {
         unit,
-        speedVariation: this.rng.range(1 - SPEED_VARIATION, 1 + SPEED_VARIATION),
-        knownRoute: known.has(order.routeId),
-        delayTicks,
-        passedCheckpoints: new Set(),
-        slowUntil: 0,
-        slowMagnitude: 0,
-        boostUntil: 0,
-        boostMagnitude: 0,
-        concealUntil: 0,
-        revealedUntil: 0,
-        detectedTicks: 0,
-        unseenTicks: 0,
-        blockedBy: null,
-        holdNodeId: null,
-        switchNodeId: null,
-      });
-      this.usedRoutes.add(order.routeId);
+        order.count,
+        order.routeId,
+        order.formation,
+        order.delaySeconds,
+        known,
+      );
       wave.groupIds.push(group.id);
       wave.members += order.count;
-      this.stats.attacker.membersLaunched += order.count;
-      this.events.push({
-        tick: this.tickCount,
-        type: 'groupLaunched',
-        groupId: group.id,
-        waveId,
-        unitTypeId: unit.id,
-        count: order.count,
-        routeId: order.routeId,
-      });
     }
     this.waves.set(waveId, wave);
     this.stats.attacker.wavesLaunched++;
@@ -513,22 +591,100 @@ export class Match {
     return null;
   }
 
+  private createGroup(
+    waveId: number,
+    unit: SimUnitType,
+    count: number,
+    routeId: string,
+    formation: GroupEntity['formation'],
+    delaySeconds: number,
+    known: ReadonlySet<string>,
+  ): GroupEntity {
+    const spawn = this.graph.node(this.graph.routes.get(routeId)?.nodes[0] as string);
+    const delayTicks = secondsToTicks(delaySeconds);
+    const group = this.entities.create((id): GroupEntity => ({
+      id,
+      kind: 'group',
+      waveId,
+      unitTypeId: unit.id,
+      count,
+      formation,
+      routeId,
+      leg: 0,
+      legDistance: 0,
+      state: delayTicks > 0 ? 'waiting' : 'moving',
+      holdAtJunction: false,
+      pendingRouteId: null,
+      pressure: 0,
+      detection: 'unknown',
+      slowed: false,
+      boosted: false,
+      statuses: [],
+      focusDefenseId: null,
+      x: spawn.x,
+      z: spawn.z,
+    }));
+    this.groupData.set(group.id, {
+      unit,
+      speedVariation: this.rng.range(1 - SPEED_VARIATION, 1 + SPEED_VARIATION),
+      knownRoute: known.has(routeId),
+      delayTicks,
+      passedCheckpoints: new Set(),
+      detectedTicks: 0,
+      unseenTicks: 0,
+      blockedAt: null,
+      blockedBy: null,
+      holdNodeId: null,
+      switchNodeId: null,
+    });
+    this.usedRoutes.add(routeId);
+    this.stats.attacker.membersLaunched += count;
+    this.events.push({
+      tick: this.tickCount,
+      type: 'groupLaunched',
+      groupId: group.id,
+      waveId,
+      unitTypeId: unit.id,
+      count,
+      routeId,
+    });
+    return group;
+  }
+
   private placeDefense(command: PlaceDefenseCommand): string | null {
     const type = this.defenseTypes.get(command.defenseTypeId);
     const node = this.graph.nodes.get(command.nodeId);
     if (!type) return 'unknownDefense';
     if (!node) return 'unknownNode';
-    if (!this.canPlace(type, node.id)) return 'notBuildable';
-    if (!type.mobile && this.defenses().some((d) => !d.mobile && d.nodeId === node.id)) return 'occupied';
+    const where = this.checkSite(type, node.id);
+    if (where) return where;
     if (
       type.maxCount !== undefined &&
       this.defenses().filter((d) => d.defenseTypeId === type.id).length >= type.maxCount
     )
       return 'limitReached';
     if (type.cost > this.resources.defender) return 'notEnoughResources';
-    const blocking = type.blocksNode && this.graph.routeNodes.has(node.id);
-    if (blocking && !this.graph.hasOpenRoute(this.closedNodes(node.id))) return 'wouldBlockAllRoutes';
     this.resources.defender -= type.cost;
+    this.createDefense(type, node.id, type.cost, type.lifetimeSeconds);
+    return null;
+  }
+
+  /** Whether a defense type may stand on a node right now (place, occupancy and the never-block-every-route rule). */
+  private checkSite(type: SimDefenseType, nodeId: string): string | null {
+    if (!this.canPlace(type, nodeId)) return 'notBuildable';
+    if (!type.mobile && this.defenses().some((d) => !d.mobile && d.nodeId === nodeId)) return 'occupied';
+    const blocking = type.blocksNode && this.graph.routeNodes.has(nodeId);
+    if (blocking && !this.graph.hasOpenRoute(this.closedNodes(nodeId))) return 'wouldBlockAllRoutes';
+    return null;
+  }
+
+  private createDefense(
+    type: SimDefenseType,
+    nodeId: string,
+    spent: number,
+    lifetimeSeconds: number | undefined,
+  ): DefenseEntity {
+    const node = this.graph.node(nodeId);
     const defense = this.entities.create((id): DefenseEntity => ({
       id,
       kind: 'defense',
@@ -537,13 +693,16 @@ export class Match {
       nodeId: node.id,
       level: 1,
       condition: 100,
-      blocking,
+      blocking: type.blocksNode && !type.mobile && this.graph.routeNodes.has(node.id),
       priority: 'first',
       focusGroupId: null,
       targetGroupId: null,
       order: type.mobile ? { type: 'guard', nodeId: node.id } : null,
       boosted: false,
-      spent: type.cost,
+      disrupted: false,
+      statuses: [],
+      expiresAtTick: lifetimeSeconds ? this.tickCount + secondsToTicks(lifetimeSeconds) : null,
+      spent,
       x: node.x,
       z: node.z,
     }));
@@ -560,20 +719,26 @@ export class Match {
       defenseTypeId: type.id,
       nodeId: node.id,
     });
-    return null;
+    return defense;
   }
 
   private canPlace(type: SimDefenseType, nodeId: string): boolean {
     const node = this.graph.node(nodeId);
     const onRoute = this.graph.routeNodes.has(nodeId);
-    const spawn =
-      node.kind === 'spawn' || [...this.graph.routes.values()].some((route) => route.nodes[0] === nodeId);
+    const spawn = this.isSpawn(nodeId);
     if (type.mobile) return onRoute && !spawn;
     const objective = nodeId === this.setup.level.objective.nodeId;
     const routeOk = onRoute && !spawn && !objective;
     if (type.placement === 'buildZone') return node.buildable === true;
     if (type.placement === 'routeNode') return routeOk;
     return node.buildable === true || routeOk;
+  }
+
+  private isSpawn(nodeId: string): boolean {
+    return (
+      this.graph.node(nodeId).kind === 'spawn' ||
+      [...this.graph.routes.values()].some((route) => route.nodes[0] === nodeId)
+    );
   }
 
   private orderDefense(command: OrderDefenseCommand): string | null {
@@ -604,130 +769,264 @@ export class Match {
     return null;
   }
 
+  private focusDefense(command: FocusDefenseCommand): string | null {
+    const group = this.ownGroup(command.groupId);
+    if (!group) return 'unknownGroup';
+    if (command.defenseId === null) {
+      this.setFocus(group, null);
+      return null;
+    }
+    if (!ON_FIELD.has(group.state) || group.state === 'atObjective') return 'cannotDismantle';
+    const data = this.data(group);
+    if (data.unit.dismantle <= 0) return 'cannotDismantle';
+    const sight = this.sightRange(group);
+    const candidates = this.defenses().filter(
+      (d) =>
+        this.defenseType(d).dismantlable &&
+        (this.visibleToAttacker.has(d.id) || this.seenDefenses.has(d.id)) &&
+        distance(d, group) <= sight,
+    );
+    let target: DefenseEntity | undefined;
+    if (command.defenseId !== undefined) {
+      const chosen = this.ownDefense(command.defenseId);
+      if (!chosen || !(this.visibleToAttacker.has(chosen.id) || this.seenDefenses.has(chosen.id)))
+        return 'notVisible';
+      if (!this.defenseType(chosen).dismantlable) return 'notDismantlable';
+      if (!candidates.includes(chosen)) return 'outOfRange';
+      target = chosen;
+    } else {
+      for (const d of candidates) if (!target || distance(d, group) < distance(target, group)) target = d;
+      if (!target) return 'noDefenseInSight';
+    }
+    this.setFocus(group, target.id);
+    return null;
+  }
+
+  private setFocus(group: GroupEntity, defenseId: number | null): void {
+    if (group.focusDefenseId === defenseId) return;
+    group.focusDefenseId = defenseId;
+    if (defenseId === null && group.state === 'dismantling') group.state = 'moving';
+    this.events.push({ tick: this.tickCount, type: 'groupFocusDefense', groupId: group.id, defenseId });
+  }
+
+  // ---------------------------------------------------------------------------------------------------------------
+  // Abilities and command slots
+
   private useAbility(command: UseAbilityCommand): string | null {
-    const side = command.side;
-    const ability = this.abilities[side]?.get(command.abilityId);
+    const ability = this.abilities[command.side]?.get(command.abilityId);
     if (!ability) return 'unknownAbility';
-    if (this.phase === 'ended') return 'ended';
-    if ((this.cooldownUntil[side].get(ability.id) ?? 0) > this.tickCount) return 'cooldown';
-    if (ability.cost > this.points[side]) return 'notEnoughPoints';
-    const actions: (() => void)[] = [];
-    for (const effect of ability.effects) {
-      const planned = this.planEffect(side, ability, effect, command);
-      if (typeof planned === 'string') return planned;
-      actions.push(planned);
+    const reason = this.useAction(command.side, ability, command, null);
+    if (reason) return reason;
+    if (command.side === 'defender') this.stats.defender.abilitiesUsed++;
+    this.events.push({
+      tick: this.tickCount,
+      type: 'abilityUsed',
+      side: command.side,
+      abilityId: ability.id,
+    });
+    return null;
+  }
+
+  private useCommand(command: UseCommandCommand): string | null {
+    const action = this.slotCommands[command.side]?.get(command.commandId);
+    if (!action) return 'unknownCommand';
+    if (action.order) return 'orderCommand';
+    let anchor: MatchEntity | undefined;
+    if (command.side === 'attacker') {
+      anchor = command.groupId === undefined ? undefined : this.ownGroup(command.groupId);
+      if (!anchor || anchor.state === 'waiting' || anchor.state === 'retreating') return 'unknownGroup';
+    } else {
+      anchor = command.defenseId === undefined ? undefined : this.ownDefense(command.defenseId);
+      if (!anchor) return 'unknownDefense';
     }
-    this.points[side] -= ability.cost;
-    this.cooldownUntil[side].set(ability.id, this.tickCount + secondsToTicks(ability.cooldownSeconds));
-    for (const action of actions) action();
-    if (ability.target === 'area' && command.x !== undefined && command.z !== undefined) {
-      this.areas.push({
-        abilityId: ability.id,
-        side,
-        x: command.x,
-        z: command.z,
-        radius: ability.range,
-        untilTick: this.tickCount + Math.max(1, secondsToTicks(ability.durationSeconds)),
-      });
-    }
-    this.events.push({ tick: this.tickCount, type: 'abilityUsed', side, abilityId: ability.id });
+    const reason = this.useAction(command.side, action, {}, anchor);
+    if (reason) return reason;
+    this.events.push({
+      tick: this.tickCount,
+      type: 'commandUsed',
+      side: command.side,
+      commandId: action.id,
+      entityId: anchor.id,
+    });
     return null;
   }
 
   /**
-   * Abilities are read from data: the target type says what the ability is aimed at and each effect says what happens
-   * there. Returns the action to run, or a rejection reason (nothing is spent when an ability is rejected).
+   * Uses an ability (aimed by the command's fields) or a command slot (aimed from `anchor`, the selected group or
+   * asset). Nothing is spent when it is rejected.
+   */
+  private useAction(
+    side: Side,
+    action: SimAbility,
+    aim: Partial<Pick<UseAbilityCommand, 'x' | 'z' | 'groupId' | 'routeId' | 'nodeId'>>,
+    anchor: MatchEntity | null,
+  ): string | null {
+    if (this.phase === 'ended') return 'ended';
+    if ((this.cooldownUntil[side].get(action.id) ?? 0) > this.tickCount) return 'cooldown';
+    if (action.cost > this.points[side]) return 'notEnoughPoints';
+    const target = this.resolveTarget(side, action, aim, anchor);
+    if (typeof target === 'string') return target;
+    const until = this.tickCount + Math.max(1, secondsToTicks(action.durationSeconds));
+    const run: (() => void)[] = [];
+    const lasting: SimEffect[] = [];
+    for (const effect of action.effects) {
+      const planned = this.planEffect(side, action, effect, target, until);
+      if (planned === KEEP) lasting.push(effect);
+      else if (typeof planned === 'string') return planned;
+      else run.push(planned);
+    }
+    this.points[side] -= action.cost;
+    this.cooldownUntil[side].set(action.id, this.tickCount + secondsToTicks(action.cooldownSeconds));
+    for (const step of run) step();
+    if (lasting.length > 0)
+      this.zones.push({
+        abilityId: action.id,
+        side,
+        selector: target.selector,
+        effects: lasting,
+        untilTick: until,
+        x: target.at.x,
+        z: target.at.z,
+        radius:
+          target.selector.kind === 'area'
+            ? target.selector.radius
+            : target.selector.kind === 'route'
+              ? target.selector.radius
+              : 0,
+      });
+    return null;
+  }
+
+  /** Where an ability or command works, checked against the rules; returns a rejection reason otherwise. */
+  private resolveTarget(
+    side: Side,
+    action: SimAbility,
+    aim: Partial<Pick<UseAbilityCommand, 'x' | 'z' | 'groupId' | 'routeId' | 'nodeId'>>,
+    anchor: MatchEntity | null,
+  ): { selector: Selector; at: Point; group?: GroupEntity; nodeId?: string; routeId?: string } | string {
+    const centre = this.graph.node(this.setup.level.objective.nodeId);
+    if (anchor) {
+      // Command slots work on the group or asset they come from, or around it.
+      if (action.target === 'area')
+        return { selector: { kind: 'area', x: anchor.x, z: anchor.z, radius: action.range }, at: anchor };
+      if (action.target === 'self') return { selector: { kind: 'all' }, at: anchor };
+      if (action.target === 'unit')
+        return {
+          selector: { kind: 'entity', id: anchor.id },
+          at: anchor,
+          ...(anchor.kind === 'group' ? { group: anchor } : {}),
+        };
+      return 'invalidTarget';
+    }
+    switch (action.target) {
+      case 'self':
+        return { selector: { kind: 'all' }, at: centre };
+      case 'area': {
+        if (!Number.isFinite(aim.x) || !Number.isFinite(aim.z)) return 'missingTarget';
+        const at = { x: aim.x as number, z: aim.z as number };
+        return { selector: { kind: 'area', ...at, radius: action.range }, at };
+      }
+      case 'junction': {
+        let nodeId = aim.nodeId;
+        if (nodeId === undefined && Number.isFinite(aim.x) && Number.isFinite(aim.z)) {
+          const at = { x: aim.x as number, z: aim.z as number };
+          let best: { id: string; d: number } | null = null;
+          for (const id of this.graph.routeNodes) {
+            const d = distance(this.graph.node(id), at);
+            if (!best || d < best.d) best = { id, d };
+          }
+          if (best && best.d <= 4) nodeId = best.id;
+        }
+        if (!nodeId || !this.graph.routeNodes.has(nodeId)) return 'missingTarget';
+        const node = this.graph.node(nodeId);
+        const radius = action.range > 0 ? action.range : JUNCTION_EFFECT_REACH;
+        return { selector: { kind: 'area', x: node.x, z: node.z, radius }, at: node, nodeId };
+      }
+      case 'route': {
+        const routeId = aim.routeId;
+        if (!routeId || !this.graph.routes.has(routeId)) return 'unknownRoute';
+        const radius = action.range > 0 ? action.range : ROUTE_EFFECT_REACH;
+        let group: GroupEntity | undefined;
+        if (aim.groupId !== undefined) {
+          group = this.ownGroup(aim.groupId);
+          if (!group || group.state === 'waiting') return 'unknownGroup';
+        }
+        const path = this.routePoints.get(routeId) as Point[];
+        const middle = pointOnPolyline(path, polylineLength(path) / 2);
+        return {
+          selector: { kind: 'route', routeId, radius },
+          at: middle,
+          routeId,
+          ...(group ? { group } : {}),
+        };
+      }
+      case 'unit': {
+        if (aim.groupId === undefined) return 'missingTarget';
+        const group = this.ownGroup(aim.groupId);
+        if (!group || group.state === 'waiting') return 'unknownGroup';
+        if (side === 'defender') {
+          if (group.detection === 'unknown') return 'notVisible';
+          if (action.range > 0 && !this.activeDefenses().some((d) => distance(d, group) <= action.range))
+            return 'outOfRange';
+        }
+        return { selector: { kind: 'entity', id: group.id }, at: group, group };
+      }
+    }
+  }
+
+  /**
+   * Checks one effect and returns what to do: `KEEP` for effects kept by the zone, a step to run once, or a rejection
+   * reason.
    */
   private planEffect(
     side: Side,
-    ability: SimAbility,
+    action: SimAbility,
     effect: SimEffect,
-    command: UseAbilityCommand,
-  ): (() => void) | string {
-    const until = this.tickCount + Math.max(1, secondsToTicks(ability.durationSeconds));
+    target: { selector: Selector; at: Point; group?: GroupEntity; nodeId?: string; routeId?: string },
+    until: number,
+  ): typeof KEEP | (() => void) | string {
     const magnitude = effect.magnitude ?? DEFAULT_EFFECT_MAGNITUDE;
-    const at = this.abilityPoint(ability, command);
-    if (at === 'missingTarget') return at;
-    const groupTarget = (): GroupEntity | string => {
-      if (command.groupId === undefined) return 'missingTarget';
-      const group = this.ownGroup(command.groupId);
-      if (!group || group.state === 'waiting') return 'unknownGroup';
-      return group;
-    };
-
+    const kind = recipientsOf(side, effect.type);
+    if (target.selector.kind === 'entity' && kind !== null) {
+      const entity = this.entities.get(target.selector.id);
+      if (!entity || (kind === 'groups') !== (entity.kind === 'group')) return 'invalidTarget';
+    }
+    if (LASTING.has(effect.type)) {
+      if (kind === null) return 'invalidTarget';
+      return KEEP;
+    }
     switch (effect.type) {
-      case 'reveal': {
-        if (!at) return 'missingTarget';
-        if (side === 'attacker')
-          return () => {
-            for (const defense of this.defenses())
-              if (distance(defense, at) <= ability.range) this.defenseRevealedUntil.set(defense.id, until);
-          };
+      case 'disrupt': {
+        // Sabotage needs one of the Attacker's groups close enough to reach the asset.
+        if (
+          side === 'attacker' &&
+          target.selector.kind !== 'entity' &&
+          !this.groupNear(target.at, action.range)
+        )
+          return 'noGroupNear';
         return () => {
-          for (const group of this.fieldGroups())
-            if (distance(group, at) <= ability.range) this.data(group).revealedUntil = until;
-        };
-      }
-      case 'conceal': {
-        if (side !== 'attacker' || !at) return 'invalidTarget';
-        return () => {
-          for (const group of this.fieldGroups())
-            if (distance(group, at) <= ability.range) this.data(group).concealUntil = until;
-        };
-      }
-      case 'slow': {
-        if (side !== 'defender') return 'invalidTarget';
-        if (ability.target === 'unit') {
-          const group = groupTarget();
-          if (typeof group === 'string') return group;
-          if (group.detection === 'unknown') return 'notVisible';
-          const inReach = this.activeDefenses().some((d) => distance(d, group) <= ability.range);
-          if (!inReach) return 'outOfRange';
-          return () => this.slowGroup(group, until, magnitude);
-        }
-        if (!at) return 'missingTarget';
-        return () => {
-          for (const group of this.fieldGroups())
-            if (distance(group, at) <= ability.range) this.slowGroup(group, until, magnitude);
-        };
-      }
-      case 'boost': {
-        if (side === 'attacker') {
-          let targets: GroupEntity[];
-          if (ability.target === 'unit') {
-            const group = groupTarget();
-            if (typeof group === 'string') return group;
-            targets = [group];
-          } else if (ability.target === 'route') {
-            if (!command.routeId || !this.graph.routes.has(command.routeId)) return 'unknownRoute';
-            targets = this.fieldGroups().filter((g) => g.routeId === command.routeId);
-          } else if (ability.target === 'area') {
-            if (!at) return 'missingTarget';
-            targets = this.fieldGroups().filter((g) => distance(g, at) <= ability.range);
-          } else targets = this.fieldGroups();
-          return () => {
-            for (const group of targets) {
-              const data = this.data(group);
-              data.boostUntil = until;
-              data.boostMagnitude = magnitude;
-            }
-          };
-        }
-        if (ability.target === 'area' && !at) return 'missingTarget';
-        return () => {
-          for (const defense of this.defenses()) {
-            if (!defense.mobile) continue;
-            if (at && distance(defense, at) > ability.range) continue;
-            this.defenseBoosts.set(defense.id, { untilTick: until, magnitude });
+          for (const entity of this.covered(target.selector, kind as 'groups' | 'defenses', effect)) {
+            if (entity.kind === 'defense') this.sabotage(entity, action.durationSeconds);
+            else this.status.apply(entity.id, 'pinned', until, 1, this.tickCount);
           }
+        };
+      }
+      case 'dismantle': {
+        if (side !== 'attacker') return 'invalidTarget';
+        if (target.selector.kind !== 'entity' && !this.groupNear(target.at, action.range))
+          return 'noGroupNear';
+        return () => {
+          for (const entity of this.covered(target.selector, 'defenses', effect))
+            if (entity.kind === 'defense' && this.defenseType(entity).dismantlable)
+              this.wearDefense(entity, effect.magnitude ?? 50, null);
         };
       }
       case 'move': {
         if (side !== 'attacker') return 'invalidTarget';
-        const group = groupTarget();
-        if (typeof group === 'string') return group;
-        const routeId = command.routeId;
-        if (!routeId || !this.graph.routes.has(routeId)) return 'unknownRoute';
+        const group = target.group;
+        if (!group) return 'missingTarget';
+        const routeId = target.routeId;
+        if (!routeId) return 'unknownRoute';
         if (routeId === group.routeId) return 'sameRoute';
         if (group.state === 'holding') {
           if (!this.canSwitchAt(group, routeId)) return 'routeNotFromHere';
@@ -745,25 +1044,176 @@ export class Match {
           this.data(group).holdNodeId = null;
         };
       }
+      case 'spawn':
+        return this.planSpawn(side, action, effect, target);
+      case 'blockBranch': {
+        if (side !== 'defender') return 'invalidTarget';
+        const nodeId = target.nodeId ?? this.nearestRouteNode(target.at);
+        if (!nodeId || this.isSpawn(nodeId) || nodeId === this.setup.level.objective.nodeId)
+          return 'notBuildable';
+        const closed = this.closedNodes(nodeId);
+        if (!this.graph.hasOpenRoute(closed)) return 'wouldBlockAllRoutes';
+        return () => {
+          this.closures.set(nodeId, Math.max(this.closures.get(nodeId) ?? 0, until));
+          this.events.push({ tick: this.tickCount, type: 'branchClosed', nodeId, untilTick: until });
+        };
+      }
       case 'resource':
         return () => {
-          this.resources[side] += magnitude;
+          if (effect.pool === 'points') this.points[side] += magnitude;
+          else this.resources[side] += magnitude;
         };
       default:
         return 'unsupportedEffect';
     }
   }
 
-  private abilityPoint(ability: SimAbility, command: UseAbilityCommand): Point | null | 'missingTarget' {
-    if (ability.target !== 'area') return null;
-    if (!Number.isFinite(command.x) || !Number.isFinite(command.z)) return 'missingTarget';
-    return { x: command.x as number, z: command.z as number };
+  private planSpawn(
+    side: Side,
+    action: SimAbility,
+    effect: SimEffect,
+    target: { selector: Selector; at: Point; nodeId?: string; routeId?: string },
+  ): (() => void) | string {
+    if (side === 'defender') {
+      const type = effect.spawn ? this.defenseTypes.get(effect.spawn) : undefined;
+      if (!type) return 'unknownDefense';
+      const nodeId = target.nodeId ?? this.nearestRouteNode(target.at);
+      if (!nodeId) return 'notBuildable';
+      const where = this.checkSite(type, nodeId);
+      if (where) return where;
+      const lifetime = action.durationSeconds > 0 ? action.durationSeconds : type.lifetimeSeconds;
+      return () => {
+        this.createDefense(type, nodeId, 0, lifetime);
+      };
+    }
+    const unit = effect.spawn ? this.unitTypes.get(effect.spawn) : undefined;
+    if (!unit) return 'unknownUnit';
+    const routeId = target.routeId ?? this.setup.level.routes[0]?.id;
+    if (!routeId) return 'unknownRoute';
+    const count = Math.max(1, Math.round(effect.magnitude ?? 1));
+    if (unit.capacity * count > this.capacityRemaining) return 'notEnoughCapacity';
+    return () => {
+      this.capacityRemaining -= unit.capacity * count;
+      this.stats.attacker.capacityUsed += unit.capacity * count;
+      const waveId = this.nextWaveId++;
+      const group = this.createGroup(waveId, unit, count, routeId, 'column', 0, new Set(this.usedRoutes));
+      this.waves.set(waveId, { groupIds: [group.id], members: count, turnedBack: 0 });
+    };
   }
 
-  private slowGroup(group: GroupEntity, until: number, magnitude: number): void {
-    const data = this.data(group);
-    data.slowUntil = until;
-    data.slowMagnitude = Math.max(data.slowMagnitude, magnitude);
+  /** The things a selector covers that an effect works on (and whose condition holds). */
+  private covered(selector: Selector, kind: 'groups' | 'defenses', effect: SimEffect): MatchEntity[] {
+    const pool: MatchEntity[] = kind === 'groups' ? this.fieldGroups() : this.defenses();
+    return pool.filter((entity) => {
+      if (effect.condition === 'atObjective' && (entity.kind !== 'group' || entity.state !== 'atObjective'))
+        return false;
+      if (effect.condition === 'knownRoute' && (entity.kind !== 'group' || !this.data(entity).knownRoute))
+        return false;
+      switch (selector.kind) {
+        case 'all':
+          return true;
+        case 'entity':
+          return entity.id === selector.id;
+        case 'area':
+          return distance(entity, selector) <= selector.radius;
+        case 'route':
+          return entity.kind === 'group'
+            ? entity.routeId === selector.routeId
+            : distanceToPolyline(entity, this.routePoints.get(selector.routeId) as Point[]) <=
+                selector.radius;
+      }
+    });
+  }
+
+  /** Every tick, lasting effects refresh the statuses of everything their zone covers. */
+  private applyZones(): void {
+    for (const zone of this.zones) {
+      for (const effect of zone.effects) {
+        const kind = recipientsOf(zone.side, effect.type);
+        if (!kind) continue;
+        const magnitude = effect.magnitude;
+        for (const entity of this.covered(zone.selector, kind, effect)) {
+          switch (effect.type) {
+            case 'slow':
+              this.status.apply(
+                entity.id,
+                'slowed',
+                zone.untilTick,
+                magnitude ?? DEFAULT_EFFECT_MAGNITUDE,
+                this.tickCount,
+              );
+              break;
+            case 'reveal':
+              this.status.apply(entity.id, 'revealed', zone.untilTick, 1, this.tickCount);
+              break;
+            case 'conceal':
+              this.status.apply(
+                entity.id,
+                'concealed',
+                zone.untilTick,
+                magnitude ?? DEFAULT_CONCEAL,
+                this.tickCount,
+              );
+              break;
+            case 'protect':
+              this.status.apply(
+                entity.id,
+                'protected',
+                zone.untilTick,
+                magnitude ?? DEFAULT_PROTECT,
+                this.tickCount,
+              );
+              break;
+            case 'boost':
+              // A plain boost of the Defender works on mobile assets (they move and press harder).
+              if (entity.kind === 'defense' && !effect.stat && !entity.mobile) break;
+              this.status.apply(
+                entity.id,
+                boostKey(effect),
+                zone.untilTick,
+                magnitude ?? DEFAULT_EFFECT_MAGNITUDE,
+                this.tickCount,
+              );
+              break;
+            default:
+              break;
+          }
+        }
+      }
+    }
+  }
+
+  private groupNear(at: Point, range: number): boolean {
+    return this.fieldGroups().some((g) => distance(g, at) <= Math.max(range, this.sightRange(g)));
+  }
+
+  private nearestRouteNode(at: Point): string | null {
+    let best: { id: string; d: number } | null = null;
+    for (const id of this.graph.routeNodes) {
+      if (this.isSpawn(id) || id === this.setup.level.objective.nodeId) continue;
+      const d = distance(this.graph.node(id), at);
+      if (!best || d < best.d) best = { id, d };
+    }
+    return best?.id ?? null;
+  }
+
+  /** Sabotage: the asset is out of action for a while (shorter when protected). */
+  private sabotage(defense: DefenseEntity, seconds: number): void {
+    if (!this.defenseType(defense).disruptible) return;
+    const protect = this.defenseProtection(defense);
+    const ticks = Math.max(1, secondsToTicks(seconds * (1 - protect)));
+    this.status.apply(defense.id, 'disrupted', this.tickCount + ticks, 1, this.tickCount);
+    if (!this.sabotaged.has(defense.id)) {
+      this.sabotaged.add(defense.id);
+      defense.targetGroupId = null;
+      this.stats.attacker.defensesDisrupted++;
+      this.events.push({
+        tick: this.tickCount,
+        type: 'defenseDisrupted',
+        defenseId: defense.id,
+        by: 'sabotage',
+      });
+    }
   }
 
   // ---------------------------------------------------------------------------------------------------------------
@@ -777,6 +1227,27 @@ export class Match {
     }
   }
 
+  /** Ended zones, closures, sabotage and temporary assets. */
+  private expireEffects(): void {
+    this.zones = this.zones.filter((zone) => zone.untilTick > this.tickCount);
+    for (const [nodeId, until] of this.closures) {
+      if (until > this.tickCount) continue;
+      this.closures.delete(nodeId);
+      this.events.push({ tick: this.tickCount, type: 'branchOpened', nodeId });
+    }
+    for (const id of this.sabotaged) {
+      if (this.status.active(id, 'disrupted', this.tickCount)) continue;
+      this.sabotaged.delete(id);
+      if (this.entities.get(id))
+        this.events.push({ tick: this.tickCount, type: 'defenseRecovered', defenseId: id });
+    }
+    for (const defense of this.defenses()) {
+      if (defense.expiresAtTick === null || defense.expiresAtTick > this.tickCount) continue;
+      this.removeDefense(defense);
+      this.events.push({ tick: this.tickCount, type: 'defenseExpired', defenseId: defense.id });
+    }
+  }
+
   private releaseWaitingGroups(): void {
     for (const group of this.groups()) {
       if (group.state !== 'waiting') continue;
@@ -786,32 +1257,26 @@ export class Match {
   }
 
   private releaseBlockedGroups(): void {
+    const closed = this.blockers();
     for (const group of this.groups()) {
       if (group.state !== 'blocked') continue;
       const data = this.data(group);
-      const blocker = data.blockedBy === null ? undefined : this.entities.get(data.blockedBy);
-      if (!blocker || blocker.kind !== 'defense' || !blocker.blocking) {
-        data.blockedBy = null;
-        group.state = 'moving';
+      if (data.blockedAt !== null && closed.has(data.blockedAt)) {
+        data.blockedBy = closed.get(data.blockedAt)?.id ?? null;
+        continue;
       }
+      data.blockedAt = null;
+      data.blockedBy = null;
+      group.state = 'moving';
     }
   }
 
   private moveGroups(): void {
     const closed = this.blockers();
     for (const group of this.groups()) {
-      const data = this.data(group);
-      const slowed = data.slowUntil > this.tickCount;
-      if (!slowed) data.slowMagnitude = 0;
-      let slow = slowed ? data.slowMagnitude : 0;
-      for (const defense of this.activeDefenses()) {
-        const type = this.defenseType(defense);
-        if (type.slow > 0 && distance(defense, group) <= this.reach(defense))
-          slow = Math.max(slow, type.slow);
-      }
-      group.slowed = slow > 0 && ON_FIELD.has(group.state);
-      group.boosted = data.boostUntil > this.tickCount;
       if (group.state !== 'moving' && group.state !== 'retreating') continue;
+      if (this.status.active(group.id, 'pinned', this.tickCount)) continue;
+      const data = this.data(group);
       const legs = this.graph.routeLegs(group.routeId);
       const terrain =
         this.setup.level.terrain[legs[Math.min(group.leg, legs.length - 1)]?.terrain ?? 'cover'];
@@ -820,9 +1285,9 @@ export class Match {
         data.speedVariation *
         FORMATIONS[group.formation].speed *
         terrain.speed *
-        (1 - slow);
-      if (group.boosted) speed *= 1 + data.boostMagnitude;
-      if (data.knownRoute) speed *= 1 + this.passive('attacker', 'speed', true);
+        (1 - this.slowOf(group));
+      speed *= 1 + this.groupBoost(group, 'speed');
+      speed *= 1 + this.passive('attacker', 'boost', 'speed', group);
       const step = speed * TICK_SECONDS;
       if (group.state === 'retreating') this.walkBack(group, step);
       else this.walkForward(group, step, closed);
@@ -830,29 +1295,41 @@ export class Match {
     }
   }
 
-  private walkForward(group: GroupEntity, step: number, closed: Map<string, DefenseEntity>): void {
+  /** Strongest slow on a group: from effects, or from a slowing structure in reach. */
+  private slowOf(group: GroupEntity): number {
+    let slow = this.status.magnitude(group.id, 'slowed', this.tickCount);
+    for (const defense of this.activeDefenses()) {
+      const type = this.defenseType(defense);
+      if (type.slow > 0 && distance(defense, group) <= this.reach(defense)) slow = Math.max(slow, type.slow);
+    }
+    return Math.min(0.9, slow);
+  }
+
+  private walkForward(group: GroupEntity, step: number, closed: Map<string, DefenseEntity | null>): void {
     let remaining = step;
     while (remaining > 0 && group.state === 'moving') {
       const legs = this.graph.routeLegs(group.routeId);
       const leg = legs[group.leg];
       if (!leg) return;
-      const blocker = closed.get(leg.to);
-      const limit = blocker ? Math.max(group.legDistance, leg.length - BLOCK_STANDOFF) : leg.length;
+      const blocked = closed.has(leg.to);
+      const limit = blocked ? Math.max(group.legDistance, leg.length - BLOCK_STANDOFF) : leg.length;
       if (group.legDistance + remaining < limit) {
         group.legDistance += remaining;
         return;
       }
       remaining -= limit - group.legDistance;
       group.legDistance = limit;
-      if (blocker) {
+      if (blocked) {
+        const blocker = closed.get(leg.to) ?? null;
         group.state = 'blocked';
-        this.data(group).blockedBy = blocker.id;
+        this.data(group).blockedAt = leg.to;
+        this.data(group).blockedBy = blocker?.id ?? null;
         this.events.push({
           tick: this.tickCount,
           type: 'groupBlocked',
           groupId: group.id,
           nodeId: leg.to,
-          defenseId: blocker.id,
+          defenseId: blocker?.id ?? null,
         });
         return;
       }
@@ -970,7 +1447,13 @@ export class Match {
     group.state = 'retreating';
     group.holdAtJunction = false;
     group.pendingRouteId = null;
-    Object.assign(this.data(group), { blockedBy: null, holdNodeId: null, switchNodeId: null });
+    group.focusDefenseId = null;
+    Object.assign(this.data(group), {
+      blockedAt: null,
+      blockedBy: null,
+      holdNodeId: null,
+      switchNodeId: null,
+    });
     this.events.push({ tick: this.tickCount, type: 'groupRetreating', groupId: group.id });
   }
 
@@ -1008,13 +1491,15 @@ export class Match {
   private movePatrols(): void {
     for (const defense of this.defenses()) {
       if (!defense.mobile) continue;
-      const boost = this.defenseBoosts.get(defense.id);
-      defense.boosted = boost !== undefined && boost.untilTick > this.tickCount;
       if (defense.targetGroupId !== null) continue; // engaging: stays put while intercepting
+      if (!this.isActive(defense)) continue;
       const patrol = this.patrolData.get(defense.id) as PatrolInternals;
       const type = this.defenseType(defense);
-      let remaining =
-        type.speed * (defense.boosted ? 1 + (boost as { magnitude: number }).magnitude : 1) * TICK_SECONDS;
+      const boost = Math.max(
+        this.status.magnitude(defense.id, 'boost:plain', this.tickCount),
+        this.status.magnitude(defense.id, 'boost:speed', this.tickCount),
+      );
+      let remaining = type.speed * (1 + boost) * TICK_SECONDS;
       while (remaining > 0) {
         const leg = patrol.path[patrol.legIndex];
         if (!leg) {
@@ -1055,8 +1540,14 @@ export class Match {
   // ---------------------------------------------------------------------------------------------------------------
   // Information
 
+  /**
+   * The Defender detects a group within a defense's detection distance, shortened by the group's visibility:
+   * Concealed and Stealth units, concealment effects and the Photographer's Low Profile. Sensors ignore all of that;
+   * a revealed group is detected anywhere. Stealth is never permanent (spec §8).
+   */
   private updateDetection(): void {
-    const detectionBonus = 1 + this.passive('defender', 'detectionRange', false);
+    const detectionBonus = 1 + this.passive('defender', 'boost', 'detectionRange');
+    const lowProfile = Math.min(0.9, this.passive('attacker', 'conceal'));
     const defenses = this.activeDefenses();
     for (const group of this.groups()) {
       if (group.state === 'waiting') continue;
@@ -1064,12 +1555,18 @@ export class Match {
       const legs = this.graph.routeLegs(group.routeId);
       const terrain =
         this.setup.level.terrain[legs[Math.min(group.leg, legs.length - 1)]?.terrain ?? 'cover'];
-      let visibility =
-        VISIBILITY_FACTORS[data.unit.visibility] * FORMATIONS[group.formation].detection * terrain.detection;
-      if (data.concealUntil > this.tickCount) visibility *= 0.5;
+      const plain = FORMATIONS[group.formation].detection * terrain.detection;
+      const hidden =
+        VISIBILITY_FACTORS[data.unit.visibility] *
+        (1 - this.status.magnitude(group.id, 'concealed', this.tickCount)) *
+        (1 - lowProfile);
       const seen =
-        data.revealedUntil > this.tickCount ||
-        defenses.some((d) => distance(d, group) <= this.detectionRange(d) * detectionBonus * visibility);
+        this.status.active(group.id, 'revealed', this.tickCount) ||
+        defenses.some(
+          (d) =>
+            distance(d, group) <=
+            this.detectionRange(d) * detectionBonus * plain * (this.defenseType(d).seesHidden ? 1 : hidden),
+        );
       if (seen) {
         data.unseenTicks = 0;
         data.detectedTicks++;
@@ -1095,8 +1592,9 @@ export class Match {
     this.visibleToAttacker.clear();
     const lookers = this.groups().filter((g) => g.state !== 'waiting');
     for (const defense of this.defenses()) {
-      const revealed = (this.defenseRevealedUntil.get(defense.id) ?? 0) > this.tickCount;
-      const inSight = revealed || lookers.some((g) => distance(g, defense) <= this.data(g).unit.sightRange);
+      const revealed = this.status.active(defense.id, 'revealed', this.tickCount);
+      const cover = 1 - this.status.magnitude(defense.id, 'concealed', this.tickCount);
+      const inSight = revealed || lookers.some((g) => distance(g, defense) <= this.sightRange(g) * cover);
       if (!inSight) continue;
       this.visibleToAttacker.add(defense.id);
       if (!this.seenDefenses.has(defense.id))
@@ -1106,18 +1604,25 @@ export class Match {
     // A remembered structure that is gone is forgotten once a group sees the spot again.
     for (const [id, memory] of this.seenDefenses) {
       if (this.entities.get(id)) continue;
-      if (lookers.some((g) => distance(g, memory) <= this.data(g).unit.sightRange))
-        this.seenDefenses.delete(id);
+      if (lookers.some((g) => distance(g, memory) <= this.sightRange(g))) this.seenDefenses.delete(id);
     }
   }
 
+  private sightRange(group: GroupEntity): number {
+    const unit = this.data(group).unit;
+    return (
+      unit.sightRange *
+      (1 + this.passive('attacker', 'boost', 'sightRange', group) + this.groupBoost(group, 'sightRange'))
+    );
+  }
+
   // ---------------------------------------------------------------------------------------------------------------
-  // Pressure and objective
+  // Pressure, dismantling and objective
 
   private applyPressure(): void {
     for (const defense of this.defenses()) {
       defense.targetGroupId = null;
-      if (defense.condition <= 0) continue;
+      if (!this.isActive(defense)) continue;
       const reach = this.reach(defense);
       const candidates = this.groups().filter(
         (g) => ON_FIELD.has(g.state) && g.detection !== 'unknown' && distance(g, defense) <= reach,
@@ -1130,8 +1635,10 @@ export class Match {
       defense.targetGroupId = target.id;
       const type = this.defenseType(defense);
       let pressure = type.pressurePerSecond * (1 + UPGRADE_PRESSURE_BONUS * (defense.level - 1));
-      if (defense.boosted) pressure *= 1 + (this.defenseBoosts.get(defense.id)?.magnitude ?? 0);
-      target.pressure += pressure * FORMATIONS[target.formation].pressureTaken * TICK_SECONDS;
+      pressure *= 1 + this.status.magnitude(defense.id, 'boost:pressure', this.tickCount);
+      if (defense.mobile) pressure *= 1 + this.status.magnitude(defense.id, 'boost:plain', this.tickCount);
+      const protect = this.status.magnitude(target.id, 'protected', this.tickCount);
+      target.pressure += pressure * FORMATIONS[target.formation].pressureTaken * (1 - protect) * TICK_SECONDS;
       this.turnBackMembers(target, defense);
     }
   }
@@ -1195,32 +1702,103 @@ export class Match {
     }
   }
 
-  /** Groups pushing against a roadblock wear it down; at 0 condition it is disrupted and the way is open. */
+  /**
+   * Groups pushing against a roadblock wear it down (and take it apart faster with a dismantle rate); at 0 condition
+   * it is disrupted, or removed when it can be dismantled.
+   */
   private wearRoadblocks(): void {
     for (const group of this.groups()) {
       if (group.state !== 'blocked') continue;
       const blocker = this.entities.get(this.data(group).blockedBy ?? -1);
       if (!blocker || blocker.kind !== 'defense' || !blocker.blocking) continue;
-      blocker.condition -= this.defenseType(blocker).wearPerMemberSecond * group.count * TICK_SECONDS;
-      if (blocker.condition <= 0) {
-        blocker.condition = 0;
-        blocker.blocking = false;
-        blocker.targetGroupId = null;
-        this.events.push({ tick: this.tickCount, type: 'defenseDisrupted', defenseId: blocker.id });
-      }
+      const type = this.defenseType(blocker);
+      let wear = type.wearPerMemberSecond * group.count;
+      if (type.dismantlable) wear += this.dismantleRate(group);
+      this.wearDefense(blocker, wear * (1 - this.defenseProtection(blocker)) * TICK_SECONDS, group.id, true);
     }
   }
 
+  /** Focus Defense: a group with a dismantle rate stops next to its target and takes it apart. */
+  private workOnDefenses(): void {
+    for (const group of this.groups()) {
+      if (group.focusDefenseId === null) continue;
+      const target = this.entities.get(group.focusDefenseId);
+      if (!target || target.kind !== 'defense' || group.state === 'retreating') {
+        this.setFocus(group, null);
+        continue;
+      }
+      if (group.state === 'atObjective' || group.state === 'waiting') continue;
+      if (distance(group, target) > DISMANTLE_REACH) continue;
+      if (group.state === 'moving' || group.state === 'holding') group.state = 'dismantling';
+      if (group.state !== 'dismantling') continue;
+      const wear = this.dismantleRate(group) * (1 - this.defenseProtection(target)) * TICK_SECONDS;
+      this.wearDefense(target, wear, group.id);
+      if (!this.entities.get(target.id) || target.condition <= 0) this.setFocus(group, null);
+    }
+  }
+
+  /** Maintenance assets restore the condition of worn assets in their reach (a disrupted one needs a paid repair). */
+  private maintain(): void {
+    for (const crew of this.activeDefenses()) {
+      const rate = this.defenseType(crew).repairPerSecond;
+      if (rate <= 0) continue;
+      for (const defense of this.defenses())
+        if (defense.condition > 0 && defense.condition < 100 && distance(defense, crew) <= this.reach(crew))
+          defense.condition = Math.min(100, defense.condition + rate * TICK_SECONDS);
+    }
+  }
+
+  private dismantleRate(group: GroupEntity): number {
+    const unit = this.data(group).unit;
+    return (
+      unit.dismantle *
+      group.count *
+      (1 + this.passive('attacker', 'boost', 'dismantle', group) + this.groupBoost(group, 'dismantle'))
+    );
+  }
+
   /**
-   * Hold progress grows while a group is in the zone, at half speed while a Defender patrol contests it; with nobody
-   * in the zone it pauses (it never resets).
+   * Takes condition off a defense. At 0 a dismantlable asset is removed; any other is disrupted until repaired
+   * (a roadblock opens the way).
+   */
+  private wearDefense(
+    defense: DefenseEntity,
+    amount: number,
+    byGroupId: number | null,
+    roadblock = false,
+  ): void {
+    if (amount <= 0 || defense.condition <= 0) return;
+    defense.condition -= amount;
+    if (defense.condition > 0) return;
+    defense.condition = 0;
+    if (this.defenseType(defense).dismantlable) {
+      this.removeDefense(defense);
+      this.stats.attacker.defensesDismantled++;
+      this.events.push({ tick: this.tickCount, type: 'defenseDismantled', defenseId: defense.id, byGroupId });
+      return;
+    }
+    defense.blocking = false;
+    defense.targetGroupId = null;
+    if (!roadblock) this.stats.attacker.defensesDisrupted++;
+    this.events.push({ tick: this.tickCount, type: 'defenseDisrupted', defenseId: defense.id, by: 'worn' });
+  }
+
+  /**
+   * Hold progress grows while a group is in the zone (faster for units built for it, and with hold boosts), at half
+   * speed while a Defender patrol contests it; with nobody in the zone it pauses (it never resets).
    */
   private updateObjective(): void {
     const { objective } = this.setup.level;
     const centre = this.graph.node(objective.nodeId);
-    const holders = this.groups().some((g) => g.state === 'atObjective');
+    let rate = 0;
+    for (const group of this.groups()) {
+      if (group.state !== 'atObjective') continue;
+      const unit = this.data(group).unit;
+      const boost = this.groupBoost(group, 'holdRate') + this.passive('attacker', 'boost', 'holdRate', group);
+      rate = Math.max(rate, unit.objectiveRate * (1 + boost));
+    }
     this.contested = this.activeDefenses().some((d) => d.mobile && distance(d, centre) <= objective.radius);
-    if (holders) this.heldTicks += this.contested ? CONTESTED_HOLD_RATE : 1;
+    if (rate > 0) this.heldTicks += rate * (this.contested ? CONTESTED_HOLD_RATE : 1);
     this.stats.attacker.bestObjectiveProgress = Math.max(
       this.stats.attacker.bestObjectiveProgress,
       Math.min(1, this.heldTicks / this.holdTicksRequired),
@@ -1242,6 +1820,35 @@ export class Match {
     this.events.push({ tick: this.tickCount, type: 'matchEnded', result });
   }
 
+  /** Writes the statuses that are active this tick onto the entities, for snapshots. */
+  private refreshStatuses(): void {
+    const tick = this.tickCount;
+    for (const group of this.groups()) {
+      const statuses: GroupStatus[] = [];
+      const onField = ON_FIELD.has(group.state);
+      group.slowed = onField && this.slowOf(group) > 0;
+      group.boosted = this.status.anyActive(group.id, 'boost:', tick);
+      if (group.slowed) statuses.push('slowed');
+      if (group.boosted) statuses.push('boosted');
+      if (this.status.active(group.id, 'concealed', tick)) statuses.push('concealed');
+      if (this.status.active(group.id, 'revealed', tick)) statuses.push('revealed');
+      if (this.status.active(group.id, 'pinned', tick)) statuses.push('pinned');
+      if (this.status.active(group.id, 'protected', tick)) statuses.push('protected');
+      group.statuses = statuses;
+    }
+    for (const defense of this.defenses()) {
+      const statuses: DefenseStatus[] = [];
+      defense.disrupted = !this.isActive(defense);
+      defense.boosted = this.status.anyActive(defense.id, 'boost:', tick);
+      if (defense.disrupted) statuses.push('disrupted');
+      if (defense.boosted) statuses.push('boosted');
+      if (this.status.active(defense.id, 'protected', tick)) statuses.push('protected');
+      if (this.status.active(defense.id, 'revealed', tick)) statuses.push('revealed');
+      if (this.status.active(defense.id, 'concealed', tick)) statuses.push('concealed');
+      defense.statuses = statuses;
+    }
+  }
+
   // ---------------------------------------------------------------------------------------------------------------
   // Views
 
@@ -1249,7 +1856,7 @@ export class Match {
     const out: MatchEntity[] = [];
     for (const entity of this.entities.all()) {
       if (entity.kind === 'group') {
-        if (viewer !== 'defender') out.push({ ...entity });
+        if (viewer !== 'defender') out.push({ ...entity, statuses: [...entity.statuses] });
         else if (entity.state !== 'waiting' && entity.detection !== 'unknown') {
           const identified = entity.detection === 'identified';
           out.push({
@@ -1259,10 +1866,13 @@ export class Match {
             holdAtJunction: false,
             pendingRouteId: null,
             pressure: 0,
+            boosted: false,
+            // The Defender sees what its own effects do, not the Attacker's.
+            statuses: entity.statuses.filter((s) => s === 'slowed' || s === 'revealed' || s === 'pinned'),
           });
         }
       } else if (viewer !== 'attacker') {
-        out.push({ ...entity });
+        out.push({ ...entity, statuses: [...entity.statuses] });
       } else if (this.visibleToAttacker.has(entity.id)) {
         out.push(this.attackerCopy(entity, false));
       }
@@ -1271,6 +1881,17 @@ export class Match {
       for (const [id, memory] of this.seenDefenses)
         if (!this.visibleToAttacker.has(id)) out.push(this.attackerCopy(memory, true));
       out.sort((a, b) => a.id - b.id);
+    }
+    return out;
+  }
+
+  private viewClosures(viewer: Side | null): Closure[] {
+    const out: Closure[] = [];
+    const lookers = viewer === 'attacker' ? this.fieldGroups() : [];
+    for (const [nodeId, until] of this.closures) {
+      const node = this.graph.node(nodeId);
+      if (viewer === 'attacker' && !lookers.some((g) => distance(g, node) <= this.sightRange(g))) continue;
+      out.push({ nodeId, x: node.x, z: node.z, remainingTicks: until - this.tickCount });
     }
     return out;
   }
@@ -1285,7 +1906,15 @@ export class Match {
   }
 
   private attackerCopy(defense: DefenseEntity, remembered: boolean): DefenseEntity {
-    return { ...defense, priority: 'first', focusGroupId: null, order: null, spent: 0, remembered };
+    return {
+      ...defense,
+      priority: 'first',
+      focusGroupId: null,
+      order: null,
+      spent: 0,
+      remembered,
+      statuses: defense.statuses.filter((s) => s === 'disrupted' || s === 'revealed'),
+    };
   }
 
   // ---------------------------------------------------------------------------------------------------------------
@@ -1294,7 +1923,15 @@ export class Match {
   private removeGroup(group: GroupEntity): void {
     this.entities.remove(group.id);
     this.groupData.delete(group.id);
+    this.status.clear(group.id);
     for (const defense of this.defenses()) if (defense.focusGroupId === group.id) defense.focusGroupId = null;
+  }
+
+  private removeDefense(defense: DefenseEntity): void {
+    this.entities.remove(defense.id);
+    this.patrolData.delete(defense.id);
+    this.status.clear(defense.id);
+    this.sabotaged.delete(defense.id);
   }
 
   private activeWaveCount(): number {
@@ -1303,17 +1940,24 @@ export class Match {
     return count;
   }
 
-  /** Nodes closed by roadblocks right now, plus `extra` (to test a placement or repair against the rule). */
+  /**
+   * Nodes the rule counts as closed: roadblocks (also while sabotaged, since they come back) and closed branches,
+   * plus `extra` (to test a placement, repair or closure against the rule).
+   */
   private closedNodes(extra?: string): Set<string> {
-    const closed = new Set(this.blockers().keys());
+    const closed = new Set<string>(this.closures.keys());
+    for (const defense of this.defenses()) if (defense.blocking) closed.add(defense.nodeId);
     if (extra) closed.add(extra);
     return closed;
   }
 
-  private blockers(): Map<string, DefenseEntity> {
-    const map = new Map<string, DefenseEntity>();
+  /** Nodes groups cannot pass right now, with the roadblock there (null for a closed branch). */
+  private blockers(): Map<string, DefenseEntity | null> {
+    const map = new Map<string, DefenseEntity | null>();
     for (const defense of this.defenses())
-      if (defense.blocking && !map.has(defense.nodeId)) map.set(defense.nodeId, defense);
+      if (defense.blocking && this.isActive(defense) && !map.has(defense.nodeId))
+        map.set(defense.nodeId, defense);
+    for (const nodeId of this.closures.keys()) if (!map.has(nodeId)) map.set(nodeId, null);
     return map;
   }
 
@@ -1337,15 +1981,40 @@ export class Match {
   }
 
   private detectionRange(defense: DefenseEntity): number {
-    return this.defenseType(defense).detectionRange * (1 + UPGRADE_RANGE_BONUS * (defense.level - 1));
+    return (
+      this.defenseType(defense).detectionRange *
+      (1 + UPGRADE_RANGE_BONUS * (defense.level - 1)) *
+      (1 + this.status.magnitude(defense.id, 'boost:detectionRange', this.tickCount))
+    );
   }
 
-  /** Sum of a side's passive boosts to `stat`; `knownRoute` passives count only when the condition holds. */
-  private passive(side: Side, stat: 'speed' | 'detectionRange', knownRoute: boolean): number {
+  /** Share of wear and sabotage a defense shrugs off: protection effects and the profile's passive. */
+  private defenseProtection(defense: DefenseEntity): number {
+    return Math.min(
+      0.9,
+      this.status.magnitude(defense.id, 'protected', this.tickCount) + this.passive('defender', 'protect'),
+    );
+  }
+
+  /** Strongest running boost of a stat on a group (the plain boost counts as speed). */
+  private groupBoost(group: GroupEntity, stat: BoostStat): number {
+    const own = this.status.magnitude(group.id, `boost:${stat}`, this.tickCount);
+    return stat === 'speed'
+      ? Math.max(own, this.status.magnitude(group.id, 'boost:plain', this.tickCount))
+      : own;
+  }
+
+  /**
+   * Sum of a side's passive effects of a type (and for boosts, of a stat). Conditions are checked against `group`;
+   * without one, conditional passives do not count.
+   */
+  private passive(side: Side, type: EffectType, stat?: BoostStat, group?: GroupEntity): number {
     let total = 0;
     for (const effect of this.setup[side].passive) {
-      if (effect.type !== 'boost' || effect.stat !== stat) continue;
-      if (effect.condition === 'knownRoute' && !knownRoute) continue;
+      if (effect.type !== type) continue;
+      if (type === 'boost' && (effect.stat ?? 'speed') !== stat) continue;
+      if (effect.condition === 'knownRoute' && !(group && this.data(group).knownRoute)) continue;
+      if (effect.condition === 'atObjective' && group?.state !== 'atObjective') continue;
       total += effect.magnitude ?? 0;
     }
     return total;
@@ -1381,8 +2050,13 @@ export class Match {
     return this.entities.filter((entity): entity is DefenseEntity => entity.kind === 'defense');
   }
 
+  /** Working: not worn down to 0 and not sabotaged. */
+  private isActive(defense: DefenseEntity): boolean {
+    return defense.condition > 0 && !this.status.active(defense.id, 'disrupted', this.tickCount);
+  }
+
   /** Defenses that are not disrupted. */
   private activeDefenses(): DefenseEntity[] {
-    return this.defenses().filter((defense) => defense.condition > 0);
+    return this.defenses().filter((defense) => this.isActive(defense));
   }
 }

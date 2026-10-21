@@ -1,0 +1,35 @@
+{
+  "id": "hunter",
+  "side": "attacker",
+  "name": "profile.hunter.name",
+  "description": "profile.hunter.description",
+  "portrait": "PORTRAIT-HUNTER",
+  "resource": {
+    "id": "field-supplies",
+    "name": "resource.field-supplies"
+  },
+  "points": {
+    "id": "tactical-charges",
+    "name": "points.tactical-charges"
+  },
+  "passive": {
+    "name": "profile.hunter.passive.name",
+    "description": "profile.hunter.passive.description",
+    "effects": [
+      {
+        "type": "boost",
+        "stat": "sightRange",
+        "magnitude": 0.2
+      },
+      {
+        "type": "boost",
+        "stat": "dismantle",
+        "magnitude": 0.25
+      }
+    ]
+  },
+  "units": ["tracker", "hunter-team", "breach-specialist", "offroad-vehicle"],
+  "defenses": [],
+  "abilities": ["sabotage", "breach", "coordinated-assault"],
+  "commands": ["hold", "advance", "retreat", "reroute", "focus-defense", "rush"]
+}

@@ -20,6 +20,16 @@
       "speed": 5,
       "cost": 14,
       "resilience": 1.5
+    },
+    {
+      "id": "shade",
+      "name": "unit.shade",
+      "speed": 3,
+      "cost": 16,
+      "resilience": 2,
+      "visibility": "stealth",
+      "dismantle": 3,
+      "objectiveRate": 1.5
     }
   ],
   "defenses": [
@@ -41,6 +51,27 @@
       "range": 8,
       "pressurePerSecond": 1.5,
       "detectionRange": 12
+    },
+    {
+      "id": "trip-wire",
+      "name": "defense.trip-wire",
+      "cost": 15,
+      "placement": "routeNode",
+      "range": 3,
+      "detectionRange": 7,
+      "pressurePerSecond": 0.5,
+      "seesHidden": true,
+      "dismantlable": true,
+      "maxLevel": 1
+    },
+    {
+      "id": "mender",
+      "name": "defense.mender",
+      "cost": 30,
+      "range": 8,
+      "detectionRange": 6,
+      "pressurePerSecond": 0,
+      "repairPerSecond": 5
     }
   ],
   "abilities": [
@@ -116,20 +147,69 @@
       ],
       "cost": 0,
       "cooldownSeconds": 60
-    }
-  ],
-  "commands": [
+    },
     {
-      "id": "regroup",
-      "name": "command.regroup.name",
-      "description": "command.regroup.description",
+      "id": "cut-line",
+      "name": "ability.cut-line.name",
+      "description": "ability.cut-line.description",
+      "target": "area",
+      "effects": [
+        {
+          "type": "disrupt"
+        }
+      ],
+      "range": 6,
+      "durationSeconds": 6,
+      "cost": 15,
+      "cooldownSeconds": 30
+    },
+    {
+      "id": "call-runner",
+      "name": "ability.call-runner.name",
+      "description": "ability.call-runner.description",
+      "target": "route",
+      "effects": [
+        {
+          "type": "spawn",
+          "spawn": "runner",
+          "magnitude": 2
+        }
+      ],
+      "cost": 20,
+      "cooldownSeconds": 45
+    },
+    {
+      "id": "pin-down",
+      "name": "ability.pin-down.name",
+      "description": "ability.pin-down.description",
       "target": "unit",
       "effects": [
         {
-          "type": "move"
+          "type": "disrupt"
         }
-      ]
+      ],
+      "range": 8,
+      "durationSeconds": 3,
+      "cost": 15,
+      "cooldownSeconds": 30
     },
+    {
+      "id": "drop-wire",
+      "name": "ability.drop-wire.name",
+      "description": "ability.drop-wire.description",
+      "target": "junction",
+      "effects": [
+        {
+          "type": "spawn",
+          "spawn": "trip-wire"
+        }
+      ],
+      "durationSeconds": 20,
+      "cost": 10,
+      "cooldownSeconds": 30
+    }
+  ],
+  "commands": [
     {
       "id": "hold-line",
       "name": "command.hold-line.name",
@@ -143,6 +223,58 @@
       ],
       "range": 4,
       "durationSeconds": 5
+    },
+    {
+      "id": "wait",
+      "name": "command.wait.name",
+      "description": "command.wait.description",
+      "target": "unit",
+      "order": "hold"
+    },
+    {
+      "id": "sprint",
+      "name": "command.sprint.name",
+      "description": "command.sprint.description",
+      "target": "unit",
+      "effects": [
+        {
+          "type": "boost",
+          "stat": "speed",
+          "magnitude": 0.3
+        }
+      ],
+      "durationSeconds": 4,
+      "cost": 5,
+      "cooldownSeconds": 20
+    },
+    {
+      "id": "pry-open",
+      "name": "command.pry-open.name",
+      "description": "command.pry-open.description",
+      "target": "unit",
+      "order": "dismantle"
+    },
+    {
+      "id": "patch-up",
+      "name": "command.patch-up.name",
+      "description": "command.patch-up.description",
+      "target": "unit",
+      "order": "repair"
+    },
+    {
+      "id": "brace",
+      "name": "command.brace.name",
+      "description": "command.brace.description",
+      "target": "unit",
+      "effects": [
+        {
+          "type": "protect",
+          "magnitude": 0.5
+        }
+      ],
+      "durationSeconds": 6,
+      "cost": 5,
+      "cooldownSeconds": 25
     }
   ]
 }

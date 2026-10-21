@@ -1,0 +1,29 @@
+{
+  "id": "photographer",
+  "side": "attacker",
+  "name": "profile.photographer.name",
+  "description": "profile.photographer.description",
+  "portrait": "PORTRAIT-PHOTOGRAPHER",
+  "resource": {
+    "id": "field-kit",
+    "name": "resource.field-kit"
+  },
+  "points": {
+    "id": "focus-points",
+    "name": "points.focus-points"
+  },
+  "passive": {
+    "name": "profile.photographer.passive.name",
+    "description": "profile.photographer.passive.description",
+    "effects": [
+      {
+        "type": "conceal",
+        "magnitude": 0.15
+      }
+    ]
+  },
+  "units": ["observer", "camera-team", "spotter", "utility-vehicle"],
+  "defenses": [],
+  "abilities": ["concealed-approach", "perfect-position", "snapshot-window"],
+  "commands": ["hold", "advance", "retreat", "reroute", "stay-low", "formation"]
+}

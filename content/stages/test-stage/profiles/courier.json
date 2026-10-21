@@ -12,8 +12,8 @@
     "description": "profile.courier.passive.description",
     "effects": []
   },
-  "units": ["runner", "hauler"],
+  "units": ["runner", "hauler", "shade"],
   "defenses": [],
-  "abilities": ["tailwind", "supply-drop"],
-  "commands": ["regroup"]
+  "abilities": ["tailwind", "supply-drop", "call-runner"],
+  "commands": ["wait", "sprint", "pry-open"]
 }

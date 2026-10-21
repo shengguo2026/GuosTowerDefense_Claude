@@ -19,6 +19,7 @@ function snapshot(patch: Partial<MatchSnapshot> = {}): MatchSnapshot {
     activeWaves: 0,
     cooldowns: {},
     areaEffects: [],
+    closures: [],
     entities: [],
     stats: {
       attacker: {
@@ -29,6 +30,8 @@ function snapshot(patch: Partial<MatchSnapshot> = {}): MatchSnapshot {
         membersRetreated: 0,
         checkpointsPassed: 0,
         capacityUsed: 0,
+        defensesDisrupted: 0,
+        defensesDismantled: 0,
         bestObjectiveProgress: 0,
       },
       defender: {
@@ -38,6 +41,7 @@ function snapshot(patch: Partial<MatchSnapshot> = {}): MatchSnapshot {
         patrolsDeployed: 0,
         upgrades: 0,
         groupsIdentified: 0,
+        abilitiesUsed: 0,
       },
     },
     ...patch,
@@ -58,6 +62,9 @@ const post = {
   targetGroupId: null,
   order: null,
   boosted: false,
+  disrupted: false,
+  statuses: [],
+  expiresAtTick: null,
   spent: 30,
   x: 0,
   z: 0,

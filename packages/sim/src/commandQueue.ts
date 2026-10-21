@@ -111,6 +111,28 @@ export interface FocusTargetCommand extends CommandBase {
   groupId: number | null;
 }
 
+/**
+ * Focus Defense: the group stops near a defense it can see and takes it apart (units with a dismantle rate only).
+ * Without `defenseId` it picks the nearest one in sight; `null` stops working.
+ */
+export interface FocusDefenseCommand extends CommandBase {
+  type: 'focusDefense';
+  side: 'attacker';
+  groupId: number;
+  defenseId?: number | null;
+}
+
+/**
+ * Use one of the profile's command slots that is made of effects (order slots send their own command). It is aimed
+ * from the selected group (Attacker) or asset (Defender).
+ */
+export interface UseCommandCommand extends CommandBase {
+  type: 'useCommand';
+  commandId: string;
+  groupId?: number;
+  defenseId?: number;
+}
+
 /** Use one of the side's abilities. Which fields are needed depends on the ability's target type. */
 export interface UseAbilityCommand extends CommandBase {
   type: 'useAbility';
@@ -119,6 +141,8 @@ export interface UseAbilityCommand extends CommandBase {
   z?: number;
   groupId?: number;
   routeId?: string;
+  /** For junction abilities: the node (otherwise the route node nearest to `x`/`z`). */
+  nodeId?: string;
 }
 
 export type Command =
@@ -135,18 +159,21 @@ export type Command =
   | OrderDefenseCommand
   | SetPriorityCommand
   | FocusTargetCommand
+  | FocusDefenseCommand
+  | UseCommandCommand
   | UseAbilityCommand;
 
 export type CommandType = Command['type'];
 
-/** Which side may send each command (`useAbility` is checked against the ability's owner). */
-export const COMMAND_SIDES: Record<Exclude<CommandType, 'useAbility'>, Side> = {
+/** Which side may send each command (abilities and command slots are checked against their owner). */
+export const COMMAND_SIDES: Record<Exclude<CommandType, 'useAbility' | 'useCommand'>, Side> = {
   launchWave: 'attacker',
   holdGroup: 'attacker',
   advanceGroup: 'attacker',
   rerouteGroup: 'attacker',
   retreatGroup: 'attacker',
   setFormation: 'attacker',
+  focusDefense: 'attacker',
   placeDefense: 'defender',
   upgradeDefense: 'defender',
   repairDefense: 'defender',

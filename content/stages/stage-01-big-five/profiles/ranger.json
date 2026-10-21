@@ -8,6 +8,10 @@
     "id": "ranger-supplies",
     "name": "resource.ranger-supplies"
   },
+  "points": {
+    "id": "response-points",
+    "name": "points.response-points"
+  },
   "passive": {
     "name": "profile.ranger.passive.name",
     "description": "profile.ranger.passive.description",
@@ -20,7 +24,16 @@
     ]
   },
   "units": [],
-  "defenses": ["observation-post", "temporary-checkpoint", "ranger-patrol"],
-  "abilities": ["rapid-response", "intercept"],
-  "commands": []
+  "defenses": [
+    "observation-post",
+    "temporary-checkpoint",
+    "ranger-patrol",
+    "tracker-team",
+    "response-vehicle",
+    "senior-ranger",
+    "light-barrier",
+    "patrol-beacon"
+  ],
+  "abilities": ["rapid-response", "intercept", "emergency-reinforcement"],
+  "commands": ["upgrade", "repair", "sell", "priority", "focus", "guard"]
 }

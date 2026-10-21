@@ -18,6 +18,7 @@ function snap(tick: number, x: number): MatchSnapshot {
     activeWaves: 1,
     cooldowns: {},
     areaEffects: [],
+    closures: [],
     entities: [
       {
         id: 1,
@@ -36,6 +37,8 @@ function snap(tick: number, x: number): MatchSnapshot {
         detection: 'unknown',
         slowed: false,
         boosted: false,
+        statuses: [],
+        focusDefenseId: null,
         x,
         z: 0,
       },
@@ -49,6 +52,8 @@ function snap(tick: number, x: number): MatchSnapshot {
         membersRetreated: 0,
         checkpointsPassed: 0,
         capacityUsed: 0,
+        defensesDisrupted: 0,
+        defensesDismantled: 0,
         bestObjectiveProgress: 0,
       },
       defender: {
@@ -58,6 +63,7 @@ function snap(tick: number, x: number): MatchSnapshot {
         patrolsDeployed: 0,
         upgrades: 0,
         groupsIdentified: 0,
+        abilitiesUsed: 0,
       },
     },
   };

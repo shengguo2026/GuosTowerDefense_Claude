@@ -9,7 +9,9 @@
       "capacity": 1,
       "resilience": 2,
       "visibility": "normal",
-      "sightRange": 16
+      "sightRange": 16,
+      "description": "unit.scout.description",
+      "model": "scout"
     },
     {
       "id": "expedition-team",
@@ -20,7 +22,144 @@
       "capacity": 2,
       "resilience": 4,
       "visibility": "normal",
-      "sightRange": 10
+      "sightRange": 10,
+      "description": "unit.expedition-team.description",
+      "model": "explorer"
+    },
+    {
+      "id": "guide",
+      "name": "unit.guide",
+      "description": "unit.guide.description",
+      "icon": "ICON-UNIT-GUIDE",
+      "model": "guide",
+      "speed": 3.8,
+      "cost": 16,
+      "capacity": 1,
+      "resilience": 2.2,
+      "visibility": "concealed",
+      "sightRange": 18
+    },
+    {
+      "id": "expedition-vehicle",
+      "name": "unit.expedition-vehicle",
+      "description": "unit.expedition-vehicle.description",
+      "icon": "ICON-UNIT-EXPEDITION-VEHICLE",
+      "model": "vehicle",
+      "speed": 5,
+      "cost": 48,
+      "capacity": 3,
+      "resilience": 6,
+      "visibility": "normal",
+      "sightRange": 12
+    },
+    {
+      "id": "tracker",
+      "name": "unit.tracker",
+      "description": "unit.tracker.description",
+      "icon": "ICON-UNIT-TRACKER",
+      "model": "tracker",
+      "speed": 4.2,
+      "cost": 12,
+      "capacity": 1,
+      "resilience": 2.5,
+      "visibility": "normal",
+      "sightRange": 18
+    },
+    {
+      "id": "hunter-team",
+      "name": "unit.hunter-team",
+      "description": "unit.hunter-team.description",
+      "icon": "ICON-UNIT-HUNTER-TEAM",
+      "model": "hunter",
+      "speed": 3,
+      "cost": 22,
+      "capacity": 2,
+      "resilience": 5,
+      "visibility": "normal",
+      "sightRange": 10,
+      "dismantle": 2
+    },
+    {
+      "id": "breach-specialist",
+      "name": "unit.breach-specialist",
+      "description": "unit.breach-specialist.description",
+      "icon": "ICON-UNIT-BREACH-SPECIALIST",
+      "model": "hunter",
+      "speed": 2.6,
+      "cost": 26,
+      "capacity": 2,
+      "resilience": 5,
+      "visibility": "normal",
+      "sightRange": 9,
+      "dismantle": 6
+    },
+    {
+      "id": "offroad-vehicle",
+      "name": "unit.offroad-vehicle",
+      "description": "unit.offroad-vehicle.description",
+      "icon": "ICON-UNIT-OFFROAD-VEHICLE",
+      "model": "vehicle",
+      "speed": 5.2,
+      "cost": 48,
+      "capacity": 3,
+      "resilience": 10,
+      "visibility": "normal",
+      "sightRange": 12,
+      "dismantle": 3
+    },
+    {
+      "id": "observer",
+      "name": "unit.observer",
+      "description": "unit.observer.description",
+      "icon": "ICON-UNIT-OBSERVER",
+      "model": "photographer",
+      "speed": 3.6,
+      "cost": 14,
+      "capacity": 1,
+      "resilience": 1.8,
+      "visibility": "stealth",
+      "sightRange": 12,
+      "objectiveRate": 1.2
+    },
+    {
+      "id": "camera-team",
+      "name": "unit.camera-team",
+      "description": "unit.camera-team.description",
+      "icon": "ICON-UNIT-CAMERA-TEAM",
+      "model": "camera",
+      "speed": 2.8,
+      "cost": 22,
+      "capacity": 2,
+      "resilience": 4,
+      "visibility": "concealed",
+      "sightRange": 10,
+      "objectiveRate": 1.6
+    },
+    {
+      "id": "spotter",
+      "name": "unit.spotter",
+      "description": "unit.spotter.description",
+      "icon": "ICON-UNIT-SPOTTER",
+      "model": "photographer",
+      "speed": 4,
+      "cost": 14,
+      "capacity": 1,
+      "resilience": 2.2,
+      "visibility": "concealed",
+      "sightRange": 20
+    },
+    {
+      "id": "utility-vehicle",
+      "name": "unit.utility-vehicle",
+      "description": "unit.utility-vehicle.description",
+      "icon": "ICON-UNIT-UTILITY-VEHICLE",
+      "model": "vehicle",
+      "speed": 5.2,
+      "cost": 40,
+      "capacity": 3,
+      "resilience": 8,
+      "visibility": "normal",
+      "sightRange": 12
     }
   ],
   "defenses": [
@@ -32,7 +171,11 @@
       "placement": "buildZone",
       "range": 10,
       "detectionRange": 18,
-      "pressurePerSecond": 0.8
+      "pressurePerSecond": 0.8,
+      "description": "defense.observation-post.description",
+      "model": "observationPost",
+      "disruptible": true,
+      "dismantlable": false
     },
     {
       "id": "temporary-checkpoint",
@@ -45,7 +188,11 @@
       "pressurePerSecond": 2.5,
       "slow": 0.4,
       "blocksNode": true,
-      "wearPerMemberSecond": 2.5
+      "wearPerMemberSecond": 2.5,
+      "description": "defense.temporary-checkpoint.description",
+      "model": "checkpoint",
+      "disruptible": true,
+      "dismantlable": false
     },
     {
       "id": "ranger-patrol",
@@ -59,7 +206,325 @@
       "pressurePerSecond": 1,
       "speed": 5.5,
       "maxCount": 2,
+      "maxLevel": 1,
+      "description": "defense.ranger-patrol.description",
+      "model": "patrol",
+      "disruptible": true,
+      "dismantlable": false
+    },
+    {
+      "id": "tracker-team",
+      "name": "defense.tracker-team",
+      "description": "defense.tracker-team.description",
+      "icon": "ICON-UNIT-TRACKER-TEAM",
+      "model": "patrol",
+      "cost": 50,
+      "mobile": true,
+      "placement": "routeNode",
+      "range": 5,
+      "detectionRange": 14,
+      "pressurePerSecond": 0.27,
+      "speed": 6,
+      "maxCount": 1,
+      "maxLevel": 1,
+      "seesHidden": true
+    },
+    {
+      "id": "response-vehicle",
+      "name": "defense.response-vehicle",
+      "description": "defense.response-vehicle.description",
+      "icon": "ICON-UNIT-RESPONSE-VEHICLE",
+      "model": "vehicle",
+      "cost": 75,
+      "mobile": true,
+      "placement": "routeNode",
+      "range": 5,
+      "detectionRange": 10,
+      "pressurePerSecond": 0.38,
+      "speed": 9,
+      "maxCount": 1,
       "maxLevel": 1
+    },
+    {
+      "id": "senior-ranger",
+      "name": "defense.senior-ranger",
+      "description": "defense.senior-ranger.description",
+      "icon": "ICON-UNIT-SENIOR-RANGER",
+      "model": "patrol",
+      "cost": 120,
+      "mobile": true,
+      "placement": "routeNode",
+      "range": 6,
+      "detectionRange": 12,
+      "pressurePerSecond": 0.88,
+      "speed": 5,
+      "maxCount": 1,
+      "maxLevel": 1
+    },
+    {
+      "id": "light-barrier",
+      "name": "defense.light-barrier",
+      "description": "defense.light-barrier.description",
+      "icon": "ICON-DEF-LIGHT-BARRIER",
+      "model": "lightBarrier",
+      "cost": 30,
+      "placement": "routeNode",
+      "range": 4,
+      "detectionRange": 6,
+      "pressurePerSecond": 0.5,
+      "slow": 0.3,
+      "blocksNode": true,
+      "wearPerMemberSecond": 4,
+      "dismantlable": true,
+      "maxLevel": 2
+    },
+    {
+      "id": "patrol-beacon",
+      "name": "defense.patrol-beacon",
+      "description": "defense.patrol-beacon.description",
+      "icon": "ICON-DEF-PATROL-BEACON",
+      "model": "beacon",
+      "cost": 35,
+      "placement": "any",
+      "range": 4,
+      "detectionRange": 14,
+      "pressurePerSecond": 0.2,
+      "seesHidden": true,
+      "dismantlable": true,
+      "maxLevel": 2
+    },
+    {
+      "id": "protection-tower",
+      "name": "defense.protection-tower",
+      "description": "defense.protection-tower.description",
+      "icon": "ICON-DEF-PROTECTION-TOWER",
+      "model": "tower",
+      "cost": 75,
+      "placement": "buildZone",
+      "range": 11,
+      "detectionRange": 15,
+      "pressurePerSecond": 1.3,
+      "dismantlable": false
+    },
+    {
+      "id": "heavy-barrier",
+      "name": "defense.heavy-barrier",
+      "description": "defense.heavy-barrier.description",
+      "icon": "ICON-DEF-HEAVY-BARRIER",
+      "model": "heavyBarrier",
+      "cost": 70,
+      "placement": "routeNode",
+      "range": 4,
+      "detectionRange": 6,
+      "pressurePerSecond": 1,
+      "slow": 0.5,
+      "blocksNode": true,
+      "wearPerMemberSecond": 1.5,
+      "maxLevel": 3
+    },
+    {
+      "id": "conservation-post",
+      "name": "defense.conservation-post",
+      "description": "defense.conservation-post.description",
+      "icon": "ICON-DEF-CONSERVATION-POST",
+      "model": "conservationPost",
+      "cost": 55,
+      "placement": "buildZone",
+      "range": 9,
+      "detectionRange": 14,
+      "pressurePerSecond": 0.6,
+      "slow": 0.25
+    },
+    {
+      "id": "observation-platform",
+      "name": "defense.observation-platform",
+      "description": "defense.observation-platform.description",
+      "icon": "ICON-DEF-OBSERVATION-PLATFORM",
+      "model": "platform",
+      "cost": 60,
+      "placement": "buildZone",
+      "range": 8,
+      "detectionRange": 22,
+      "pressurePerSecond": 0.4,
+      "disruptible": false
+    },
+    {
+      "id": "slow-field",
+      "name": "defense.slow-field",
+      "description": "defense.slow-field.description",
+      "icon": "ICON-DEF-SLOW-FIELD",
+      "model": "slowField",
+      "cost": 35,
+      "placement": "any",
+      "range": 7,
+      "detectionRange": 5,
+      "pressurePerSecond": 0,
+      "slow": 0.45,
+      "dismantlable": true,
+      "maxLevel": 2
+    },
+    {
+      "id": "warning-barrier",
+      "name": "defense.warning-barrier",
+      "description": "defense.warning-barrier.description",
+      "icon": "ICON-DEF-WARNING-BARRIER",
+      "model": "lightBarrier",
+      "cost": 20,
+      "placement": "routeNode",
+      "range": 3,
+      "detectionRange": 6,
+      "pressurePerSecond": 0.3,
+      "slow": 0.2,
+      "blocksNode": true,
+      "wearPerMemberSecond": 6,
+      "dismantlable": true,
+      "maxLevel": 1
+    },
+    {
+      "id": "temporary-fence",
+      "name": "defense.temporary-fence",
+      "description": "defense.temporary-fence.description",
+      "icon": "ICON-DEF-TEMPORARY-FENCE",
+      "model": "fence",
+      "cost": 25,
+      "placement": "routeNode",
+      "range": 3,
+      "detectionRange": 5,
+      "pressurePerSecond": 0.4,
+      "slow": 0.3,
+      "blocksNode": true,
+      "wearPerMemberSecond": 3,
+      "dismantlable": true,
+      "maxLevel": 1,
+      "lifetimeSeconds": 45
+    },
+    {
+      "id": "environmental-marker",
+      "name": "defense.environmental-marker",
+      "description": "defense.environmental-marker.description",
+      "icon": "ICON-DEF-ENVIRONMENT-MARKER",
+      "model": "marker",
+      "cost": 15,
+      "placement": "any",
+      "range": 6,
+      "detectionRange": 12,
+      "pressurePerSecond": 0,
+      "slow": 0.15,
+      "disruptible": false,
+      "dismantlable": true,
+      "maxLevel": 1
+    },
+    {
+      "id": "protection-team",
+      "name": "defense.protection-team",
+      "description": "defense.protection-team.description",
+      "icon": "ICON-UNIT-PROTECTION-TEAM",
+      "model": "patrol",
+      "cost": 50,
+      "mobile": true,
+      "placement": "routeNode",
+      "range": 5,
+      "detectionRange": 9,
+      "pressurePerSecond": 1.4,
+      "speed": 4.5,
+      "maxCount": 2,
+      "maxLevel": 1
+    },
+    {
+      "id": "maintenance-crew",
+      "name": "defense.maintenance-crew",
+      "description": "defense.maintenance-crew.description",
+      "icon": "ICON-UNIT-MAINTENANCE-CREW",
+      "model": "crew",
+      "cost": 40,
+      "mobile": true,
+      "placement": "routeNode",
+      "range": 6,
+      "detectionRange": 7,
+      "pressurePerSecond": 0.3,
+      "speed": 5,
+      "maxCount": 1,
+      "maxLevel": 1,
+      "repairPerSecond": 6
+    },
+    {
+      "id": "relocation-unit",
+      "name": "defense.relocation-unit",
+      "description": "defense.relocation-unit.description",
+      "icon": "ICON-UNIT-RELOCATION-UNIT",
+      "model": "vehicle",
+      "cost": 60,
+      "mobile": true,
+      "placement": "routeNode",
+      "range": 6,
+      "detectionRange": 8,
+      "pressurePerSecond": 0.6,
+      "slow": 0.3,
+      "speed": 4,
+      "maxCount": 1,
+      "maxLevel": 1
+    },
+    {
+      "id": "sensor-beacon",
+      "name": "defense.sensor-beacon",
+      "description": "defense.sensor-beacon.description",
+      "icon": "ICON-DEF-SENSOR-BEACON",
+      "model": "sensor",
+      "cost": 25,
+      "placement": "any",
+      "range": 3,
+      "detectionRange": 13,
+      "pressurePerSecond": 0,
+      "seesHidden": true,
+      "dismantlable": true,
+      "maxLevel": 2
+    },
+    {
+      "id": "observation-station",
+      "name": "defense.observation-station",
+      "description": "defense.observation-station.description",
+      "icon": "ICON-DEF-OBSERVATION-STATION",
+      "model": "station",
+      "cost": 70,
+      "placement": "buildZone",
+      "range": 9,
+      "detectionRange": 20,
+      "pressurePerSecond": 0.8,
+      "seesHidden": true
+    },
+    {
+      "id": "research-team",
+      "name": "defense.research-team",
+      "description": "defense.research-team.description",
+      "icon": "ICON-UNIT-RESEARCH-TEAM",
+      "model": "patrol",
+      "cost": 45,
+      "mobile": true,
+      "placement": "routeNode",
+      "range": 5,
+      "detectionRange": 12,
+      "pressurePerSecond": 1,
+      "slow": 0.15,
+      "speed": 5,
+      "maxCount": 2,
+      "maxLevel": 1
+    },
+    {
+      "id": "surveillance-drone",
+      "name": "defense.surveillance-drone",
+      "description": "defense.surveillance-drone.description",
+      "icon": "ICON-UNIT-DRONE",
+      "model": "drone",
+      "cost": 55,
+      "mobile": true,
+      "placement": "routeNode",
+      "range": 4,
+      "detectionRange": 16,
+      "pressurePerSecond": 0.2,
+      "speed": 9,
+      "maxCount": 1,
+      "maxLevel": 1,
+      "seesHidden": true
     }
   ],
   "abilities": [
@@ -126,7 +591,446 @@
       "durationSeconds": 4,
       "cost": 20,
       "cooldownSeconds": 35
+    },
+    {
+      "id": "field-guide",
+      "name": "ability.field-guide.name",
+      "icon": "ICON-ABILITY-FIELD-GUIDE",
+      "description": "ability.field-guide.description",
+      "target": "route",
+      "effects": [
+        {
+          "type": "reveal"
+        },
+        {
+          "type": "boost",
+          "stat": "speed",
+          "magnitude": 0.25
+        }
+      ],
+      "range": 12,
+      "durationSeconds": 10,
+      "cost": 25,
+      "cooldownSeconds": 60
+    },
+    {
+      "id": "sabotage",
+      "name": "ability.sabotage.name",
+      "icon": "ICON-ABILITY-SABOTAGE",
+      "description": "ability.sabotage.description",
+      "target": "area",
+      "effects": [
+        {
+          "type": "disrupt"
+        }
+      ],
+      "range": 7,
+      "durationSeconds": 10,
+      "cost": 25,
+      "cooldownSeconds": 50
+    },
+    {
+      "id": "breach",
+      "name": "ability.breach.name",
+      "icon": "ICON-ABILITY-BREACH",
+      "description": "ability.breach.description",
+      "target": "junction",
+      "effects": [
+        {
+          "type": "dismantle",
+          "magnitude": 60
+        },
+        {
+          "type": "disrupt"
+        }
+      ],
+      "range": 6,
+      "durationSeconds": 6,
+      "cost": 30,
+      "cooldownSeconds": 60
+    },
+    {
+      "id": "coordinated-assault",
+      "name": "ability.coordinated-assault.name",
+      "icon": "ICON-ABILITY-COORDINATED-ASSAULT",
+      "description": "ability.coordinated-assault.description",
+      "target": "self",
+      "effects": [
+        {
+          "type": "boost",
+          "stat": "speed",
+          "magnitude": 0.2
+        },
+        {
+          "type": "protect",
+          "magnitude": 0.35
+        }
+      ],
+      "durationSeconds": 10,
+      "cost": 35,
+      "cooldownSeconds": 75
+    },
+    {
+      "id": "concealed-approach",
+      "name": "ability.concealed-approach.name",
+      "icon": "ICON-ABILITY-CONCEALED-APPROACH",
+      "description": "ability.concealed-approach.description",
+      "target": "route",
+      "effects": [
+        {
+          "type": "conceal",
+          "magnitude": 0.5
+        }
+      ],
+      "durationSeconds": 12,
+      "cost": 25,
+      "cooldownSeconds": 55
+    },
+    {
+      "id": "perfect-position",
+      "name": "ability.perfect-position.name",
+      "icon": "ICON-ABILITY-PERFECT-POSITION",
+      "description": "ability.perfect-position.description",
+      "target": "self",
+      "effects": [
+        {
+          "type": "boost",
+          "stat": "holdRate",
+          "magnitude": 0.6,
+          "condition": "atObjective"
+        }
+      ],
+      "durationSeconds": 10,
+      "cost": 30,
+      "cooldownSeconds": 60
+    },
+    {
+      "id": "snapshot-window",
+      "name": "ability.snapshot-window.name",
+      "icon": "ICON-ABILITY-SNAPSHOT-WINDOW",
+      "description": "ability.snapshot-window.description",
+      "target": "self",
+      "effects": [
+        {
+          "type": "protect",
+          "magnitude": 0.6,
+          "condition": "atObjective"
+        }
+      ],
+      "durationSeconds": 6,
+      "cost": 35,
+      "cooldownSeconds": 80
+    },
+    {
+      "id": "emergency-reinforcement",
+      "name": "ability.emergency-reinforcement.name",
+      "icon": "ICON-ABILITY-EMERGENCY-REINFORCEMENT",
+      "description": "ability.emergency-reinforcement.description",
+      "target": "junction",
+      "effects": [
+        {
+          "type": "spawn",
+          "spawn": "ranger-patrol"
+        }
+      ],
+      "durationSeconds": 30,
+      "cost": 35,
+      "cooldownSeconds": 90
+    },
+    {
+      "id": "conservation-barrier",
+      "name": "ability.conservation-barrier.name",
+      "icon": "ICON-ABILITY-CONSERVATION-BARRIER",
+      "description": "ability.conservation-barrier.description",
+      "target": "junction",
+      "effects": [
+        {
+          "type": "spawn",
+          "spawn": "temporary-fence"
+        }
+      ],
+      "durationSeconds": 30,
+      "cost": 25,
+      "cooldownSeconds": 50
+    },
+    {
+      "id": "protected-zone",
+      "name": "ability.protected-zone.name",
+      "icon": "ICON-ABILITY-PROTECTED-ZONE",
+      "description": "ability.protected-zone.description",
+      "target": "area",
+      "effects": [
+        {
+          "type": "slow",
+          "magnitude": 0.35
+        },
+        {
+          "type": "protect",
+          "magnitude": 0.5
+        }
+      ],
+      "range": 10,
+      "durationSeconds": 12,
+      "cost": 30,
+      "cooldownSeconds": 60
+    },
+    {
+      "id": "habitat-lockdown",
+      "name": "ability.habitat-lockdown.name",
+      "icon": "ICON-ABILITY-HABITAT-LOCKDOWN",
+      "description": "ability.habitat-lockdown.description",
+      "target": "junction",
+      "effects": [
+        {
+          "type": "blockBranch"
+        }
+      ],
+      "durationSeconds": 12,
+      "cost": 40,
+      "cooldownSeconds": 90
+    },
+    {
+      "id": "area-scan",
+      "name": "ability.area-scan.name",
+      "icon": "ICON-ABILITY-AREA-SCAN",
+      "description": "ability.area-scan.description",
+      "target": "area",
+      "effects": [
+        {
+          "type": "reveal"
+        }
+      ],
+      "range": 16,
+      "durationSeconds": 10,
+      "cost": 15,
+      "cooldownSeconds": 30
+    },
+    {
+      "id": "route-analysis",
+      "name": "ability.route-analysis.name",
+      "icon": "ICON-ABILITY-ROUTE-ANALYSIS",
+      "description": "ability.route-analysis.description",
+      "target": "route",
+      "effects": [
+        {
+          "type": "reveal"
+        },
+        {
+          "type": "slow",
+          "magnitude": 0.25
+        }
+      ],
+      "durationSeconds": 12,
+      "cost": 30,
+      "cooldownSeconds": 60
+    },
+    {
+      "id": "deep-analysis",
+      "name": "ability.deep-analysis.name",
+      "icon": "ICON-ABILITY-DEEP-ANALYSIS",
+      "description": "ability.deep-analysis.description",
+      "target": "unit",
+      "effects": [
+        {
+          "type": "disrupt"
+        },
+        {
+          "type": "reveal"
+        }
+      ],
+      "range": 14,
+      "durationSeconds": 4,
+      "cost": 30,
+      "cooldownSeconds": 50
     }
   ],
-  "commands": []
+  "commands": [
+    {
+      "id": "hold",
+      "name": "command.hold.name",
+      "description": "command.hold.description",
+      "target": "unit",
+      "order": "hold"
+    },
+    {
+      "id": "advance",
+      "name": "command.advance.name",
+      "description": "command.advance.description",
+      "target": "unit",
+      "order": "advance"
+    },
+    {
+      "id": "retreat",
+      "name": "command.retreat.name",
+      "description": "command.retreat.description",
+      "target": "unit",
+      "order": "retreat"
+    },
+    {
+      "id": "reroute",
+      "name": "command.reroute.name",
+      "description": "command.reroute.description",
+      "target": "unit",
+      "order": "reroute"
+    },
+    {
+      "id": "formation",
+      "name": "command.formation.name",
+      "description": "command.formation.description",
+      "target": "unit",
+      "order": "formation"
+    },
+    {
+      "id": "focus-defense",
+      "name": "command.focus-defense.name",
+      "description": "command.focus-defense.description",
+      "target": "unit",
+      "order": "dismantle"
+    },
+    {
+      "id": "scout-ahead",
+      "name": "command.scout-ahead.name",
+      "description": "command.scout-ahead.description",
+      "target": "area",
+      "effects": [
+        {
+          "type": "reveal"
+        }
+      ],
+      "range": 16,
+      "durationSeconds": 6,
+      "cost": 10,
+      "cooldownSeconds": 30
+    },
+    {
+      "id": "rush",
+      "name": "command.rush.name",
+      "description": "command.rush.description",
+      "target": "unit",
+      "effects": [
+        {
+          "type": "boost",
+          "stat": "speed",
+          "magnitude": 0.5
+        }
+      ],
+      "durationSeconds": 5,
+      "cost": 8,
+      "cooldownSeconds": 20
+    },
+    {
+      "id": "stay-low",
+      "name": "command.stay-low.name",
+      "description": "command.stay-low.description",
+      "target": "unit",
+      "effects": [
+        {
+          "type": "conceal",
+          "magnitude": 0.6
+        },
+        {
+          "type": "slow",
+          "magnitude": 0.4
+        }
+      ],
+      "durationSeconds": 10,
+      "cost": 6,
+      "cooldownSeconds": 20
+    },
+    {
+      "id": "upgrade",
+      "name": "command.upgrade.name",
+      "description": "command.upgrade.description",
+      "target": "unit",
+      "order": "upgrade"
+    },
+    {
+      "id": "repair",
+      "name": "command.repair.name",
+      "description": "command.repair.description",
+      "target": "unit",
+      "order": "repair"
+    },
+    {
+      "id": "sell",
+      "name": "command.sell.name",
+      "description": "command.sell.description",
+      "target": "unit",
+      "order": "sell"
+    },
+    {
+      "id": "priority",
+      "name": "command.priority.name",
+      "description": "command.priority.description",
+      "target": "unit",
+      "order": "priority"
+    },
+    {
+      "id": "focus",
+      "name": "command.focus.name",
+      "description": "command.focus.description",
+      "target": "unit",
+      "order": "focus"
+    },
+    {
+      "id": "guard",
+      "name": "command.guard.name",
+      "description": "command.guard.description",
+      "target": "unit",
+      "order": "guard"
+    },
+    {
+      "id": "patrol",
+      "name": "command.patrol.name",
+      "description": "command.patrol.description",
+      "target": "unit",
+      "order": "patrol"
+    },
+    {
+      "id": "respond",
+      "name": "command.respond.name",
+      "description": "command.respond.description",
+      "target": "unit",
+      "effects": [
+        {
+          "type": "boost",
+          "stat": "speed",
+          "magnitude": 0.8
+        }
+      ],
+      "durationSeconds": 6,
+      "cost": 6,
+      "cooldownSeconds": 20
+    },
+    {
+      "id": "fortify",
+      "name": "command.fortify.name",
+      "description": "command.fortify.description",
+      "target": "unit",
+      "effects": [
+        {
+          "type": "protect",
+          "magnitude": 0.6
+        }
+      ],
+      "durationSeconds": 15,
+      "cost": 8,
+      "cooldownSeconds": 25
+    },
+    {
+      "id": "scan",
+      "name": "command.scan.name",
+      "description": "command.scan.description",
+      "target": "area",
+      "effects": [
+        {
+          "type": "reveal"
+        }
+      ],
+      "range": 14,
+      "durationSeconds": 6,
+      "cost": 8,
+      "cooldownSeconds": 25
+    }
+  ]
 }

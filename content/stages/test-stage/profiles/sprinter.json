@@ -10,10 +10,15 @@
   "passive": {
     "name": "profile.sprinter.passive.name",
     "description": "profile.sprinter.passive.description",
-    "effects": []
+    "effects": [
+      {
+        "type": "conceal",
+        "magnitude": 0.2
+      }
+    ]
   },
   "units": ["runner", "glider"],
   "defenses": [],
-  "abilities": ["smoke-trail"],
-  "commands": []
+  "abilities": ["smoke-trail", "cut-line"],
+  "commands": ["sprint"]
 }
