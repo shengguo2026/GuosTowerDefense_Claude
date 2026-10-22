@@ -3251,13 +3251,19 @@ kbd {
 }
 .lobby-footer {
   align-items: center;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--paper-solid);
+  box-shadow: var(--shadow);
 }
 .lobby-status {
-  margin: 0 auto 0 0;
-  padding: 8px 12px;
-  border-radius: 10px;
-  background: var(--paper);
+  flex: 1;
+  margin: 0;
   font-weight: 600;
+}
+.lobby-footer .action {
+  flex: none;
+  min-width: 220px;
 }
 .badge.opponent {
   background: var(--ink-soft);
@@ -3303,5 +3309,10 @@ kbd {
   }
   .lobby-profile {
     padding: 4px;
+  }
+}
+@media (max-height: 480px) {
+  .lobby-footer .action {
+    min-width: 0;
   }
 }
