@@ -26,6 +26,14 @@ export interface AttackerTuning {
   /** Abilities it may use. */
   recon: boolean;
   rapidReroute: boolean;
+  /** Uses the profile's abilities that only pay off at the objective (Perfect Position, Snapshot Window). */
+  objectiveAbilities: boolean;
+  /** Uses the profile's aimed abilities (Sabotage, Breach, Field Guide, Concealed Approach, Coordinated Assault). */
+  profileAbilities: boolean;
+  /** Uses the profile's command slots on its groups (Rush, Stay Low, Scout Ahead). */
+  commands: boolean;
+  /** Lets groups that can take assets apart stop to remove the ones in their way (Focus Defense). */
+  dismantles: boolean;
   /** Extra members on top of the estimate, for what it cannot see coming (boosts, slows, new defenses). */
   margin: number;
   /** Chance per decision to make a plainly worse choice. */
@@ -47,6 +55,15 @@ export interface DefenderTuning {
   /** Abilities it may use. */
   rapidResponse: boolean;
   intercept: boolean;
+  /**
+   * Uses the profile's other abilities (Emergency Reinforcement, Conservation Barrier, Protected Zone, Habitat
+   * Lockdown, Area Scan, Route Analysis, Deep Analysis).
+   */
+  profileAbilities: boolean;
+  /** Uses the profile's command slots on its assets (Fortify, Scan). */
+  commands: boolean;
+  /** Sends its maintenance assets to the worn assets that need them. */
+  maintains: boolean;
   mistakeChance: number;
 }
 
@@ -61,6 +78,10 @@ export const ATTACKER_TUNING: Record<Difficulty, AttackerTuning> = {
     reroutes: false,
     recon: false,
     rapidReroute: false,
+    objectiveAbilities: true,
+    profileAbilities: false,
+    commands: false,
+    dismantles: false,
     margin: 1,
     mistakeChance: 0.3,
   },
@@ -74,6 +95,10 @@ export const ATTACKER_TUNING: Record<Difficulty, AttackerTuning> = {
     reroutes: false,
     recon: true,
     rapidReroute: false,
+    objectiveAbilities: true,
+    profileAbilities: true,
+    commands: false,
+    dismantles: true,
     margin: 1.1,
     mistakeChance: 0.12,
   },
@@ -87,6 +112,10 @@ export const ATTACKER_TUNING: Record<Difficulty, AttackerTuning> = {
     reroutes: true,
     recon: true,
     rapidReroute: true,
+    objectiveAbilities: true,
+    profileAbilities: true,
+    commands: true,
+    dismantles: true,
     margin: 1.25,
     mistakeChance: 0,
   },
@@ -105,7 +134,10 @@ export const DEFENDER_TUNING: Record<Difficulty, DefenderTuning> = {
     intercepts: false,
     rapidResponse: false,
     intercept: false,
-    mistakeChance: 0.6,
+    profileAbilities: false,
+    commands: false,
+    maintains: false,
+    mistakeChance: 0.85,
   },
   medium: {
     thinkEveryTicks: 20,
@@ -117,7 +149,10 @@ export const DEFENDER_TUNING: Record<Difficulty, DefenderTuning> = {
     intercepts: false,
     rapidResponse: false,
     intercept: true,
-    mistakeChance: 0.2,
+    profileAbilities: true,
+    commands: false,
+    maintains: true,
+    mistakeChance: 0.4,
   },
   hard: {
     thinkEveryTicks: 8,
@@ -129,6 +164,9 @@ export const DEFENDER_TUNING: Record<Difficulty, DefenderTuning> = {
     intercepts: true,
     rapidResponse: true,
     intercept: true,
+    profileAbilities: true,
+    commands: true,
+    maintains: true,
     mistakeChance: 0,
   },
 };

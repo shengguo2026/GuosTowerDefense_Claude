@@ -39,7 +39,11 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run balance -- 200 stage-01-big-five lion --check
+      # All nine matchups on Lion (M8), four at a time; each fails on a crash, a refused AI command or a side above 70%.
+      - name: Balance of every matchup
+        run: |
+          for a in explorer hunter photographer; do for d in ranger wildlife-protector field-researcher; do echo "$a $d"; done; done |
+            xargs -P 4 -L 1 sh -c 'npm run -s balance -- 200 stage-01-big-five lion --attacker=$0 --defender=$1 --check > "balance-$0-$1.log" 2>&1; status=$?; cat "balance-$0-$1.log"; exit $status'
 
   browser:
     name: Browser tests (desktop, tablet, phone)

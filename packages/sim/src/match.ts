@@ -938,6 +938,8 @@ export class Match {
           if (best && best.d <= 4) nodeId = best.id;
         }
         if (!nodeId || !this.graph.routeNodes.has(nodeId)) return 'missingTarget';
+        // Junction abilities work on the way, not where groups enter the map or on the objective itself.
+        if (this.isSpawn(nodeId) || nodeId === this.setup.level.objective.nodeId) return 'invalidTarget';
         const node = this.graph.node(nodeId);
         const radius = action.range > 0 ? action.range : JUNCTION_EFFECT_REACH;
         return { selector: { kind: 'area', x: node.x, z: node.z, radius }, at: node, nodeId };

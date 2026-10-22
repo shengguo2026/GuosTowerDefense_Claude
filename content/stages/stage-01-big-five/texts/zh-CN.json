@@ -124,7 +124,7 @@
   "ability.field-guide.name": "野外指南",
   "ability.field-guide.description": "沿一条路线：揭示防御，你的队伍行进更快。",
   "ability.sabotage.name": "破坏干扰",
-  "ability.sabotage.description": "使一个区域内的设备暂时失效。需要有队伍在附近。",
+  "ability.sabotage.description": "使一个小区域内的设备暂时失效（人员小队照常工作）。需要有队伍在附近。",
   "ability.breach.name": "突破",
   "ability.breach.description": "打开路线节点上的路障：可拆的被拆除，其余短暂失效。",
   "ability.coordinated-assault.name": "协同推进",

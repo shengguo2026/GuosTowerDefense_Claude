@@ -5,6 +5,7 @@ import {
   UPGRADE_RANGE_BONUS,
   VISIBILITY_FACTORS,
   distance,
+  type BoostStat,
   type DefenseEntity,
   type Formation,
   type MatchSetup,
@@ -53,6 +54,10 @@ export class LevelModel {
   readonly routes: RouteModel[];
   readonly objective: Point & { id: string; radius: number };
   readonly detectionBonus: number;
+  /** The Attacker's passive concealment (Low Profile): every group is that much harder to detect. */
+  readonly lowProfile: number;
+  /** The Attacker's passive bonus on how fast groups take assets apart. */
+  readonly dismantleBonus: number;
   /** Exposure estimates already worked out, by route, group and the defenses they were worked out against. */
   readonly exposureCache = new Map<string, Exposure>();
 
@@ -87,6 +92,13 @@ export class LevelModel {
     const node = this.graph.node(level.objective.nodeId);
     this.objective = { id: node.id, x: node.x, z: node.z, radius: level.objective.radius };
     this.detectionBonus = 1 + passiveTotal(setup.defender.passive, 'detectionRange');
+    this.lowProfile = Math.min(
+      0.9,
+      setup.attacker.passive
+        .filter((e) => e.type === 'conceal')
+        .reduce((sum, e) => sum + (e.magnitude ?? 0), 0),
+    );
+    this.dismantleBonus = passiveTotal(setup.attacker.passive, 'dismantle');
   }
 
   route(id: string): RouteModel {
@@ -140,10 +152,11 @@ export function pressureOf(type: SimDefenseType, level: number): number {
   return type.pressurePerSecond * (1 + UPGRADE_PRESSURE_BONUS * (level - 1));
 }
 
-export function passiveTotal(passive: SimEffect[], stat: 'speed' | 'detectionRange'): number {
+export function passiveTotal(passive: SimEffect[], stat: BoostStat): number {
   let total = 0;
   for (const effect of passive)
-    if (effect.type === 'boost' && effect.stat === stat) total += effect.magnitude ?? 0;
+    if (effect.type === 'boost' && (effect.stat ?? 'speed') === stat && !effect.condition)
+      total += effect.magnitude ?? 0;
   return total;
 }
 
@@ -206,18 +219,20 @@ function computeExposure(
   from: number,
 ): Exposure {
   const { terrain } = model.setup.level;
+  // Sensors see hidden units as easily as any other; other assets only see them from closer.
+  const hidden = VISIBILITY_FACTORS[unit.visibility] * (1 - model.lowProfile);
   let pressureSeconds = 0;
   for (const sample of route.samples) {
     if (sample.along < from) continue;
     const ground = terrain[sample.terrain];
-    const visibility =
-      VISIBILITY_FACTORS[unit.visibility] * FORMATIONS[formation].detection * ground.detection;
+    const visibility = FORMATIONS[formation].detection * ground.detection;
     let detected = false;
     let pressure = 0;
     let slow = 0;
     for (const d of active) {
       const gap = distance(d, sample);
-      if (gap <= detectionOf(d.type, d.level) * model.detectionBonus * visibility) detected = true;
+      const sight = detectionOf(d.type, d.level) * model.detectionBonus * visibility;
+      if (gap <= sight * (d.type.seesHidden ? 1 : hidden)) detected = true;
       if (gap <= reachOf(d.type, d.level)) {
         pressure += pressureOf(d.type, d.level) * (d.boosted ? 1.5 : 1);
         slow = Math.max(slow, d.type.slow);
@@ -232,7 +247,9 @@ function computeExposure(
   );
   for (const blocker of blockers) {
     // Waiting in front of it: everything that reaches the waiting spot keeps pressing until it gives way.
-    const wearTime = blocker.condition / Math.max(0.01, blocker.type.wearPerMemberSecond * members);
+    const dismantle = blocker.type.dismantlable ? unit.dismantle * (1 + model.dismantleBonus) : 0;
+    const wearTime =
+      blocker.condition / Math.max(0.01, (blocker.type.wearPerMemberSecond + dismantle) * members);
     let pressure = 0;
     for (const d of active)
       if (distance(d, blocker) <= reachOf(d.type, d.level) + 2) pressure += pressureOf(d.type, d.level);

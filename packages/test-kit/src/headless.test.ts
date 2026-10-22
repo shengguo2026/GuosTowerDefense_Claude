@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { createMatchSetup } from '@gtd/content-schema';
 import { loadStageDirectory } from '@gtd/content-schema/node';
 import { describe, expect, it } from 'vitest';
-import { DIFFICULTIES } from '@gtd/ai';
+import { DIFFICULTIES, createAi } from '@gtd/ai';
 import { runBalance } from './balance';
 import { idleController, scriptedAttacker, scriptedDefender } from './controllers';
 import { runHeadlessMatch } from './runHeadlessMatch';
@@ -137,5 +137,69 @@ describe('AI against AI on Lion', { timeout: 60_000 }, () => {
     const setupFor = await lionPack();
     expect(runBalance(setupFor, 'hard', 'easy', 10).attackerWins).toBeGreaterThan(7);
     expect(runBalance(setupFor, 'easy', 'hard', 10).defenderWins).toBeGreaterThan(7);
+  });
+});
+
+// M8: the computer plays every profile. The full gate (200 matches per matchup and difficulty, no side above 70%) runs
+// as `npm run balance -- 200 stage-01-big-five lion --all --check` in CI, one job per matchup.
+describe('AI against AI in all nine matchups on Lion', { timeout: 120_000 }, () => {
+  const ATTACKERS = ['explorer', 'hunter', 'photographer'];
+  const DEFENDERS = ['ranger', 'wildlife-protector', 'field-researcher'];
+
+  async function bigFive() {
+    const result = await loadStageDirectory(
+      resolve(import.meta.dirname, '../../../content/stages/stage-01-big-five'),
+    );
+    if (!result.ok) throw new Error(result.issues.map((i) => i.message).join('\n'));
+    return result.pack;
+  }
+
+  it('plays every matchup at every difficulty to the end with only accepted commands', async () => {
+    const pack = await bigFive();
+    for (const attackerProfileId of ATTACKERS)
+      for (const defenderProfileId of DEFENDERS)
+        for (const difficulty of DIFFICULTIES) {
+          const setupFor = (seed: number) =>
+            createMatchSetup(pack, { levelId: 'lion', attackerProfileId, defenderProfileId, seed });
+          const report = runBalance(setupFor, difficulty, difficulty, 2);
+          const label = `${attackerProfileId} vs ${defenderProfileId} at ${difficulty}`;
+          expect(report.failures, label).toBe(0);
+          expect(report.rejectedCommands, label).toBe(0);
+        }
+  });
+
+  it("uses each profile's own abilities, commands and orders", async () => {
+    const pack = await bigFive();
+    const used = new Set<string>();
+    for (const attackerProfileId of ATTACKERS)
+      for (const defenderProfileId of DEFENDERS)
+        for (const seed of [1, 2, 3]) {
+          const setup = createMatchSetup(pack, {
+            levelId: 'lion',
+            attackerProfileId,
+            defenderProfileId,
+            seed,
+          });
+          const run = runHeadlessMatch(setup, {
+            attacker: createAi('attacker', 'hard', seed * 2 + 1),
+            defender: createAi('defender', 'hard', seed * 2 + 2),
+          });
+          for (const event of run.events) {
+            if (event.type === 'abilityUsed') used.add(event.abilityId);
+            if (event.type === 'commandUsed') used.add(event.commandId);
+            if (event.type === 'groupFocusDefense' && event.defenseId !== null) used.add('focus-defense');
+          }
+        }
+    // At least two tools of every profile come up in a few hard matches.
+    const tools: Record<string, string[]> = {
+      explorer: ['reconnaissance', 'field-guide', 'rapid-reroute', 'scout-ahead'],
+      hunter: ['sabotage', 'breach', 'coordinated-assault', 'focus-defense', 'rush'],
+      photographer: ['concealed-approach', 'perfect-position', 'snapshot-window', 'stay-low'],
+      ranger: ['rapid-response', 'intercept', 'emergency-reinforcement'],
+      'wildlife-protector': ['conservation-barrier', 'protected-zone', 'habitat-lockdown', 'fortify'],
+      'field-researcher': ['area-scan', 'route-analysis', 'deep-analysis', 'scan'],
+    };
+    for (const [profile, ids] of Object.entries(tools))
+      expect(ids.filter((id) => used.has(id)).length, profile).toBeGreaterThanOrEqual(2);
   });
 });

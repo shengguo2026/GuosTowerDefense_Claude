@@ -35,7 +35,7 @@
       "speed": 3.8,
       "cost": 16,
       "capacity": 1,
-      "resilience": 2.2,
+      "resilience": 2.3,
       "visibility": "concealed",
       "sightRange": 18
     },
@@ -59,9 +59,9 @@
       "icon": "ICON-UNIT-TRACKER",
       "model": "tracker",
       "speed": 4.2,
-      "cost": 12,
+      "cost": 13,
       "capacity": 1,
-      "resilience": 2.5,
+      "resilience": 1.9,
       "visibility": "normal",
       "sightRange": 18
     },
@@ -74,7 +74,7 @@
       "speed": 3,
       "cost": 22,
       "capacity": 2,
-      "resilience": 5,
+      "resilience": 4,
       "visibility": "normal",
       "sightRange": 10,
       "dismantle": 2
@@ -88,7 +88,7 @@
       "speed": 2.6,
       "cost": 26,
       "capacity": 2,
-      "resilience": 5,
+      "resilience": 4,
       "visibility": "normal",
       "sightRange": 9,
       "dismantle": 6
@@ -102,7 +102,7 @@
       "speed": 5.2,
       "cost": 48,
       "capacity": 3,
-      "resilience": 10,
+      "resilience": 6.4,
       "visibility": "normal",
       "sightRange": 12,
       "dismantle": 3
@@ -119,7 +119,7 @@
       "resilience": 1.8,
       "visibility": "stealth",
       "sightRange": 12,
-      "objectiveRate": 1.2
+      "objectiveRate": 1.1
     },
     {
       "id": "camera-team",
@@ -130,10 +130,10 @@
       "speed": 2.8,
       "cost": 22,
       "capacity": 2,
-      "resilience": 4,
+      "resilience": 3.5,
       "visibility": "concealed",
       "sightRange": 10,
-      "objectiveRate": 1.6
+      "objectiveRate": 1.15
     },
     {
       "id": "spotter",
@@ -144,7 +144,7 @@
       "speed": 4,
       "cost": 14,
       "capacity": 1,
-      "resilience": 2.2,
+      "resilience": 2,
       "visibility": "concealed",
       "sightRange": 20
     },
@@ -155,9 +155,9 @@
       "icon": "ICON-UNIT-UTILITY-VEHICLE",
       "model": "vehicle",
       "speed": 5.2,
-      "cost": 40,
+      "cost": 44,
       "capacity": 3,
-      "resilience": 8,
+      "resilience": 6,
       "visibility": "normal",
       "sightRange": 12
     }
@@ -209,7 +209,7 @@
       "maxLevel": 1,
       "description": "defense.ranger-patrol.description",
       "model": "patrol",
-      "disruptible": true,
+      "disruptible": false,
       "dismantlable": false
     },
     {
@@ -227,7 +227,8 @@
       "speed": 6,
       "maxCount": 1,
       "maxLevel": 1,
-      "seesHidden": true
+      "seesHidden": true,
+      "disruptible": false
     },
     {
       "id": "response-vehicle",
@@ -259,7 +260,8 @@
       "pressurePerSecond": 0.88,
       "speed": 5,
       "maxCount": 1,
-      "maxLevel": 1
+      "maxLevel": 1,
+      "disruptible": false
     },
     {
       "id": "light-barrier",
@@ -312,11 +314,11 @@
       "description": "defense.heavy-barrier.description",
       "icon": "ICON-DEF-HEAVY-BARRIER",
       "model": "heavyBarrier",
-      "cost": 70,
+      "cost": 60,
       "placement": "routeNode",
       "range": 4,
       "detectionRange": 6,
-      "pressurePerSecond": 1,
+      "pressurePerSecond": 1.6,
       "slow": 0.5,
       "blocksNode": true,
       "wearPerMemberSecond": 1.5,
@@ -332,7 +334,7 @@
       "placement": "buildZone",
       "range": 9,
       "detectionRange": 14,
-      "pressurePerSecond": 0.6,
+      "pressurePerSecond": 0.75,
       "slow": 0.25
     },
     {
@@ -345,7 +347,7 @@
       "placement": "buildZone",
       "range": 8,
       "detectionRange": 22,
-      "pressurePerSecond": 0.4,
+      "pressurePerSecond": 0.6,
       "disruptible": false
     },
     {
@@ -425,10 +427,11 @@
       "placement": "routeNode",
       "range": 5,
       "detectionRange": 9,
-      "pressurePerSecond": 1.4,
+      "pressurePerSecond": 1,
       "speed": 4.5,
       "maxCount": 2,
-      "maxLevel": 1
+      "maxLevel": 1,
+      "disruptible": false
     },
     {
       "id": "maintenance-crew",
@@ -445,7 +448,8 @@
       "speed": 5,
       "maxCount": 1,
       "maxLevel": 1,
-      "repairPerSecond": 6
+      "repairPerSecond": 6,
+      "disruptible": false
     },
     {
       "id": "relocation-unit",
@@ -462,7 +466,8 @@
       "slow": 0.3,
       "speed": 4,
       "maxCount": 1,
-      "maxLevel": 1
+      "maxLevel": 1,
+      "disruptible": false
     },
     {
       "id": "sensor-beacon",
@@ -474,7 +479,7 @@
       "placement": "any",
       "range": 3,
       "detectionRange": 13,
-      "pressurePerSecond": 0,
+      "pressurePerSecond": 0.3,
       "seesHidden": true,
       "dismantlable": true,
       "maxLevel": 2
@@ -485,12 +490,13 @@
       "description": "defense.observation-station.description",
       "icon": "ICON-DEF-OBSERVATION-STATION",
       "model": "station",
-      "cost": 70,
+      "cost": 65,
       "placement": "buildZone",
       "range": 9,
       "detectionRange": 20,
-      "pressurePerSecond": 0.8,
-      "seesHidden": true
+      "pressurePerSecond": 1.25,
+      "seesHidden": true,
+      "upgradeCostFactor": 0.55
     },
     {
       "id": "research-team",
@@ -503,11 +509,12 @@
       "placement": "routeNode",
       "range": 5,
       "detectionRange": 12,
-      "pressurePerSecond": 1,
-      "slow": 0.15,
+      "pressurePerSecond": 1.1,
+      "slow": 0.2,
       "speed": 5,
       "maxCount": 2,
-      "maxLevel": 1
+      "maxLevel": 1,
+      "disruptible": false
     },
     {
       "id": "surveillance-drone",
@@ -520,7 +527,7 @@
       "placement": "routeNode",
       "range": 4,
       "detectionRange": 16,
-      "pressurePerSecond": 0.2,
+      "pressurePerSecond": 0.5,
       "speed": 9,
       "maxCount": 1,
       "maxLevel": 1,
@@ -624,10 +631,10 @@
           "type": "disrupt"
         }
       ],
-      "range": 7,
-      "durationSeconds": 10,
-      "cost": 25,
-      "cooldownSeconds": 50
+      "range": 3,
+      "durationSeconds": 5,
+      "cost": 30,
+      "cooldownSeconds": 60
     },
     {
       "id": "breach",
@@ -663,12 +670,12 @@
         },
         {
           "type": "protect",
-          "magnitude": 0.35
+          "magnitude": 0.25
         }
       ],
       "durationSeconds": 10,
-      "cost": 35,
-      "cooldownSeconds": 75
+      "cost": 40,
+      "cooldownSeconds": 90
     },
     {
       "id": "concealed-approach",
@@ -696,7 +703,7 @@
         {
           "type": "boost",
           "stat": "holdRate",
-          "magnitude": 0.6,
+          "magnitude": 0.25,
           "condition": "atObjective"
         }
       ],
@@ -762,7 +769,7 @@
       "effects": [
         {
           "type": "slow",
-          "magnitude": 0.35
+          "magnitude": 0.25
         },
         {
           "type": "protect",
@@ -817,7 +824,7 @@
         },
         {
           "type": "slow",
-          "magnitude": 0.25
+          "magnitude": 0.35
         }
       ],
       "durationSeconds": 12,
