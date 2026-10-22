@@ -1,5 +1,5 @@
 import { SNAPSHOT_EVERY_TICKS } from '@gtd/protocol';
-import { FixedStepClock, Match, TICK_MS, type Command, type MatchSetup } from '@gtd/sim';
+import { FixedStepClock, Match, TICK_MS, type Command, type MatchSetup, type Side } from '@gtd/sim';
 import type { Controller } from '@gtd/ai';
 
 export interface MatchHostOptions {
@@ -30,10 +30,21 @@ export class MatchHost {
   paused = false;
   /** 1× or 2×: how many simulation seconds pass per real second. */
   speed: 1 | 2 = 1;
+  private readonly controllers: { attacker?: Controller; defender?: Controller };
 
   constructor(private readonly options: MatchHostOptions) {
     this.match = new Match(options.setup);
     this.now = options.now ?? (() => performance.now());
+    this.controllers = { attacker: options.attacker, defender: options.defender };
+  }
+
+  /** The computer takes over a side (a Wi-Fi player dropped out), or hands it back (`undefined`). */
+  setController(side: Side, controller: Controller | undefined): void {
+    this.controllers[side] = controller;
+  }
+
+  controls(side: Side): boolean {
+    return this.controllers[side] !== undefined;
   }
 
   start(): void {
@@ -71,7 +82,8 @@ export class MatchHost {
   }
 
   private tick(every: number): void {
-    const { setup, attacker, defender } = this.options;
+    const { setup } = this.options;
+    const { attacker, defender } = this.controllers;
     const commands = [
       ...(attacker?.decide(this.match.snapshot('attacker'), setup) ?? []),
       ...(defender?.decide(this.match.snapshot('defender'), setup) ?? []),

@@ -16,12 +16,13 @@ interface Props {
   onTutorial(): void;
   onTwoPlayers(): void;
   onShare(): void;
+  onWifi(): void;
   onManual(): void;
   onSettings(): void;
   onDemo(): void;
 }
 
-/** Main menu (spec §6.1): single player, tutorial, two players, manual and settings over the menu picture. */
+/** Main menu (spec §6.1): single player, tutorial, two players, Wi-Fi play, manual and settings over the menu picture. */
 export function MainMenu({
   t,
   connection,
@@ -32,6 +33,7 @@ export function MainMenu({
   onTutorial,
   onTwoPlayers,
   onShare,
+  onWifi,
   onManual,
   onSettings,
   onDemo,
@@ -79,6 +81,16 @@ export function MainMenu({
           >
             <strong>{t('menu.twoPlayers')}</strong>
             <span>{hotSeatAvailable ? t('menu.twoPlayersHint') : t('menu.twoPlayersPcOnly')}</span>
+          </button>
+          <button
+            type="button"
+            className="menu-button"
+            onClick={onWifi}
+            disabled={!playable}
+            data-testid="menu-wifi"
+          >
+            <strong>{t('menu.wifi')}</strong>
+            <span>{host ? t('menu.wifiHintPc') : t('menu.wifiHint')}</span>
           </button>
           {host && (
             <button type="button" className="menu-button" onClick={onShare} data-testid="menu-share">

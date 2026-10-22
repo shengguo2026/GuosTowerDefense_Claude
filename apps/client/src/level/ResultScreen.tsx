@@ -1,6 +1,7 @@
 import type { Translate } from '@gtd/i18n';
 import type { Seat } from '@gtd/protocol';
 import type { MatchResult, MatchSnapshot, Side } from '@gtd/sim';
+import type { ReactNode } from 'react';
 import { Art } from '../art/Art';
 
 interface Props {
@@ -14,6 +15,8 @@ interface Props {
   quip?: { text: string; won: boolean; name: string };
   /** Hot-seat: the two players' names, shown on their halves. */
   names?: Partial<Record<Side, string>>;
+  /** Buttons instead of Play again and Back (Wi-Fi: the host's Rematch and Lobby, the guest waits). */
+  actions?: ReactNode;
 }
 
 const ATTACKER_STATS = [
@@ -38,7 +41,7 @@ const DEFENDER_STATS = [
  * The 50/50 result screen: Attacker always on the left, Defender on the right, the winner emphasised, and both sides'
  * performance shown, also for the side that lost.
  */
-export function ResultScreen({ result, stats, seat, t, onPlayAgain, onBack, quip, names }: Props) {
+export function ResultScreen({ result, stats, seat, t, onPlayAgain, onBack, quip, names, actions }: Props) {
   const half = (side: Side) => {
     const won = result.winner === side;
     const rows: [string, string][] =
@@ -98,12 +101,16 @@ export function ResultScreen({ result, stats, seat, t, onPlayAgain, onBack, quip
           </div>
         )}
         <div className="row">
-          <button type="button" className="action" onClick={onPlayAgain} data-testid="play-again">
-            {t('result.playAgain')}
-          </button>
-          <button type="button" className="action secondary" onClick={onBack}>
-            {t('result.back')}
-          </button>
+          {actions ?? (
+            <>
+              <button type="button" className="action" onClick={onPlayAgain} data-testid="play-again">
+                {t('result.playAgain')}
+              </button>
+              <button type="button" className="action secondary" onClick={onBack}>
+                {t('result.back')}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

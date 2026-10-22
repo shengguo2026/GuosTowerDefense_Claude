@@ -1,5 +1,12 @@
 import type { StagePack } from '@gtd/content-schema';
-import type { HealthResponse, NetworkInfo, Progress, Settings, SettingsPatch } from '@gtd/protocol';
+import type {
+  HealthResponse,
+  NearbyGames,
+  NetworkInfo,
+  Progress,
+  Settings,
+  SettingsPatch,
+} from '@gtd/protocol';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
@@ -27,6 +34,8 @@ export const api = {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ sharing }),
     }),
+  /** Wi-Fi games other PCs in the network announce (from the PC only). */
+  nearby: () => request<NearbyGames>('/api/nearby'),
   /** Codex pictures that exist on the PC, by art id. */
   art: () => request<Record<string, string>>('/api/art'),
 };

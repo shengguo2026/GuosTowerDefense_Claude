@@ -177,7 +177,15 @@ export function ShareScreen({ t, onBack }: Props) {
 }
 
 /** One screen on what Windows is about to ask and which answer lets the phones in (spec §14, G14). */
-function FirewallExplainer({ t, busy, onContinue }: { t: Translate; busy: boolean; onContinue(): void }) {
+export function FirewallExplainer({
+  t,
+  busy,
+  onContinue,
+}: {
+  t: Translate;
+  busy: boolean;
+  onContinue(): void;
+}) {
   return (
     <div className="share-body" data-testid="firewall-explainer">
       <section className="setup-section share-card">

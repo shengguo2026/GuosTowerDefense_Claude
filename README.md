@@ -20,6 +20,16 @@ firewall question ("Private networks", "Allow access"); then the PC shows a QR c
 A tablet or phone in the same Wi-Fi opens it and plays single player by touch. The game remembers the choice and shares
 again at the next start; **Stop sharing** closes it. Without this, the game listens only on the PC itself.
 
+**Wi-Fi 1v1:** main menu › **Wi-Fi play** › **Open a game** on the PC. The lobby shows a QR code, the 6-digit room code
+(`247 433`) and the address with the actual port. A tablet or phone in the same Wi-Fi scans the code (it opens straight
+into the lobby) or opens the address and types the room code under **Wi-Fi play**. Each player picks a profile and gets
+ready; the host picks the level and how well the computer plays, can swap sides or let the computer play the open side,
+and starts. Only the host can pause; the speed stays 1×. If a device drops out, the computer plays its side until it
+comes back (a reload or a new tab on the same device finds its way back with the session token stored there); new
+players cannot join a running match, and when the host closes the game it ends for everyone. Another PC with the game
+installed joins by typing this PC's address, or finds it with **Search the network** (UDP port 41779; routers and guest
+networks may block this, the address always works).
+
 ## Play (development build)
 
 Needs [Node.js](https://nodejs.org) 20.19 or newer (LTS).

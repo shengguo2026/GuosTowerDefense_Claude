@@ -4,7 +4,7 @@ import type { Command, MatchSnapshot, Side } from '@gtd/sim';
 import { z } from 'zod';
 
 /** Bumped whenever a message changes shape, so an old browser tab gets a clear "please reload" instead of errors. */
-export const PROTOCOL_VERSION = 7;
+export const PROTOCOL_VERSION = 8;
 export const WEBSOCKET_PATH = '/ws';
 
 const language = z.enum(LANGUAGES);
@@ -132,6 +132,24 @@ export interface NetworkInfo {
   firewallExplained: boolean;
   /** Phones and tablets connected right now (one per network address). */
   guests: number;
+  /** A Wi-Fi game is open on this PC and waiting for players (its room code is not given here). */
+  room: boolean;
+}
+
+/** `GET /api/nearby`, from the PC only: games other PCs in the network host right now (Wi-Fi discovery). */
+export interface NearbyGame {
+  /** Address to open, such as `http://192.168.1.20:3000/`. */
+  address: string;
+  /** Name of the person who hosts. */
+  hostName: string;
+  /** Seconds since the PC last announced the game. */
+  seenSecondsAgo: number;
+}
+
+export interface NearbyGames {
+  /** Listening for announcements works on this PC (another program may hold the port). */
+  listening: boolean;
+  games: NearbyGame[];
 }
 
 /** `PUT /api/network`, from the PC only. */
@@ -276,6 +294,68 @@ export interface MatchSummary {
   phase: MatchSnapshot['phase'];
 }
 
+// ---- Wi-Fi rooms (spec §14) ----
+
+/** Six digits, `000000`–`999999`; shown as `247 433` but typed and stored as `247433`. */
+export const RoomCodeSchema = z.string().regex(/^\d{6}$/);
+const roomToken = z.string().regex(/^[0-9a-f]{32}$/);
+const slotId = z.enum(['A1', 'D1']);
+export type SlotId = z.infer<typeof slotId>;
+const playerName = z.string().trim().max(24);
+
+/** `247433` → `247 433`. */
+export function formatRoomCode(code: string): string {
+  return `${code.slice(0, 3)} ${code.slice(3)}`;
+}
+
+/** The address a QR code opens: the game on the PC, straight into the room. */
+export function joinUrl(address: string, code: string): string {
+  return `${address.replace(/\/?$/, '/')}?join=${code}`;
+}
+
+/** One seat in the lobby: a person, the computer, or open for a person to take. */
+export interface RoomSlot {
+  slotId: SlotId;
+  side: Side;
+  controller: 'human' | 'ai';
+  /** The person in the slot (a human slot can be empty). */
+  playerId: string | null;
+  name: string;
+  profileId: string;
+  /** Ready locks the person's choices; the computer is always ready. */
+  ready: boolean;
+  /** The person's device is connected; while not, the computer plays for them in a match. */
+  connected: boolean;
+  /** The person hosts the game (plays on the PC). */
+  host: boolean;
+}
+
+export interface RoomState {
+  code: string;
+  phase: 'lobby' | 'match' | 'result';
+  stageId: string;
+  levelId: string;
+  /** How well the computer plays an AI slot, or a person's side while they are away. */
+  difficulty: Difficulty;
+  slots: RoomSlot[];
+  /** The running (or just finished) match. */
+  matchId: string | null;
+  /** Addresses for phones and tablets with the actual port, best first (the QR code uses the first). */
+  addresses: string[];
+}
+
+export type RoomErrorCode =
+  | 'roomNotFound'
+  | 'roomFull'
+  | 'roomRunning'
+  | 'badToken'
+  | 'hostOnly'
+  | 'notInRoom'
+  | 'slotTaken'
+  | 'locked'
+  | 'notReady'
+  | 'badChoice';
+
 // ---- WebSocket messages ----
 
 export const ClientMessageSchema = z.discriminatedUnion('type', [
@@ -315,6 +395,37 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('setSpeed'), speed: z.union([z.literal(1), z.literal(2)]) }),
   /** Hot-seat: one player takes a planning pause; `setPaused` with `paused: false` lets either player end it early. */
   z.object({ type: z.literal('planningPause'), side }),
+  /** Wi-Fi: the PC opens a room (only the PC's own browser may host). */
+  z.object({ type: z.literal('hostRoom'), name: playerName }),
+  /** Wi-Fi: a device joins with the room code. */
+  z.object({ type: z.literal('joinRoom'), code: RoomCodeSchema, name: playerName }),
+  /** Wi-Fi: a device that was in the room comes back (after a reload or a dropped connection). */
+  z.object({ type: z.literal('rejoinRoom'), code: RoomCodeSchema, token: roomToken }),
+  z.object({ type: z.literal('leaveRoom') }),
+  /** Host: stage, level and the computer's difficulty. */
+  z.object({
+    type: z.literal('roomSettings'),
+    stageId: contentId,
+    levelId: contentId,
+    difficulty: z.enum(DIFFICULTIES),
+  }),
+  /** Host: an empty slot is open for a person or played by the computer. */
+  z.object({ type: z.literal('roomSlotController'), slotId, controller: z.enum(['human', 'ai']) }),
+  /** Host: the two slots change places (the players swap sides). */
+  z.object({ type: z.literal('roomSwap') }),
+  /** A person moves to an empty open slot. */
+  z.object({ type: z.literal('roomTakeSlot'), slotId }),
+  /** A person's own name and profile (the host also sets the computer's profile with `slotId`). */
+  z.object({
+    type: z.literal('roomChoose'),
+    slotId: slotId.optional(),
+    name: playerName.optional(),
+    profileId: contentId.optional(),
+  }),
+  z.object({ type: z.literal('roomReady'), ready: z.boolean() }),
+  /** Host: start the match (every person ready), play the same match again, or go back to the lobby. */
+  z.object({ type: z.literal('roomStart') }),
+  z.object({ type: z.literal('roomLobby') }),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
@@ -345,8 +456,17 @@ export type ServerMessage =
       speed: MatchSpeed;
       canControl: boolean;
       planning?: PlanningPauses;
+      /** A Wi-Fi match: only the host pauses, the speed stays 1×. */
+      wifi?: true;
     }
   | { type: 'matches'; matches: MatchSummary[] }
+  /** The room this connection is in, as seen by this player (sent on every change). */
+  | { type: 'room'; room: RoomState; playerId: string; host: boolean }
+  /** This device is in the room; keep the token to come back after a reload or a dropped connection. */
+  | { type: 'roomJoined'; code: string; token: string; playerId: string }
+  /** The room is gone: the host closed it (`closed`) or this player left or was removed (`left`). */
+  | { type: 'roomClosed'; reason: 'closed' | 'left' }
+  | { type: 'roomError'; code: RoomErrorCode }
   /** Why the simulation refused one of this connection's commands (e.g. `notEnoughResources`). */
   | { type: 'commandRejected'; command: string; reason: string; side: Side }
   | {
@@ -361,7 +481,8 @@ export type ServerMessage =
         | 'seatTaken'
         | 'notSinglePlayer'
         | 'notHotSeat'
-        | 'noPausesLeft';
+        | 'noPausesLeft'
+        | 'hostOnly';
       message: string;
     };
 

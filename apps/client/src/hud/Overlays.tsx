@@ -8,7 +8,8 @@ interface PauseProps {
   onResume(): void;
   onManual(): void;
   onSettings(): void;
-  onRestart(): void;
+  /** Left out where a restart is not the player's call (Wi-Fi: the host decides at the end). */
+  onRestart?(): void;
   onQuit(): void;
 }
 
@@ -45,9 +46,11 @@ export function PauseMenu({ canPause, t, onResume, onManual, onSettings, onResta
           >
             {t('settings.title')}
           </button>
-          <button type="button" className="action secondary" onClick={onRestart} data-testid="restart">
-            {t('pause.restart')}
-          </button>
+          {onRestart && (
+            <button type="button" className="action secondary" onClick={onRestart} data-testid="restart">
+              {t('pause.restart')}
+            </button>
+          )}
           <button type="button" className="action secondary" onClick={onQuit} data-testid="quit">
             {t('pause.quit')}
           </button>
