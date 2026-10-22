@@ -44,7 +44,12 @@ async function startAgainst(page: Page, side: 'attacker' | 'defender', own: stri
   await expect(page.getByTestId('level-canvas')).toHaveAttribute('data-rendered', 'true', {
     timeout: 30_000,
   });
-  await expect(page.getByTestId('computer-badge')).toContainText('Hard');
+  // The phone's compact top bar has no room for the computer badge; the reasoning panel shows it is there.
+  await expect(page.getByTestId('ai-reasoning')).toBeVisible();
+}
+
+/** The reasoning panel starts folded on small screens (it would cover the action bar). */
+async function unfoldReasoning(page: Page) {
   const unfold = page.getByTestId('ai-reasoning').getByRole('button');
   if ((await unfold.getAttribute('aria-expanded')) === 'false') await unfold.click();
 }
@@ -53,8 +58,6 @@ test('the computer Wildlife Protector uses its own tools against a group', async
   test.setTimeout(180_000);
   await prepare(page);
   await startAgainst(page, 'attacker', 'explorer', 'wildlife-protector');
-  // It builds from the start and says why.
-  await expect(page.getByTestId('ai-thought').first()).toContainText('Build', { timeout: 15_000 });
 
   // A wave on its way: the computer protects the assets the group comes close to (Fortify, a command slot) or
   // slows it with a Protected Zone.
@@ -63,6 +66,9 @@ test('the computer Wildlife Protector uses its own tools against a group', async
   await expect(page.getByTestId('launch-status')).toHaveClass(/ready/, { timeout: 40_000 });
   await page.getByTestId('launch-wave').click();
   await expect(page.locator('.minimap-group').first()).toBeAttached({ timeout: 10_000 });
+  await unfoldReasoning(page);
+  // It built from the start and said why.
+  await expect(page.getByTestId('ai-reasoning')).toContainText('Build');
   await expect(page.getByTestId('ai-reasoning')).toContainText(/fortify on|protected-zone at/, {
     timeout: 90_000,
   });
@@ -75,6 +81,7 @@ test('the computer Hunter plans its waves against what it has seen', async ({ pa
   test.setTimeout(180_000);
   await prepare(page);
   await startAgainst(page, 'defender', 'ranger', 'hunter');
+  await unfoldReasoning(page);
   await page.getByTestId('speed').click();
   // Hard Hunter: it saves up or launches, and names its plan of attack.
   await expect(page.getByTestId('ai-reasoning')).toContainText(/Launch \d+|attack\)/, { timeout: 60_000 });

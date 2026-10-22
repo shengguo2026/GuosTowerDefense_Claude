@@ -111,15 +111,15 @@ export class DefenderAi extends AiBase {
       const command = this.useCommandSlot(snapshot, own, groups);
       if (command) commands.push(command);
     }
-    // An asset an ability brings in this round counts against the limit of its kind.
-    const spawned = abilities.flatMap((c) =>
-      c.type === 'useAbility'
-        ? (this.model.setup.defender.abilities
-            .find((a) => a.id === c.abilityId)
-            ?.effects.flatMap((e) => (e.type === 'spawn' && e.spawn ? [e.spawn] : [])) ?? [])
-        : [],
+    // An asset an ability brings in this round takes its site and counts against its limit: build next look.
+    const spawns = abilities.some(
+      (c) =>
+        c.type === 'useAbility' &&
+        this.model.setup.defender.abilities
+          .find((a) => a.id === c.abilityId)
+          ?.effects.some((e) => e.type === 'spawn'),
     );
-    const build = this.chooseBuild(snapshot, own, supplies, spawned);
+    const build = spawns ? null : this.chooseBuild(snapshot, own, supplies);
     if (build) commands.push(build);
     return commands;
   }
@@ -180,15 +180,10 @@ export class DefenderAi extends AiBase {
 
   // ---- Building
 
-  private chooseBuild(
-    snapshot: MatchSnapshot,
-    own: DefenseEntity[],
-    supplies: number,
-    spawned: string[] = [],
-  ): Command | null {
+  private chooseBuild(snapshot: MatchSnapshot, own: DefenseEntity[], supplies: number): Command | null {
     const budget = supplies - this.tuning.reserve;
     const layout = this.known(own);
-    const all = this.buildOptions(snapshot, own, layout, spawned);
+    const all = this.buildOptions(snapshot, own, layout);
     const options = all.filter((o) => o.cost <= budget);
     const placements = options.filter((o) => o.command.type === 'placeDefense');
     const random = (): Command | null => {
@@ -232,19 +227,13 @@ export class DefenderAi extends AiBase {
     return option.command;
   }
 
-  private buildOptions(
-    snapshot: MatchSnapshot,
-    own: DefenseEntity[],
-    layout: KnownDefense[],
-    spawned: string[],
-  ): BuildOption[] {
+  private buildOptions(snapshot: MatchSnapshot, own: DefenseEntity[], layout: KnownDefense[]): BuildOption[] {
     const options: BuildOption[] = [];
     const tick = snapshot.tick;
     const occupied = new Set(own.filter((d) => !d.mobile).map((d) => d.nodeId));
     const closed = new Set([...own.filter((d) => d.blocking).map((d) => d.nodeId), ...this.reclosed]);
     for (const type of this.model.setup.defender.defenses) {
-      const count =
-        own.filter((d) => d.defenseTypeId === type.id).length + spawned.filter((id) => id === type.id).length;
+      const count = own.filter((d) => d.defenseTypeId === type.id).length;
       if (type.maxCount !== undefined && count >= type.maxCount) continue;
       // Temporary assets come from abilities; bought, they are gone before they pay for themselves.
       if (type.lifetimeSeconds !== undefined) continue;
