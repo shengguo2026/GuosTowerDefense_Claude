@@ -989,6 +989,24 @@ describe('spawns and temporary assets', () => {
     expect(eventsOf(match, 'defenseExpired')).toHaveLength(1);
   });
 
+  it('junction abilities work on the way, never on the objective or the spawn', () => {
+    const setup = fixtureSetup();
+    setup.defender.defenses = [...FIXTURE_DEFENSES, fence];
+    setup.defender.abilities.push(
+      ability({ id: 'drop-fence', target: 'junction', effects: [{ type: 'spawn', spawn: 'fence' }] }),
+    );
+    setup.attacker.abilities.push(
+      ability({ id: 'breach', target: 'junction', effects: [{ type: 'disrupt' }], range: 6 }),
+    );
+    const match = new Match(setup);
+    for (const nodeId of ['goal', 'spawn'])
+      send(match, { type: 'useAbility', side: 'defender', abilityId: 'drop-fence', nodeId });
+    expect(rejections(match)).toEqual(['invalidTarget', 'invalidTarget']);
+    skipPreparation(match);
+    send(match, { type: 'useAbility', side: 'attacker', abilityId: 'breach', nodeId: 'goal' });
+    expect(rejections(match).at(-1)).toBe('invalidTarget');
+  });
+
   it('an Attacker ability sends extra members from its capacity', () => {
     const setup = fixtureSetup();
     setup.attacker.abilities.push(

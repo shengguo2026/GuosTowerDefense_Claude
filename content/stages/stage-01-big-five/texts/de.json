@@ -124,7 +124,7 @@
   "ability.field-guide.name": "Feldführer",
   "ability.field-guide.description": "Entlang einer Route: Verteidigungen werden aufgedeckt und deine Gruppen gehen schneller.",
   "ability.sabotage.name": "Sabotage",
-  "ability.sabotage.description": "Setzt Ausrüstung in einem Gebiet eine Weile außer Betrieb. Eine Gruppe muss in der Nähe sein.",
+  "ability.sabotage.description": "Setzt Ausrüstung in einem kleinen Gebiet eine Weile außer Betrieb (Teams aus Menschen arbeiten weiter). Eine Gruppe muss in der Nähe sein.",
   "ability.breach.name": "Durchbruch",
   "ability.breach.description": "Öffnet eine Sperre an einem Routenknoten: Barrieren werden abgebaut, der Rest fällt kurz aus.",
   "ability.coordinated-assault.name": "Koordinierter Vorstoß",

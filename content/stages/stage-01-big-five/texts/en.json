@@ -124,7 +124,7 @@
   "ability.field-guide.name": "Field Guide",
   "ability.field-guide.description": "Along one route: defenses are revealed and your groups move faster.",
   "ability.sabotage.name": "Sabotage",
-  "ability.sabotage.description": "Puts equipment in an area out of action for a while. A group must be close by.",
+  "ability.sabotage.description": "Puts equipment in a small area out of action for a while (teams of people keep working). A group must be close by.",
   "ability.breach.name": "Breach",
   "ability.breach.description": "Opens a roadblock at a route node: barriers are taken apart and the rest stops working for a moment.",
   "ability.coordinated-assault.name": "Coordinated Assault",

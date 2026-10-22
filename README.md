@@ -60,7 +60,8 @@ npm run check              # type check, lint, format, unit tests, content valid
 npm run test:e2e           # browser tests at desktop 1920×1080, tablet 1180×820, phone 844×390
 npm run validate:content   # validate every stage pack
 npm run simulate           # headless matches of every level and profile pairing of the test stage
-npm run balance            # 200 AI-vs-AI matches of Lion per difficulty; add --matrix for every pairing
+npm run balance            # 200 AI-vs-AI matches of Lion per difficulty (Explorer vs Ranger); add --all for all
+                           # nine profile matchups, --attacker=hunter / --defender=ranger for one, --matrix for every pairing
 npm run package            # player zip with bundled Node.js runtime (release/)
 ```
 
