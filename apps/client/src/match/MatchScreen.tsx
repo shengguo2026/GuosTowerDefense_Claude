@@ -37,10 +37,14 @@ import type { SettingsState } from '../useSettings';
 import type { MapOverlay } from '../world/selectionView';
 import { LevelView, type MapPick } from '../world/levelView';
 import { structureViewArea, visionOf } from './viewArea';
+import { groupOnGround, nearGround } from './ground';
 import { currentDevice, resolvePreset } from '../world/presets';
 import { otherSide, type MatchConfig } from './matchConfig';
 import { nextStep, noActions, type PlayerActions } from './tutorial';
 import { useWaveDrafts } from './useWaveDrafts';
+
+/** A structure this close to a crossing or heavy ground counts as covering it, for the level's area hints. */
+const GROUND_HINT_REACH = 9;
 
 const KEPT_THOUGHTS = 40;
 /** How often the HUD redraws from snapshots; the 3D view uses every snapshot. */
@@ -603,14 +607,22 @@ export function MatchScreen({
       if (levelHint.when === 'start' && !before) raise.push(key);
       if (levelHint.when === 'combat' && before?.phase === 'preparation' && snapshot.phase === 'combat')
         raise.push(key);
-      if (levelHint.when === 'area' && level) {
+      if (levelHint.when === 'area' && level && levelHint.area) {
+        const kind = levelHint.area;
         const vision = visionOf(level);
-        const areas = vision.areas.filter((a) => a.kind === levelHint.area);
+        const areas = vision.areas.filter((a) => a.kind === kind);
         const spots =
           side === 'attacker'
             ? groups.filter((g) => g.state !== 'waiting')
             : defenses.filter((d) => !d.mobile);
-        if (spots.some((spot) => areas.some((a) => vision.contains(a, spot)))) raise.push(key);
+        // A vision area the spot stands in; or heavy ground and narrow crossings (Elephant): a group walking on it,
+        // a structure whose reach covers it.
+        const met =
+          spots.some((spot) => areas.some((a) => vision.contains(a, spot))) ||
+          (side === 'attacker'
+            ? groups.some((g) => groupOnGround(level, kind, g))
+            : defenses.some((d) => !d.mobile && nearGround(level, kind, d, GROUND_HINT_REACH)));
+        if (met) raise.push(key);
       }
     }
     if (before) {

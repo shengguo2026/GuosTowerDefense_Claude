@@ -12,6 +12,10 @@ export interface Leg {
   points: Point[];
   length: number;
   terrain: Terrain;
+  /** Route Capacity of the edge (a narrow crossing), when it has one. */
+  capacity?: number;
+  /** The same for both directions of an edge, so groups going either way share a crossing. */
+  edgeKey: string;
 }
 
 /**
@@ -140,6 +144,8 @@ export class RouteGraph {
       points,
       length: polylineLength(points),
       terrain: edge.terrain ?? 'cover',
+      ...(edge.capacity === undefined ? {} : { capacity: edge.capacity }),
+      edgeKey: `${edge.from}|${edge.to}`,
     };
   }
 }

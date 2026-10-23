@@ -1,11 +1,16 @@
 import {
+  CROWD_PRESSURE_TAKEN,
   FORMATIONS,
   RouteGraph,
   UPGRADE_PRESSURE_BONUS,
   UPGRADE_RANGE_BONUS,
   VISIBILITY_FACTORS,
   VisionField,
+  crowdSpeed,
+  crowding,
   distance,
+  groundOf,
+  groundSpeed,
   type BoostStat,
   type DefenseEntity,
   type Formation,
@@ -26,6 +31,8 @@ export interface RouteSample extends Point {
   exposure: number;
   /** Distance from the spawn along the route. */
   along: number;
+  /** Route Capacity of the stretch, on a narrow crossing. */
+  capacity?: number;
 }
 
 export interface RouteModel {
@@ -35,6 +42,8 @@ export interface RouteModel {
   samples: RouteSample[];
   /** Distance from the spawn to each node of the route. */
   nodeAlong: Map<string, number>;
+  /** Capacity of the narrowest crossing on the route (Route Capacity), or null without one. */
+  narrowest: number | null;
 }
 
 /** A defense as one side knows it: all of them for the Defender, the seen or remembered ones for the Attacker. */
@@ -90,6 +99,7 @@ export class LevelModel {
               terrain: leg.terrain,
               exposure: 1,
               along: along + length * t,
+              ...(leg.capacity === undefined ? {} : { capacity: leg.capacity }),
             });
           }
           along += length;
@@ -97,7 +107,11 @@ export class LevelModel {
         nodeAlong.set(leg.to, along);
       }
       for (const sample of samples) sample.exposure = this.vision.exposureAt(sample);
-      return { id: route.id, nodes: route.nodes, length: along, samples, nodeAlong };
+      const capacities = this.graph
+        .routeLegs(route.id)
+        .flatMap((leg) => (leg.capacity === undefined ? [] : [leg.capacity]));
+      const narrowest = capacities.length > 0 ? Math.min(...capacities) : null;
+      return { id: route.id, nodes: route.nodes, length: along, samples, nodeAlong, narrowest };
     });
     const node = this.graph.node(level.objective.nodeId);
     this.objective = { id: node.id, x: node.x, z: node.z, radius: level.objective.radius };
@@ -165,6 +179,53 @@ export class LevelModel {
   unit(id: string): SimUnitType | undefined {
     return this.setup.attacker.units.find((u) => u.id === id);
   }
+
+  /**
+   * Seconds a lone group needs to walk a route, with Terrain Weight (mud bogs heavy units down) and Route Capacity (a
+   * group wider than a crossing squeezes through slowly, as a column).
+   */
+  travelTime(route: RouteModel, unit: SimUnitType, formation: Formation, members: number): number {
+    let seconds = 0;
+    for (let i = 0; i < route.samples.length; i++) {
+      const sample = route.samples[i] as RouteSample;
+      const next = route.samples[i + 1];
+      const step = next ? next.along - sample.along : SAMPLE_STEP;
+      seconds += step / sampleSpeed(this, sample, unit, formation, members);
+    }
+    return seconds;
+  }
+
+  /** Seconds a group of a unit that fits needs for the longest narrow crossing on a route (0 without one). */
+  crossingSeconds(route: RouteModel, unit: SimUnitType): number {
+    let longest = 0;
+    for (const leg of this.graph.routeLegs(route.id)) {
+      if (leg.capacity === undefined) continue;
+      const speed =
+        unit.speed * FORMATIONS.column.speed * groundSpeed(groundOf(this.setup.level, leg.terrain), unit);
+      longest = Math.max(longest, leg.length / Math.max(0.1, speed));
+    }
+    return longest;
+  }
+}
+
+/** Speed of a lone group at one spot of a route: its unit, formation, the ground and how packed a crossing is. */
+function sampleSpeed(
+  model: LevelModel,
+  sample: RouteSample,
+  unit: SimUnitType,
+  formation: Formation,
+  members: number,
+): number {
+  const ground = groundOf(model.setup.level, sample.terrain);
+  const crossing = sample.capacity !== undefined;
+  const crowd = crossing ? crowding(members * unit.capacity, sample.capacity as number) : 0;
+  return Math.max(
+    0.1,
+    unit.speed *
+      FORMATIONS[crossing ? 'column' : formation].speed *
+      groundSpeed(ground, unit) *
+      crowdSpeed(crowd),
+  );
 }
 
 export function reachOf(type: SimDefenseType, level: number): number {
@@ -245,17 +306,21 @@ function computeExposure(
   members: number,
   from: number,
 ): Exposure {
-  const { terrain } = model.setup.level;
   // Sensors see hidden units as easily as any other; other assets only see them from closer.
   const hidden = VISIBILITY_FACTORS[unit.visibility] * (1 - model.lowProfile);
   let pressureSeconds = 0;
+  let blockedSeconds = 0;
   const vantage = active.map((d) => model.vision.vantageAt(d));
   const lines = active.map((d) => model.sightLine(d, route));
   for (let index = 0; index < route.samples.length; index++) {
     const sample = route.samples[index] as RouteSample;
     if (sample.along < from) continue;
-    const ground = terrain[sample.terrain];
-    const visibility = FORMATIONS[formation].detection * ground.detection * sample.exposure;
+    const ground = groundOf(model.setup.level, sample.terrain);
+    // On a narrow crossing a group moves as a column, and packed it takes more pressure (Route Capacity).
+    const crossing = sample.capacity !== undefined;
+    const shape = crossing ? 'column' : formation;
+    const packed = crossing && crowding(members * unit.capacity, sample.capacity as number) > 1;
+    const visibility = FORMATIONS[shape].detection * ground.detection * sample.exposure;
     let detected = false;
     let pressure = 0;
     let slow = 0;
@@ -271,8 +336,9 @@ function computeExposure(
       }
     }
     if (!detected || pressure === 0) continue;
-    const speed = unit.speed * FORMATIONS[formation].speed * ground.speed * (1 - slow);
-    pressureSeconds += pressure * (1 / Math.max(0.1, speed));
+    const speed = sampleSpeed(model, sample, unit, formation, members) * (1 - slow);
+    const taken = FORMATIONS[shape].pressureTaken * (packed ? 1 + CROWD_PRESSURE_TAKEN : 1);
+    pressureSeconds += (pressure * taken) / Math.max(0.1, speed);
   }
   const blockers = active.filter(
     (d) => d.blocking && (route.nodeAlong.get(d.nodeId) ?? -1) > from && route.nodes.includes(d.nodeId),
@@ -285,9 +351,9 @@ function computeExposure(
     let pressure = 0;
     for (const d of active)
       if (distance(d, blocker) <= reachOf(d.type, d.level) + 2) pressure += pressureOf(d.type, d.level);
-    pressureSeconds += pressure * wearTime;
+    blockedSeconds += pressure * wearTime;
   }
-  const scaled = pressureSeconds * FORMATIONS[formation].pressureTaken;
+  const scaled = pressureSeconds + blockedSeconds * FORMATIONS[formation].pressureTaken;
   return { pressure: scaled, losses: scaled / unit.resilience, blockers };
 }
 

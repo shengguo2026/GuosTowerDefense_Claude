@@ -20,6 +20,8 @@ const RULE_PAGES = [
   'controls',
 ] as const;
 type Page = (typeof RULE_PAGES)[number] | `profile:${string}`;
+/** Rule pages with more than the usual three paragraphs. */
+const PARAGRAPHS: Partial<Record<(typeof RULE_PAGES)[number], number>> = { terrain: 5 };
 
 interface Props {
   stageId: string;
@@ -114,7 +116,7 @@ function RulePage({ id, t }: { id: (typeof RULE_PAGES)[number]; t: Translate }) 
   return (
     <>
       <h2>{t(`manual.${id}.title`)}</h2>
-      {[1, 2, 3].map((n) => (
+      {Array.from({ length: PARAGRAPHS[id] ?? 3 }, (_, i) => i + 1).map((n) => (
         <p key={n}>{t(`manual.${id}.p${n}`)}</p>
       ))}
     </>

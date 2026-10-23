@@ -7,7 +7,7 @@
   "title": "stage.title",
   "description": "stage.description",
   "picture": "STAGE-01",
-  "levels": ["lion", "leopard"],
+  "levels": ["lion", "leopard", "elephant"],
   "profiles": {
     "attacker": ["explorer", "hunter", "photographer"],
     "defender": ["ranger", "wildlife-protector", "field-researcher"]

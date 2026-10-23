@@ -1638,6 +1638,9 @@ button.primary-small {
 .status-chip.status-protected {
   background: #dcf1e3;
 }
+.status-chip.status-crowded {
+  background: #f3e0cf;
+}
 .status-chip.status-disrupted {
   background: #f9d9d6;
 }
@@ -1928,6 +1931,16 @@ button.primary-small {
 }
 .minimap-zone.clearing {
   fill: rgba(255, 240, 180, 0.4);
+}
+/* Rivers in blue; narrow crossings as a light band across the route line. */
+.minimap-river {
+  stroke: rgba(60, 130, 160, 0.85);
+  pointer-events: none;
+}
+.minimap-crossing {
+  stroke: rgba(250, 245, 230, 0.9);
+  stroke-dasharray: 2 1.5;
+  pointer-events: none;
 }
 .minimap-objective {
   fill: rgba(255, 212, 71, 0.5);
@@ -3578,4 +3591,32 @@ a.action {
 .settings-body [data-testid='save-message'] {
   margin-top: 8px;
   font-weight: 700;
+}
+
+/* Route notes under the route chips: heavy ground and narrow crossings on the chosen route (Elephant). */
+.route-notes {
+  margin: 0.2rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+.route-notes.warn {
+  color: #9a3d12;
+  font-weight: 600;
+}
+/* Phones: the route notes float just above the wave panel, so the panel keeps its height and the drawer handle stays clear. */
+.layout-phone .wave-builder {
+  position: relative;
+}
+.layout-phone .route-notes {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  max-width: 60%;
+  margin: 0 0 4px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  font-size: 0.68rem;
 }

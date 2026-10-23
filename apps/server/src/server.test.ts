@@ -348,7 +348,7 @@ describe('levels', () => {
     const pack = (await (await fetch(`${server.url}/api/stages/stage-01-big-five`)).json()) as {
       levels: { id: string; scene?: { kit: string } }[];
     };
-    expect(pack.levels.map((level) => level.id)).toEqual(['lion', 'leopard']);
+    expect(pack.levels.map((level) => level.id)).toEqual(['lion', 'leopard', 'elephant']);
     expect(pack.levels[0]?.scene?.kit).toBe('savanna');
     expect((await fetch(`${server.url}/api/stages/nope`)).status).toBe(404);
   });
@@ -433,7 +433,7 @@ describe('levels', () => {
     const server = await startServer();
     const received = await converse(
       server.url,
-      [{ type: 'watchDemo', stageId: 'stage-01-big-five', levelId: 'elephant' }],
+      [{ type: 'watchDemo', stageId: 'stage-01-big-five', levelId: 'no-such-level' }],
       (messages) => messages.some((m) => m.type === 'error'),
     );
     expect(received.find((m) => m.type === 'error')).toMatchObject({ code: 'unknownLevel' });

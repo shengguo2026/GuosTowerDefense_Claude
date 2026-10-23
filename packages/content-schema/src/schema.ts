@@ -62,6 +62,10 @@ export const SceneSchema = z.object({
   flora: z.enum(['savanna', 'woodland']).default('savanna'),
   /** Route whose path carves a dry streambed into the terrain. */
   streambedRoute: id.optional(),
+  /** Rivers drawn as water across the map; routes cross them at fords (edges with water terrain). */
+  rivers: z
+    .array(z.object({ points: z.array(point).min(2), width: z.number().positive().default(7) }))
+    .default([]),
   landmarks: z
     .array(
       z.object({
@@ -98,7 +102,9 @@ export const SceneSchema = z.object({
     .optional(),
 });
 
-export const TERRAINS = ['open', 'cover'] as const;
+/** Open ground and cover (every level); mud and water are heavy ground (Terrain Weight, Elephant). */
+export const TERRAINS = ['open', 'cover', 'mud', 'water'] as const;
+export const UNIT_WEIGHTS = ['light', 'medium', 'heavy'] as const;
 
 /** What an environment object does to sight lines through it (spec §8): full blocker, partial cover or decoration. */
 export const LOS_TYPES = ['blocker', 'partial', 'none'] as const;
@@ -163,7 +169,12 @@ export const TutorialStepSchema = z.object({
   highlight: z.string().min(1).optional(),
   until: TutorialConditionSchema,
 });
-const terrainModifiers = z.object({ speed: z.number().positive(), detection: z.number().positive() });
+const terrainModifiers = z.object({
+  speed: z.number().positive(),
+  detection: z.number().positive(),
+  /** Terrain Weight: extra speed factor by unit weight (e.g. mud: heavy 0.55). */
+  weight: z.partialRecord(z.enum(UNIT_WEIGHTS), z.number().positive()).optional(),
+});
 
 export const LevelSchema = z.object({
   id,
@@ -194,7 +205,16 @@ export const LevelSchema = z.object({
     nodes: z.array(MapNodeSchema).min(2),
     edges: z
       .array(
-        z.object({ from: id, to: id, via: z.array(point).optional(), terrain: z.enum(TERRAINS).optional() }),
+        z.object({
+          from: id,
+          to: id,
+          via: z.array(point).optional(),
+          terrain: z.enum(TERRAINS).optional(),
+          /** Route Capacity: a narrow crossing holds this much deployment capacity at once. */
+          capacity: z.number().positive().optional(),
+          /** Name of a narrow crossing, for the route notes and hints. */
+          label: textKey.optional(),
+        }),
       )
       .min(1),
   }),
@@ -217,9 +237,17 @@ export const LevelSchema = z.object({
       retreatRefund: z.number().min(0).max(1),
     })
     .default({ checkpointPass: 10, memberTurnedBack: 3, waveStopped: 20, retreatRefund: 0.5 }),
-  /** Open Ground Exposure: open ground is faster but easier to detect, cover slower but safer. */
+  /**
+   * Open Ground Exposure: open ground is faster but easier to detect, cover slower but safer. Terrain Weight: mud and
+   * water, needed only when an edge uses them, slow units by how heavy they are.
+   */
   terrain: z
-    .object({ open: terrainModifiers, cover: terrainModifiers })
+    .object({
+      open: terrainModifiers,
+      cover: terrainModifiers,
+      mud: terrainModifiers.optional(),
+      water: terrainModifiers.optional(),
+    })
     .default({ open: { speed: 1.15, detection: 1.3 }, cover: { speed: 0.85, detection: 0.6 } }),
   /** Concealment Zones and line-of-sight objects (none on open levels like Lion). */
   vision: z.array(VisionAreaSchema).default([]),
@@ -340,6 +368,8 @@ export const UnitSchema = z.object({
   dismantle: z.number().nonnegative().default(0),
   /** Factor on how fast the unit wins hold time at the objective. */
   objectiveRate: z.number().positive().default(1),
+  /** Terrain Weight class; left out, it follows the capacity (1 light, 2 medium, 3 or more heavy). */
+  weight: z.enum(UNIT_WEIGHTS).optional(),
 });
 
 export const DefenseSchema = z.object({

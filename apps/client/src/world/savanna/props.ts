@@ -16,6 +16,8 @@ export const SAVANNA = {
   reed: 0x8a9a4a,
   pebble: 0x8f7f6a,
   mud: 0x7d5f3e,
+  baobab: 0x9a8270,
+  baobabDark: 0x86705f,
 };
 
 /** Woodland palette for levels like Leopard: deeper greens and grey granite. */
@@ -145,6 +147,62 @@ export function acacia(rng: Rng, scale: number): THREE.BufferGeometry {
     );
   }
   return b.build();
+}
+
+/** Baobab: a fat, bottle-shaped grey trunk with short stubby branches and a thin crown on top. */
+export function baobab(rng: Rng, scale: number): THREE.BufferGeometry {
+  const b = new ColorGeometryBuilder();
+  const height = rng.range(5.5, 7) * scale;
+  const girth = rng.range(1.3, 1.7) * scale;
+  b.add(
+    new THREE.CylinderGeometry(girth * 0.62, girth, height, 9),
+    SAVANNA.baobab,
+    transform(0, height / 2, 0),
+  );
+  b.add(
+    new THREE.CylinderGeometry(girth * 0.55, girth * 0.62, height * 0.12, 9),
+    SAVANNA.baobabDark,
+    transform(0, height * 1.04, 0),
+  );
+  const branches = rng.int(5, 7);
+  for (let k = 0; k < branches; k++) {
+    const angle = (k / branches) * Math.PI * 2 + rng.range(0, 0.6);
+    const length = rng.range(1.4, 2.4) * scale;
+    const tilt = rng.range(0.6, 1.05);
+    const baseY = height * 1.05;
+    const midX = Math.sin(angle) * Math.sin(tilt) * (length / 2 + girth * 0.4);
+    const midZ = Math.cos(angle) * Math.sin(tilt) * (length / 2 + girth * 0.4);
+    b.add(
+      new THREE.CylinderGeometry(0.12 * scale, 0.28 * scale, length, 5),
+      SAVANNA.baobabDark,
+      transform(midX, baseY + (Math.cos(tilt) * length) / 2, midZ, [
+        Math.cos(angle) * tilt,
+        0,
+        -Math.sin(angle) * tilt,
+      ]),
+    );
+    b.add(
+      new THREE.IcosahedronGeometry(rng.range(0.7, 1.1) * scale, 0),
+      rng.next() < 0.5 ? SAVANNA.leafA : SAVANNA.leafB,
+      transform(
+        midX * 2,
+        baseY + Math.cos(tilt) * length + 0.2,
+        midZ * 2,
+        [0, rng.range(0, 6), 0],
+        [1.3, 0.5, 1.3],
+      ),
+    );
+  }
+  return b.build();
+}
+
+/** A pole with an orange flag that marks the ends of a narrow crossing (Route Capacity). */
+export function crossingPost(): THREE.BufferGeometry {
+  return new ColorGeometryBuilder()
+    .add(new THREE.CylinderGeometry(0.12, 0.15, 2.6, 6), 0x6b4a2c, transform(0, 1.3, 0))
+    .add(new THREE.BoxGeometry(0.9, 0.5, 0.06), 0xe8742c, transform(0.5, 2.25, 0))
+    .add(new THREE.BoxGeometry(0.9, 0.12, 0.07), 0xf4efe2, transform(0.5, 2.25, 0))
+    .build();
 }
 
 export function bush(rng: Rng): THREE.BufferGeometry {
