@@ -7,6 +7,7 @@ import type { CameraState } from './cameraMath';
 import { EffectsView } from './effectsView';
 import { EntityView, createBlobTexture } from './entityView';
 import { ROUTE_COLORS, createMarkers } from './markers';
+import { edgePath } from '../match/ground';
 import type { Point2 } from './paths';
 import { distanceToPath, sampleAlong, pathLength } from './paths';
 import type { PresetSettings } from './presets';
@@ -147,6 +148,7 @@ export class LevelView {
       flora: 'savanna' as const,
       seed: 1,
       size: 200,
+      rivers: [],
       landmarks: [],
       animals: [],
     };
@@ -212,6 +214,17 @@ export class LevelView {
         keepClear: [...buildZones, ...(objectiveNode ? [{ x: objectiveNode.x, z: objectiveNode.z }] : [])],
         vision: visionShapes(level),
         flora: scene.flora,
+        rivers: scene.rivers.map((river) => ({
+          width: river.width,
+          points: river.points.map(([x, z]) => ({ x, z })),
+        })),
+        crossings: level.map.edges
+          .filter((edge) => edge.capacity !== undefined)
+          .map((edge) => ({ path: edgePath(level, edge), capacity: edge.capacity as number })),
+        fords: level.map.edges
+          .filter((edge) => edge.terrain === 'water')
+          .map((edge) => edgePath(level, edge)),
+        mud: level.map.edges.filter((edge) => edge.terrain === 'mud').map((edge) => edgePath(level, edge)),
       },
       preset,
       anisotropy,

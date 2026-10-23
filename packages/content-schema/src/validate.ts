@@ -100,6 +100,14 @@ export function crossCheck(pack: StagePack): ContentIssue[] {
         if (!nodeIds.has(end)) add(file, `map.edges.${i}`, `unknown node "${end}"`);
       }
       links.add(`${edge.from}>${edge.to}`).add(`${edge.to}>${edge.from}`);
+      // Terrain Weight: heavy ground needs its numbers on the level.
+      if ((edge.terrain === 'mud' || edge.terrain === 'water') && !level.terrain[edge.terrain])
+        add(
+          file,
+          `map.edges.${i}.terrain`,
+          `"${edge.terrain}" is used but the level has no terrain.${edge.terrain}`,
+        );
+      if (edge.label) useText(edge.label, file);
     });
     if (!nodeIds.has(level.objective.nodeId))
       add(file, 'objective.nodeId', `unknown node "${level.objective.nodeId}"`);
@@ -153,8 +161,17 @@ export function crossCheck(pack: StagePack): ContentIssue[] {
     });
     level.hints.forEach((hint, i) => {
       useText(hint.text, file);
-      if (hint.when === 'area' && !level.vision.some((area) => area.kind === hint.area))
-        add(file, `hints.${i}.area`, `no vision area of kind "${hint.area ?? ''}" on this level`);
+      // An area hint names a vision area kind, heavy ground (`mud`, `water`) or a narrow `crossing`.
+      const areaExists =
+        level.vision.some((area) => area.kind === hint.area) ||
+        level.map.edges.some((edge) => edge.terrain === hint.area) ||
+        (hint.area === 'crossing' && level.map.edges.some((edge) => edge.capacity !== undefined));
+      if (hint.when === 'area' && !areaExists)
+        add(
+          file,
+          `hints.${i}.area`,
+          `no vision area, ground or crossing of kind "${hint.area ?? ''}" on this level`,
+        );
     });
     findDuplicates(level.hints.map((hint) => hint.id)).forEach((dup) =>
       add(file, 'hints', `hint "${dup}" is defined twice`),

@@ -1,8 +1,15 @@
 import type { Action, Level, StagePack } from '@gtd/content-schema';
 import type { Translate } from '@gtd/i18n';
-import type { Formation, GroupEntity, MatchSnapshot, WaveGroupOrder } from '@gtd/sim';
+import {
+  unitWeight,
+  type Formation,
+  type GroupEntity,
+  type MatchSnapshot,
+  type WaveGroupOrder,
+} from '@gtd/sim';
 import { Art, initials } from '../art/Art';
 import { formatSeconds } from '../level/MatchControls';
+import { hasHeavyGround, narrowestCrossing, routeNotes } from '../match/ground';
 import { ROUTE_COLORS } from '../world/markers';
 import { extraSlots, orderKey } from './commandSlots';
 import { KeyHint } from './KeyHint';
@@ -87,6 +94,20 @@ export function WaveBuilder({
           : cost > supplies
             ? t('reject.notEnoughResources')
             : null;
+  // Terrain Weight and Route Capacity (Elephant): what the chosen route goes through, and whether this group fits
+  // its narrowest crossing.
+  const weighted = hasHeavyGround(level);
+  const notes = routeNotes(level, draft.routeId, t, stageText);
+  const narrow = narrowestCrossing(level, draft.routeId);
+  const load = (unitOf(draft.unitTypeId)?.capacity ?? 0) * draft.count;
+  const squeeze =
+    narrow && load > narrow.capacity
+      ? t('ground.tooWide', {
+          load,
+          name: narrow.label ? stageText(narrow.label) : t('ground.crossingName'),
+          capacity: narrow.capacity,
+        })
+      : null;
 
   return (
     <section
@@ -141,12 +162,14 @@ export function WaveBuilder({
             return (
               <Tooltip
                 key={unit.id}
-                text={t('hud.unitTip', {
-                  name: stageText(unit.name),
-                  cost: unit.cost,
-                  capacity: unit.capacity,
-                  speed: unit.speed,
-                })}
+                text={
+                  t('hud.unitTip', {
+                    name: stageText(unit.name),
+                    cost: unit.cost,
+                    capacity: unit.capacity,
+                    speed: unit.speed,
+                  }) + (weighted ? ` · ${t(`ground.weight.${unitWeight(unit)}`)}` : '')
+                }
               >
                 <button
                   type="button"
@@ -238,6 +261,11 @@ export function WaveBuilder({
             </button>
           ))}
         </div>
+        {(notes.length > 0 || squeeze) && (
+          <p className={`route-notes ${squeeze ? 'warn' : ''}`} data-testid="route-notes">
+            {squeeze ?? notes.join(' · ')}
+          </p>
+        )}
 
         {!compact && (
           <label className="delay">

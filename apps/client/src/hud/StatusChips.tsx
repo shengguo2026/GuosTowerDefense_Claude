@@ -9,6 +9,7 @@ const SYMBOLS: Record<GroupStatus | DefenseStatus, string> = {
   pinned: '■',
   protected: '⛨',
   disrupted: '⚡',
+  crowded: '⋙',
 };
 
 /** Running status effects as small chips: a symbol and a word, so colour is never the only sign (spec §17). */

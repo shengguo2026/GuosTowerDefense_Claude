@@ -21,7 +21,12 @@ describe('surfaceHeightField', () => {
     };
     const smooth = createHeightField(input);
     const blank = new THREE.Texture();
-    const ground = createGround(input, smooth, { grass: blank, dirt: blank, riverbed: blank }, PRESETS.low);
+    const ground = createGround(
+      input,
+      smooth,
+      { grass: blank, dirt: blank, riverbed: blank, mud: blank },
+      PRESETS.low,
+    );
     const surface = surfaceHeightField(smooth, input.size, PRESETS.low.terrainSegments);
     const ray = new THREE.Raycaster();
     const down = new THREE.Vector3(0, -1, 0);

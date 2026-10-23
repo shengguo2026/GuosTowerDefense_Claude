@@ -1,14 +1,16 @@
 import { Rng } from '@gtd/sim';
 import * as THREE from 'three';
 import { ColorGeometryBuilder, createFlatMaterial, transform } from '../geometryBuilder';
-import { distanceToPath, type Point2 } from '../paths';
+import { distanceToPath, pathLength, sampleAlong, type Point2 } from '../paths';
 import type { PresetSettings } from '../presets';
-import { leopardGeometry, lionGeometry } from './animals';
+import { elephantGeometry, leopardGeometry, lionGeometry } from './animals';
 import {
   SAVANNA,
   acacia,
+  baobab,
   broadleaf,
   bush,
+  crossingPost,
   granite,
   grassTuftGeometry,
   reed,
@@ -17,12 +19,14 @@ import {
   thicket,
 } from './props';
 import {
+  RIVER_WATER_DROP,
   createGround,
   createHeightField,
   surfaceHeightField,
   loadGroundTexture,
   type HeightAt,
   type Landmark,
+  type River,
   type VisionShape,
 } from './terrain';
 
@@ -39,6 +43,14 @@ export interface SavannaInput {
   /** Concealment Zones, drawn as thickets, rock walls, ledges and clearings. */
   vision?: VisionShape[];
   flora?: 'savanna' | 'woodland';
+  /** Rivers across the map (Elephant). */
+  rivers?: River[];
+  /** Narrow crossings (Route Capacity): the path through, and how much it holds. */
+  crossings?: { path: Point2[]; capacity: number }[];
+  /** Fords: route stretches through water. */
+  fords?: Point2[][];
+  /** Route stretches over mud. */
+  mud?: Point2[][];
 }
 
 export interface BuiltWorld {
@@ -60,13 +72,19 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
   const tracks = input.routes.filter((route) => route !== input.streambed);
   const vision = input.vision ?? [];
   const woodland = input.flora === 'woodland';
-  const smoothHeight = createHeightField({
+  const rivers = input.rivers ?? [];
+  const terrainInput = {
     size: input.size,
     landmarks: input.landmarks,
     vision,
+    flora: input.flora,
     streambed: input.streambed,
     tracks,
-  });
+    rivers,
+    fords: input.fords ?? [],
+    mud: input.mud ?? [],
+  };
+  const smoothHeight = createHeightField(terrainInput);
   const heightAt = surfaceHeightField(smoothHeight, input.size, preset.terrainSegments);
   const disposables: { dispose(): void }[] = [];
   const own = <T extends { dispose(): void }>(thing: T): T => {
@@ -78,20 +96,9 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
     grass: own(loadGroundTexture('/art/textures/TEX-GRASS.jpg', 0xd9b56a, anisotropy)),
     dirt: own(loadGroundTexture('/art/textures/TEX-DIRT.jpg', 0xc79a62, anisotropy)),
     riverbed: own(loadGroundTexture('/art/textures/TEX-RIVERBED.jpg', 0xb08a5a, anisotropy)),
+    mud: own(loadGroundTexture('/art/textures/TEX-MUD.jpg', 0x7d5f3e, anisotropy)),
   };
-  const ground = createGround(
-    {
-      size: input.size,
-      landmarks: input.landmarks,
-      vision,
-      flora: input.flora,
-      streambed: input.streambed,
-      tracks,
-    },
-    smoothHeight,
-    textures,
-    preset,
-  );
+  const ground = createGround(terrainInput, smoothHeight, textures, preset);
   own(ground.geometry);
   own(ground.material as THREE.Material);
   root.add(ground);
@@ -103,7 +110,10 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
     for (const l of input.landmarks) {
       if (l.kind === 'waterhole' && Math.hypot(x - l.x, z - l.z) < l.radius + 5) return false;
       if (l.kind === 'kopje' && Math.hypot(x - l.x, z - l.z) < l.radius) return false;
+      if ((l.kind === 'mudFlat' || l.kind === 'baobab') && Math.hypot(x - l.x, z - l.z) < l.radius + 2)
+        return false;
     }
+    for (const river of rivers) if (distanceToPath(x, z, river.points) < river.width / 2 + 2.5) return false;
     // Clearings stay open, ledges bare rock, and the rock walls get their own boulders.
     for (const area of vision) {
       if (area.circle && area.kind !== 'brush') {
@@ -255,6 +265,42 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
       }
     } else if (landmark.kind === 'entrance') {
       props.addColored(entranceGate(), place(landmark.x, landmark.z, landmark.rotation));
+    } else if (landmark.kind === 'baobab') {
+      props.addColored(baobab(rng, 1.15), place(landmark.x, landmark.z, rng.range(0, 6)));
+    } else if (landmark.kind === 'mudFlat') {
+      // Reeds around the edge of the flats.
+      for (let i = 0; i < 70; i++) {
+        const a = rng.range(0, Math.PI * 2);
+        const d = landmark.radius * rng.range(0.8, 1.15);
+        const x = landmark.x + Math.cos(a) * d;
+        const z = landmark.z + Math.sin(a) * d;
+        if (input.routes.some((route) => distanceToPath(x, z, route) < 2.2)) continue;
+        if (input.keepClear.some((spot) => Math.hypot(x - spot.x, z - spot.z) < 3)) continue;
+        props.addColored(reed(rng), place(x, z));
+      }
+    }
+  }
+  // Narrow crossings: a lane of stepping stones between two flag posts, closer together the narrower it is.
+  for (const crossing of input.crossings ?? []) {
+    const path = crossing.path;
+    const length = pathLength(path);
+    const lane = Math.min(3.2, 1.2 + crossing.capacity * 0.18);
+    for (let at = 0; at <= length; at += 1.6) {
+      const p = sampleAlong(path, at);
+      const side = { x: Math.cos(p.heading), z: -Math.sin(p.heading) };
+      for (const s of [-1, 1]) {
+        const x = p.x + side.x * lane * s + rng.range(-0.25, 0.25);
+        const z = p.z + side.z * lane * s + rng.range(-0.25, 0.25);
+        props.addColored(rock(rng, rng.range(0.45, 0.75)), place(x, z));
+      }
+    }
+    for (const end of [0, length]) {
+      const p = sampleAlong(path, end);
+      for (const s of [-1, 1]) {
+        const x = p.x + Math.cos(p.heading) * (lane + 0.6) * s;
+        const z = p.z - Math.sin(p.heading) * (lane + 0.6) * s;
+        props.addColored(crossingPost(), place(x, z, p.heading));
+      }
     }
   }
 
@@ -291,6 +337,33 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
       const x = hole.x + Math.cos(a) * d;
       const z = hole.z + Math.sin(a) * d;
       reeds.addColored(reed(rng), place(x, z));
+    }
+    const reedMesh = new THREE.Mesh(own(reeds.build()), propMaterial);
+    reedMesh.castShadow = true;
+    root.add(reedMesh);
+  }
+
+  // ---- Rivers ----
+  for (const river of rivers) {
+    const material = own(createRiverMaterial());
+    waterMaterials.push(material);
+    const water = new THREE.Mesh(own(riverGeometry(river, smoothHeight)), material);
+    water.name = 'river';
+    water.renderOrder = 1;
+    root.add(water);
+    // Reeds along both banks, away from the routes.
+    const reeds = new ColorGeometryBuilder();
+    const length = pathLength(river.points);
+    for (let at = 0; at < length; at += 0.9) {
+      const p = sampleAlong(river.points, at);
+      const s = rng.next() < 0.5 ? -1 : 1;
+      const d = river.width / 2 + rng.range(0.2, 1.6);
+      const x = p.x + Math.cos(p.heading) * d * s;
+      const z = p.z - Math.sin(p.heading) * d * s;
+      if (Math.abs(x) > half * 0.9 || Math.abs(z) > half * 0.9) continue;
+      if (input.routes.some((route) => distanceToPath(x, z, route) < 3)) continue;
+      if (input.keepClear.some((spot) => Math.hypot(x - spot.x, z - spot.z) < 3)) continue;
+      if (rng.next() < 0.55) reeds.addColored(reed(rng), place(x, z));
     }
     const reedMesh = new THREE.Mesh(own(reeds.build()), propMaterial);
     reedMesh.castShadow = true;
@@ -358,6 +431,8 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
       geometry = lionGeometry(animal.kind === 'lion', lying);
     // The leopard is drawn a little larger than life so it reads on its rock from the usual camera height.
     else if (animal.kind === 'leopard') geometry = leopardGeometry(lying).scale(1.6, 1.6, 1.6);
+    else if (animal.kind === 'elephant' || animal.kind === 'elephantCalf')
+      geometry = elephantGeometry(animal.kind === 'elephantCalf');
     else continue;
     const mesh = new THREE.Mesh(own(geometry), propMaterial);
     // An animal on a kopje lies on the flat rock at its top.
@@ -401,6 +476,79 @@ function entranceGate(): THREE.BufferGeometry {
     .add(new THREE.BoxGeometry(2.4, 0.8, 0.12), 0xe9dcb8, transform(0, 3.1, 0.1))
     .add(new THREE.PlaneGeometry(1, 0.6), 0xe8742c, transform(3.55, 3.4, 0))
     .build();
+}
+
+/**
+ * The water surface of a river: a ribbon along its centre line, a little wider than the channel so it meets the banks,
+ * lying a fixed drop below the bank height at the centre line.
+ */
+function riverGeometry(river: River, bankHeight: HeightAt): THREE.BufferGeometry {
+  const length = pathLength(river.points);
+  const steps = Math.max(2, Math.ceil(length / 2));
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+  const reach = river.width / 2 + 0.9;
+  for (let i = 0; i <= steps; i++) {
+    const p = sampleAlong(river.points, (i / steps) * length);
+    // The bank height without the channel: the average of both banks just outside it.
+    const nx = Math.cos(p.heading);
+    const nz = -Math.sin(p.heading);
+    const out = river.width / 2 + 2.2;
+    const bank = Math.min(
+      bankHeight(p.x + nx * out, p.z + nz * out),
+      bankHeight(p.x - nx * out, p.z - nz * out),
+    );
+    const y = bank - RIVER_WATER_DROP;
+    for (const s of [-1, 1]) {
+      positions.push(p.x + nx * reach * s, y, p.z + nz * reach * s);
+      uvs.push(s < 0 ? 0 : 1, (i / steps) * (length / 8));
+    }
+    if (i > 0) {
+      const a = (i - 1) * 2;
+      indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+/** Flowing river water: deeper blue in the middle, lighter at the banks, with ripples drifting downstream. */
+function createRiverMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      time: { value: 0 },
+      deep: { value: new THREE.Color(0x2a6f86) },
+      shallow: { value: new THREE.Color(0x6fb2bd) },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform float time;
+      uniform vec3 deep;
+      uniform vec3 shallow;
+      varying vec2 vUv;
+      void main() {
+        float edge = abs(vUv.x - 0.5) * 2.0;
+        vec3 color = mix(deep, shallow, smoothstep(0.35, 1.0, edge));
+        float ripple = sin(vUv.y * 18.0 - time * 1.4 + sin(vUv.x * 9.0) * 1.5) * 0.5 + 0.5;
+        color += vec3(0.05) * ripple;
+        float glint = step(0.986, fract(sin(dot(floor(vec2(vUv.x * 14.0, vUv.y * 30.0)), vec2(12.9898, 78.233)) + floor(time * 2.0)) * 43758.5453));
+        color += glint * 0.22;
+        gl_FragColor = vec4(color, mix(0.9, 0.55, smoothstep(0.75, 1.0, edge)));
+        #include <colorspace_fragment>
+      }`,
+  });
 }
 
 function createWaterMaterial(): THREE.ShaderMaterial {

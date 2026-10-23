@@ -34,6 +34,7 @@ import {
 } from './constants';
 import { EntityStore } from './entityStore';
 import { VisionField } from './vision';
+import { CROWD_PRESSURE_TAKEN, CROWD_SPLASH, crowdSpeed, crowding, groundOf, groundSpeed } from './ground';
 import { EventLog } from './eventLog';
 import {
   RouteGraph,
@@ -85,6 +86,10 @@ interface GroupInternals {
   /** A hold or reroute aimed at one node ahead rather than the next junction or shared node. */
   holdNodeId: string | null;
   switchNodeId: string | null;
+  /** Route Capacity: the crossing the group is on or queues in front of, and how packed it is (load / capacity). */
+  crossing: string | null;
+  crowd: number;
+  queued: boolean;
 }
 
 interface PatrolInternals {
@@ -203,6 +208,8 @@ export class Match {
   private readonly sabotaged = new Set<number>();
   private readonly closures = new Map<string, number>();
   private readonly routePoints = new Map<string, Point[]>();
+  /** Deployment capacity on each narrow crossing this tick (Route Capacity), by edge. */
+  private crossingLoad = new Map<string, number>();
   private zones: Zone[] = [];
   private readonly stats: SideStats = {
     attacker: {
@@ -640,6 +647,9 @@ export class Match {
       blockedBy: null,
       holdNodeId: null,
       switchNodeId: null,
+      crossing: null,
+      crowd: 0,
+      queued: false,
     });
     this.usedRoutes.add(routeId);
     this.stats.attacker.membersLaunched += count;
@@ -1279,18 +1289,17 @@ export class Match {
 
   private moveGroups(): void {
     const closed = this.blockers();
+    this.measureCrossings();
     for (const group of this.groups()) {
       if (group.state !== 'moving' && group.state !== 'retreating') continue;
       if (this.status.active(group.id, 'pinned', this.tickCount)) continue;
       const data = this.data(group);
-      const legs = this.graph.routeLegs(group.routeId);
-      const terrain =
-        this.setup.level.terrain[legs[Math.min(group.leg, legs.length - 1)]?.terrain ?? 'cover'];
       let speed =
         data.unit.speed *
         data.speedVariation *
-        FORMATIONS[group.formation].speed *
-        terrain.speed *
+        FORMATIONS[this.formationOf(group)].speed *
+        groundSpeed(this.groundUnder(group), data.unit) *
+        crowdSpeed(data.queued ? 0 : data.crowd) *
         (1 - this.slowOf(group));
       speed *= 1 + this.groupBoost(group, 'speed');
       speed *= 1 + this.passive('attacker', 'boost', 'speed', group);
@@ -1298,6 +1307,55 @@ export class Match {
       if (group.state === 'retreating') this.walkBack(group, step);
       else this.walkForward(group, step, closed);
       if (this.entities.get(group.id)) this.placeGroup(group);
+    }
+  }
+
+  /** The ground of the leg a group is on. */
+  private groundUnder(group: GroupEntity) {
+    const legs = this.graph.routeLegs(group.routeId);
+    return groundOf(this.setup.level, legs[Math.min(group.leg, legs.length - 1)]?.terrain ?? 'cover');
+  }
+
+  /** The leg a group is on, when that leg is a narrow crossing. */
+  private crossingLeg(group: GroupEntity): Leg | null {
+    const leg = this.graph.routeLegs(group.routeId)[group.leg];
+    return leg?.capacity !== undefined ? leg : null;
+  }
+
+  /** On a narrow crossing every group moves as a column (Route Capacity: no room to spread out). */
+  private formationOf(group: GroupEntity): GroupEntity['formation'] {
+    const data = this.data(group);
+    return data.crossing !== null && !data.queued ? 'column' : group.formation;
+  }
+
+  private loadOf(group: GroupEntity): number {
+    return group.count * this.data(group).unit.capacity;
+  }
+
+  /**
+   * Route Capacity: what stands on each narrow crossing this tick. A group is on a crossing once it has stepped onto
+   * it; a group at the near end of one waits there while the crossing is full (see `walkForward`).
+   */
+  private measureCrossings(): void {
+    this.crossingLoad = new Map();
+    const onField = this.groups().filter((g) => ON_FIELD.has(g.state) || g.state === 'retreating');
+    for (const group of onField) {
+      const leg = this.crossingLeg(group);
+      if (!leg || (group.legDistance <= 0 && group.state !== 'retreating')) continue;
+      this.crossingLoad.set(leg.edgeKey, (this.crossingLoad.get(leg.edgeKey) ?? 0) + this.loadOf(group));
+    }
+    for (const group of this.groups()) {
+      const data = this.data(group);
+      const leg = ON_FIELD.has(group.state) || group.state === 'retreating' ? this.crossingLeg(group) : null;
+      data.crossing = leg?.edgeKey ?? null;
+      data.queued = false;
+      data.crowd = leg ? crowding(this.crossingLoad.get(leg.edgeKey) ?? 0, leg.capacity as number) : 0;
+      // Waiting at the near end: packed with what is on the crossing, but not on it yet.
+      if (leg && group.legDistance <= 0 && group.state !== 'retreating') {
+        const load = this.crossingLoad.get(leg.edgeKey) ?? 0;
+        data.queued = load > 0 && load + this.loadOf(group) > (leg.capacity as number);
+        if (!data.queued) data.crowd = crowding(load + this.loadOf(group), leg.capacity as number);
+      }
     }
   }
 
@@ -1317,6 +1375,18 @@ export class Match {
       const legs = this.graph.routeLegs(group.routeId);
       const leg = legs[group.leg];
       if (!leg) return;
+      // Route Capacity: a group steps onto a narrow crossing only when it is empty or the group still fits.
+      if (leg.capacity !== undefined && group.legDistance <= 0) {
+        const load = this.crossingLoad.get(leg.edgeKey) ?? 0;
+        const data = this.data(group);
+        if (load > 0 && load + this.loadOf(group) > leg.capacity) {
+          data.crossing = leg.edgeKey;
+          data.queued = true;
+          data.crowd = crowding(load + this.loadOf(group), leg.capacity);
+          return;
+        }
+        this.crossingLoad.set(leg.edgeKey, load + this.loadOf(group));
+      }
       const blocked = closed.has(leg.to);
       const limit = blocked ? Math.max(group.legDistance, leg.length - BLOCK_STANDOFF) : leg.length;
       if (group.legDistance + remaining < limit) {
@@ -1558,10 +1628,7 @@ export class Match {
     for (const group of this.groups()) {
       if (group.state === 'waiting') continue;
       const data = this.data(group);
-      const legs = this.graph.routeLegs(group.routeId);
-      const terrain =
-        this.setup.level.terrain[legs[Math.min(group.leg, legs.length - 1)]?.terrain ?? 'cover'];
-      const plain = FORMATIONS[group.formation].detection * terrain.detection;
+      const plain = FORMATIONS[this.formationOf(group)].detection * this.groundUnder(group).detection;
       const hidden =
         VISIBILITY_FACTORS[data.unit.visibility] *
         (1 - this.status.magnitude(group.id, 'concealed', this.tickCount)) *
@@ -1660,10 +1727,31 @@ export class Match {
       let pressure = type.pressurePerSecond * (1 + UPGRADE_PRESSURE_BONUS * (defense.level - 1));
       pressure *= 1 + this.status.magnitude(defense.id, 'boost:pressure', this.tickCount);
       if (defense.mobile) pressure *= 1 + this.status.magnitude(defense.id, 'boost:plain', this.tickCount);
-      const protect = this.status.magnitude(target.id, 'protected', this.tickCount);
-      target.pressure += pressure * FORMATIONS[target.formation].pressureTaken * (1 - protect) * TICK_SECONDS;
-      this.turnBackMembers(target, defense);
+      // Packed on a full crossing, the groups next to the target take part of it too (Route Capacity).
+      const crossing = this.packed(target) ? this.data(target).crossing : null;
+      this.press(target, pressure, defense);
+      if (crossing === null) continue;
+      for (const other of this.groups()) {
+        if (other === target || !this.entities.get(other.id) || !ON_FIELD.has(other.state)) continue;
+        if (other.detection === 'unknown' || this.data(other).crossing !== crossing || !this.packed(other))
+          continue;
+        this.press(other, pressure * CROWD_SPLASH, defense);
+      }
     }
+  }
+
+  /** A group squeezed on (or queued at) a crossing that is over its capacity. */
+  private packed(group: GroupEntity): boolean {
+    const data = this.data(group);
+    return data.crossing !== null && (data.queued || data.crowd > 1);
+  }
+
+  private press(target: GroupEntity, pressure: number, defense: DefenseEntity): void {
+    const protect = this.status.magnitude(target.id, 'protected', this.tickCount);
+    const crowded = this.packed(target) ? 1 + CROWD_PRESSURE_TAKEN : 1;
+    target.pressure +=
+      pressure * FORMATIONS[this.formationOf(target)].pressureTaken * crowded * (1 - protect) * TICK_SECONDS;
+    this.turnBackMembers(target, defense);
   }
 
   private pickTarget(defense: DefenseEntity, candidates: GroupEntity[]): GroupEntity | undefined {
@@ -1857,6 +1945,7 @@ export class Match {
       if (this.status.active(group.id, 'revealed', tick)) statuses.push('revealed');
       if (this.status.active(group.id, 'pinned', tick)) statuses.push('pinned');
       if (this.status.active(group.id, 'protected', tick)) statuses.push('protected');
+      if (this.entities.get(group.id) && this.packed(group)) statuses.push('crowded');
       group.statuses = statuses;
     }
     for (const defense of this.defenses()) {
@@ -1891,7 +1980,9 @@ export class Match {
             pressure: 0,
             boosted: false,
             // The Defender sees what its own effects do, not the Attacker's.
-            statuses: entity.statuses.filter((s) => s === 'slowed' || s === 'revealed' || s === 'pinned'),
+            statuses: entity.statuses.filter(
+              (s) => s === 'slowed' || s === 'revealed' || s === 'pinned' || s === 'crowded',
+            ),
           });
         }
       } else if (viewer !== 'attacker') {

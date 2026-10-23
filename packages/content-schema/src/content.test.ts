@@ -84,6 +84,36 @@ describe('stage pack loader', () => {
     expect(leopard?.hints.length).toBeGreaterThan(3);
   });
 
+  it('loads Elephant after Leopard with heavy ground, two fords and its hints', async () => {
+    const result = await loadStageDirectory(join(STAGES, 'stage-01-big-five'));
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const elephant = result.pack.levels.find((level) => level.id === 'elephant');
+    expect(elephant?.unlockedBy).toBe('leopard');
+    expect(elephant?.routes.map((route) => route.id)).toEqual(['dry-ridge', 'mud-flats', 'river-crossing']);
+    expect(elephant?.map.edges.filter((e) => e.capacity !== undefined).map((e) => e.capacity)).toEqual([
+      12, 6,
+    ]);
+    expect(elephant?.terrain.mud?.weight?.heavy).toBeLessThan(1);
+    expect(elephant?.scene?.rivers).toHaveLength(1);
+    const setup = createMatchSetup(result.pack, {
+      levelId: 'elephant',
+      attackerProfileId: 'explorer',
+      defenderProfileId: 'ranger',
+      seed: 1,
+    });
+    expect(setup.level.edges.find((e) => e.label === 'crossing.elephant-ford')?.capacity).toBe(6);
+    expect(setup.level.terrain.water?.weight?.heavy).toBeGreaterThan(1);
+    expect(elephant?.hints.map((hint) => hint.area).filter(Boolean)).toEqual(['mud', 'crossing', 'crossing']);
+  });
+
+  it('reports heavy ground a level has no numbers for', async () => {
+    const result = await loadWithChange('levels/canyon.json', (json) => {
+      (json.map as { edges: { terrain?: string }[] }).edges[0]!.terrain = 'mud';
+    });
+    expect(messages(result).join('\n')).toContain('"mud" is used but the level has no terrain.mud');
+  });
+
   it('reports a rock wall across a route, a node inside one and an area hint without such an area', async () => {
     const result = await loadWithChange('levels/canyon.json', (json) => {
       const vision = json.vision as { id: string; wall?: { points: number[][] } }[];
@@ -102,7 +132,7 @@ describe('stage pack loader', () => {
     const found = messages(result).join('\n');
     expect(found).toContain('blocker "canyon-wall" stands across route "narrows-west"');
     expect(found).toContain('node "narrows" lies inside the blocker "pillar"');
-    expect(found).toContain('no vision area of kind "cave"');
+    expect(found).toContain('no vision area, ground or crossing of kind "cave"');
   });
 
   it('loads the test stage with its own level and profile counts', async () => {

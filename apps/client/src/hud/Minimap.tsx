@@ -2,6 +2,7 @@ import type { Level } from '@gtd/content-schema';
 import type { Translate } from '@gtd/i18n';
 import type { MatchSnapshot } from '@gtd/sim';
 import { useMemo, type PointerEvent } from 'react';
+import { edgePath } from '../match/ground';
 import { routeColor } from './AttackerPanels';
 
 interface Props {
@@ -28,6 +29,11 @@ export function Minimap({ level, snapshot, camera, selectedId, highContrast, t, 
     const midZ = (Math.max(...zs) + Math.min(...zs)) / 2;
     return { minX: midX - span / 2, minZ: midZ - span / 2, span };
   }, [level]);
+  // Narrow crossings (Route Capacity) are marked across the route lines.
+  const crossings = useMemo(
+    () => level.map.edges.filter((e) => e.capacity !== undefined).map((e) => edgePath(level, e)),
+    [level],
+  );
   const px = (x: number) => ((x - bounds.minX) / bounds.span) * SIZE;
   const pz = (z: number) => ((z - bounds.minZ) / bounds.span) * SIZE;
 
@@ -48,6 +54,17 @@ export function Minimap({ level, snapshot, camera, selectedId, highContrast, t, 
         data-testid="minimap"
       >
         <rect width={SIZE} height={SIZE} className="minimap-ground" />
+        {level.scene?.rivers.map((river, i) => (
+          <polyline
+            key={`river-${i}`}
+            points={river.points.map(([x, z]) => `${px(x)},${pz(z)}`).join(' ')}
+            className="minimap-river"
+            fill="none"
+            strokeWidth={(river.width / bounds.span) * SIZE + 1}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ))}
         {level.vision.map((area) =>
           area.circle ? (
             <circle
@@ -83,6 +100,16 @@ export function Minimap({ level, snapshot, camera, selectedId, highContrast, t, 
             strokeLinejoin="round"
             strokeLinecap="round"
             opacity={0.85}
+          />
+        ))}
+        {crossings.map((crossing, i) => (
+          <polyline
+            key={`crossing-${i}`}
+            points={crossing.map((p) => `${px(p.x)},${pz(p.z)}`).join(' ')}
+            className="minimap-crossing"
+            fill="none"
+            strokeWidth={highContrast ? 6 : 5}
+            strokeLinecap="butt"
           />
         ))}
         {snapshot && (

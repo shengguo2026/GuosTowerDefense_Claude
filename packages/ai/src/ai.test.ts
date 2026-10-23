@@ -57,6 +57,59 @@ describe('level model', () => {
   });
 });
 
+describe('level model on heavy ground and narrow crossings (Elephant)', () => {
+  /** The fixture with mud on the north route and a narrow crossing (room for 4) on its last stretch. */
+  function elephantLike(): MatchSetup {
+    const setup = fixtureSetup();
+    setup.level.edges = setup.level.edges.map((e) =>
+      e.from === 'fork' && e.to === 'north'
+        ? { ...e, terrain: 'mud' }
+        : e.from === 'north' && e.to === 'goal'
+          ? { ...e, capacity: 4 }
+          : e,
+    );
+    setup.level.terrain = { ...setup.level.terrain, mud: { speed: 1, detection: 1, weight: { heavy: 0.5 } } };
+    return setup;
+  }
+
+  it('knows the narrowest crossing of each route', () => {
+    const model = new LevelModel(elephantLike());
+    expect(model.route('north').narrowest).toBe(4);
+    expect(model.route('south').narrowest).toBeNull();
+  });
+
+  it('expects heavy units to take longer over mud, and wide groups to take longer over a crossing', () => {
+    const setup = elephantLike();
+    const model = new LevelModel(setup);
+    const walker = setup.attacker.units[0]!;
+    const heavy = { ...walker, id: 'truck', capacity: 3 };
+    const light = { ...walker, id: 'runner', capacity: 1 };
+    const north = model.route('north');
+    // Same speed, but the heavy one bogs down in the mud.
+    expect(model.travelTime(north, heavy, 'column', 1)).toBeGreaterThan(
+      model.travelTime(north, light, 'column', 1),
+    );
+    // Ten members do not fit a crossing for four: they squeeze through more slowly.
+    expect(model.travelTime(north, light, 'column', 10)).toBeGreaterThan(
+      model.travelTime(north, light, 'column', 4),
+    );
+    expect(model.crossingSeconds(north, light)).toBeGreaterThan(0);
+    expect(model.crossingSeconds(model.route('south'), light)).toBe(0);
+  });
+
+  it('plays whole matches on such a level with only accepted commands', () => {
+    for (const difficulty of DIFFICULTIES) {
+      const match = play(
+        elephantLike(),
+        createAi('attacker', difficulty, 3),
+        createAi('defender', difficulty, 4),
+      );
+      expect(match.isOver).toBe(true);
+      expect(match.events.all().filter((e) => e.type === 'commandRejected')).toEqual([]);
+    }
+  });
+});
+
 describe('AI players', () => {
   it.each(DIFFICULTIES)('play a whole match at %s with only accepted commands', (difficulty) => {
     const setup = fixtureSetup();

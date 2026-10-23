@@ -2,8 +2,14 @@ import type { VisionArea } from './vision';
 
 export type Side = 'attacker' | 'defender';
 
-/** Open ground is faster but easier to detect; cover is slower but safer (Open Ground Exposure, Lion). */
-export type Terrain = 'open' | 'cover';
+/**
+ * Open ground is faster but easier to detect; cover is slower but safer (Open Ground Exposure, Lion). Mud and water
+ * are heavy ground (Terrain Weight, Elephant): how fast a group gets through depends on how heavy its units are.
+ */
+export type Terrain = 'open' | 'cover' | 'mud' | 'water';
+
+/** How heavy a unit is on the ground (Terrain Weight): people on foot are light, vehicles heavy. */
+export type UnitWeight = 'light' | 'medium' | 'heavy';
 
 export type NodeKind = 'spawn' | 'junction' | 'checkpoint' | 'connector' | 'objective' | 'buildZone';
 
@@ -22,6 +28,12 @@ export interface MapEdge {
   /** Bend points between the two nodes, so paths can curve around terrain. */
   via?: [number, number][];
   terrain?: Terrain;
+  /**
+   * Route Capacity: a narrow stretch (a ford, a crossing) holds this much deployment capacity at once. Groups queue in
+   * front of it while it is full, squeeze through slower when one group alone is wider, move as a column on it, and
+   * take more pressure while packed together.
+   */
+  capacity?: number;
 }
 
 export interface Route {
@@ -35,6 +47,8 @@ export interface TerrainModifiers {
   speed: number;
   /** Factor on the distance at which defenders detect a group. */
   detection: number;
+  /** Terrain Weight: an extra speed factor by how heavy the units are (mud bogs vehicles down, a ford slows walkers). */
+  weight?: Partial<Record<UnitWeight, number>>;
 }
 
 export interface EconomyBonuses {
@@ -67,7 +81,8 @@ export interface SimLevel {
   startingPoints: Record<Side, number>;
   pointsPerSecond: Record<Side, number>;
   bonuses: EconomyBonuses;
-  terrain: Record<Terrain, TerrainModifiers>;
+  /** Open ground and cover on every level; mud and water only where the level has them. */
+  terrain: Record<'open' | 'cover', TerrainModifiers> & Partial<Record<'mud' | 'water', TerrainModifiers>>;
   /** Concealment Zones and environment objects that shape line of sight (none on open levels). */
   vision?: VisionArea[];
 }
@@ -91,6 +106,8 @@ export interface SimUnitType {
   dismantle: number;
   /** Factor on how fast the group wins hold time at the objective. */
   objectiveRate: number;
+  /** Terrain Weight class; left out, it follows the unit's capacity (1 light, 2 medium, 3 or more heavy). */
+  weight?: UnitWeight;
 }
 
 /** Where an asset may be placed: build zones, nodes on a route (not spawn or objective for structures), or either. */
@@ -252,7 +269,9 @@ export type GroupState =
   'waiting' | 'moving' | 'holding' | 'blocked' | 'dismantling' | 'atObjective' | 'retreating';
 
 /** Status effects (spec §8). Every status is shown with an icon and a word, never colour alone. */
-export type GroupStatus = 'slowed' | 'boosted' | 'concealed' | 'revealed' | 'pinned' | 'protected';
+/** `crowded`: packed on (or queued in front of) a narrow crossing that is full (Route Capacity). */
+export type GroupStatus =
+  'slowed' | 'boosted' | 'concealed' | 'revealed' | 'pinned' | 'protected' | 'crowded';
 export type DefenseStatus = 'disrupted' | 'boosted' | 'protected' | 'revealed' | 'concealed';
 
 export interface GroupEntity {

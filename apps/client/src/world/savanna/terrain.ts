@@ -29,7 +29,24 @@ export interface TerrainInput {
   streambed: Point2[] | null;
   /** Other route paths, drawn as worn dirt tracks. */
   tracks: Point2[][];
+  /** Rivers carved into the ground as channels (the water surface is drawn by the world builder). */
+  rivers?: River[];
+  /** Fords: where a route walks through a river, the channel is shallow enough to wade. */
+  fords?: Point2[][];
+  /** Route stretches over mud (Terrain Weight), drawn with the mud texture. */
+  mud?: Point2[][];
 }
+
+export interface River {
+  points: Point2[];
+  width: number;
+}
+
+/** How deep a river channel is cut below its banks, in the middle and at a ford. */
+const RIVER_DEPTH = 1.5;
+const FORD_DEPTH = 0.75;
+/** The water surface lies this far below the bank at the river's centre line. */
+export const RIVER_WATER_DROP = 0.5;
 
 export type HeightAt = (x: number, z: number) => number;
 
@@ -44,6 +61,7 @@ export function createHeightField(input: TerrainInput): HeightAt {
   const kopjes = input.landmarks.filter((l) => l.kind === 'kopje');
   const ledges = (input.vision ?? []).filter((v) => v.kind === 'ledge' && v.circle).map((v) => v.circle!);
   const walls = (input.vision ?? []).filter((v) => v.kind === 'rockWall' && v.wall).map((v) => v.wall!);
+  const mudFlats = input.landmarks.filter((l) => l.kind === 'mudFlat');
   const rimStart = input.size * 0.3;
   return (x, z) => {
     let h = rolling(x, z) * 0.9;
@@ -71,6 +89,13 @@ export function createHeightField(input: TerrainInput): HeightAt {
       const d = Math.hypot(x - hole.x, z - hole.z);
       if (d < hole.radius + 2) h -= (hole.radius + 2 - d) * 0.22;
     }
+    // Mud flats lie a little lower and flatter than the land around them.
+    for (const flat of mudFlats) {
+      const d = Math.hypot(x - flat.x, z - flat.z);
+      const t = smooth((flat.radius + 3 - d) / 4);
+      h = h * (1 - 0.5 * t) - 0.35 * t;
+    }
+    h -= riverCut(input, x, z);
     // The land rises towards the edges, framing the play area.
     const edge = Math.max(Math.abs(x), Math.abs(z)) - rimStart;
     if (edge > 0) h += edge * edge * 0.006;
@@ -82,6 +107,7 @@ export interface GroundTextures {
   grass: THREE.Texture;
   dirt: THREE.Texture;
   riverbed: THREE.Texture;
+  mud: THREE.Texture;
 }
 
 const GRASS_TINT = new THREE.Color(1, 1, 1);
@@ -161,8 +187,9 @@ export function createGround(
 
   const positions = geometry.attributes.position as THREE.BufferAttribute;
   const colors = new Float32Array(positions.count * 3);
-  const splat = new Float32Array(positions.count * 3);
+  const splat = new Float32Array(positions.count * 4);
   const waterholes = input.landmarks.filter((l) => l.kind === 'waterhole');
+  const mudFlats = input.landmarks.filter((l) => l.kind === 'mudFlat');
   const tint = new THREE.Color();
   for (let i = 0; i < positions.count; i += 3) {
     const x = (positions.getX(i) + positions.getX(i + 1) + positions.getX(i + 2)) / 3;
@@ -189,17 +216,26 @@ export function createGround(
 
     const track = Math.min(...input.tracks.map((p) => distanceToPath(x, z, p)), Infinity);
     const stream = input.streambed ? distanceToPath(x, z, input.streambed) : Infinity;
-    const dirt = clamp01((3 - track) / 1.3);
+    // Mud: along routes over mud, on the mud flats (with a ragged edge) and on river banks.
+    const mudTrack = Math.min(...(input.mud ?? []).map((p) => distanceToPath(x, z, p)), Infinity);
+    let mud = clamp01((5.5 - mudTrack) / 2.5);
+    for (const flat of mudFlats) {
+      const edge = flat.radius * (0.85 + rolling(x * 1.7, z * 1.9) * 0.2);
+      mud = Math.max(mud, clamp01((edge - Math.hypot(x - flat.x, z - flat.z)) / 3));
+    }
+    for (const river of input.rivers ?? [])
+      mud = Math.max(mud, clamp01((river.width / 2 + 3 - distanceToPath(x, z, river.points)) / 2.5) * 0.8);
+    const dirt = clamp01((3 - track) / 1.3) * (1 - mud);
     const river = clamp01((3.8 - stream) / 1.5);
-    const grass = Math.max(0, 1 - dirt - river);
-    const sum = grass + dirt + river;
+    const grass = Math.max(0, 1 - dirt - river - mud);
+    const sum = grass + dirt + river + mud;
     for (let k = 0; k < 3; k++) {
       colors.set([tint.r, tint.g, tint.b], (i + k) * 3);
-      splat.set([grass / sum, dirt / sum, river / sum], (i + k) * 3);
+      splat.set([grass / sum, dirt / sum, river / sum, mud / sum], (i + k) * 4);
     }
   }
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geometry.setAttribute('splat', new THREE.BufferAttribute(splat, 3));
+  geometry.setAttribute('splat', new THREE.BufferAttribute(splat, 4));
   geometry.computeVertexNormals();
 
   const material = new THREE.MeshStandardMaterial({
@@ -212,10 +248,11 @@ export function createGround(
     shader.uniforms.tGrass = { value: textures.grass };
     shader.uniforms.tDirt = { value: textures.dirt };
     shader.uniforms.tRiver = { value: textures.riverbed };
+    shader.uniforms.tMud = { value: textures.mud };
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        '#include <common>\nattribute vec3 splat;\nvarying vec3 vSplat;\nvarying vec2 vGroundUv;',
+        '#include <common>\nattribute vec4 splat;\nvarying vec4 vSplat;\nvarying vec2 vGroundUv;',
       )
       .replace(
         '#include <begin_vertex>',
@@ -224,7 +261,7 @@ export function createGround(
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
-        '#include <common>\nuniform sampler2D tGrass;\nuniform sampler2D tDirt;\nuniform sampler2D tRiver;\nvarying vec3 vSplat;\nvarying vec2 vGroundUv;',
+        '#include <common>\nuniform sampler2D tGrass;\nuniform sampler2D tDirt;\nuniform sampler2D tRiver;\nuniform sampler2D tMud;\nvarying vec4 vSplat;\nvarying vec2 vGroundUv;',
       )
       .replace(
         '#include <color_fragment>',
@@ -234,7 +271,8 @@ export function createGround(
         vec2 uvB = mat2(0.8, -0.6, 0.6, 0.8) * vGroundUv / 37.0;
         vec3 ground = vSplat.x * mix(texture2D(tGrass, uvA).rgb, texture2D(tGrass, uvB).rgb, 0.45)
                     + vSplat.y * mix(texture2D(tDirt, uvA).rgb, texture2D(tDirt, uvB).rgb, 0.35)
-                    + vSplat.z * texture2D(tRiver, uvA * 1.3).rgb * vec3(0.74, 0.6, 0.47);
+                    + vSplat.z * texture2D(tRiver, uvA * 1.3).rgb * vec3(0.74, 0.6, 0.47)
+                    + vSplat.w * mix(texture2D(tMud, uvA * 1.6).rgb, texture2D(tMud, uvB).rgb, 0.3) * vec3(0.9, 0.82, 0.74);
         diffuseColor.rgb *= ground * 1.08;`,
       );
   };
@@ -242,6 +280,23 @@ export function createGround(
   mesh.receiveShadow = true;
   mesh.name = 'ground';
   return mesh;
+}
+
+/**
+ * How deep the rivers cut the ground at a point: a channel across the river's width with sloping banks, shallow where
+ * a route fords it.
+ */
+export function riverCut(input: Pick<TerrainInput, 'rivers' | 'fords'>, x: number, z: number): number {
+  let cut = 0;
+  for (const river of input.rivers ?? []) {
+    const reach = river.width / 2 + 1.8;
+    const d = distanceToPath(x, z, river.points);
+    if (d >= reach) continue;
+    const ford = Math.min(...(input.fords ?? []).map((path) => distanceToPath(x, z, path)), Infinity);
+    const depth = RIVER_DEPTH + (FORD_DEPTH - RIVER_DEPTH) * smooth((4.5 - ford) / 2.5);
+    cut = Math.max(cut, depth * smooth(1 - d / reach));
+  }
+  return cut;
 }
 
 /** Repeatable pseudo-random value in [-1, 1] for a position. */

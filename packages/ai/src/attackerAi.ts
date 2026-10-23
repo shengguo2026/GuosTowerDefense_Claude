@@ -1,5 +1,7 @@
 import {
   FORMATIONS,
+  MAX_GROUPS_PER_WAVE,
+  MAX_LAUNCH_DELAY_SECONDS,
   TICK_RATE,
   distance,
   type Command,
@@ -32,6 +34,11 @@ interface WavePlan {
   losses: number;
   /** Seconds of objective hold the plan is expected to win per capacity it uses. */
   value: number;
+  /**
+   * Route Capacity: split the wave into groups of at most this many members, launched one after another, so each fits
+   * the narrowest crossing on the route instead of jamming it.
+   */
+  groupSize?: number;
 }
 
 /** How long a remembered patrol is assumed to still be where it was seen. */
@@ -58,6 +65,8 @@ export class AttackerAi extends AiBase {
   private readonly patrols = new Map<number, KnownDefense & { seenTick: number }>();
   private readonly scouted = new Map<string, number>();
   private patrolsSeen = 0;
+  /** Points already promised to abilities in this round of thinking. */
+  private pointsSpent = 0;
   /** This match's plan of attack: one massed wave, or earlier and smaller waves that keep up the pressure. */
   private readonly style: { name: string; share: number; patience: number };
 
@@ -79,8 +88,11 @@ export class AttackerAi extends AiBase {
     const known = this.perceive(snapshot);
     const commands: Command[] = [];
     const groups = snapshot.entities.filter((e): e is GroupEntity => e.kind === 'group');
+    this.pointsSpent = 0;
     commands.push(...this.manageGroups(snapshot, groups, known));
     commands.push(...this.dismantle(snapshot, groups, known));
+    // Points a Rapid Reroute this round already spends are not there for another ability.
+    this.pointsSpent = this.costOf(commands);
     const recon = this.reconnoitre(snapshot);
     if (recon) commands.push(recon);
     else {
@@ -259,7 +271,19 @@ export class AttackerAi extends AiBase {
   }
 
   private canUse(snapshot: MatchSnapshot, ability: SimAbility): boolean {
-    return (snapshot.cooldowns[ability.id] ?? 0) === 0 && (snapshot.points.attacker ?? 0) >= ability.cost;
+    return (
+      (snapshot.cooldowns[ability.id] ?? 0) === 0 &&
+      (snapshot.points.attacker ?? 0) - this.pointsSpent >= ability.cost
+    );
+  }
+
+  /** Points the abilities among these commands cost. */
+  private costOf(commands: Command[]): number {
+    let cost = 0;
+    for (const command of commands)
+      if (command.type === 'useAbility')
+        cost += this.model.setup.attacker.abilities.find((a) => a.id === command.abilityId)?.cost ?? 0;
+    return cost;
   }
 
   /** Reveals the spot near the routes where most unseen build sites lie. */
@@ -615,24 +639,39 @@ export class AttackerAi extends AiBase {
       this.note(`Waiting: ${members} ${unit.id} would not get through ${plan.route.id}`);
       return null;
     }
+    const sizes = this.splitWave(members, plan.groupSize);
     this.note(
       `Launch ${members} ${unit.id} on ${plan.route.id} (${plan.formation}): expect to lose ${round(plan.losses)}` +
+        (sizes.length > 1 ? `, in ${sizes.length} groups to fit the crossing` : '') +
         (short ? ', time is short' : ''),
     );
+    // Groups that fit a crossing one at a time follow each other just far enough apart not to meet on it.
+    const gap =
+      sizes.length > 1
+        ? Math.min(
+            Math.floor(MAX_LAUNCH_DELAY_SECONDS / (sizes.length - 1)),
+            Math.ceil(this.model.crossingSeconds(plan.route, unit)) + 1,
+          )
+        : 0;
     return {
       type: 'launchWave',
       side: 'attacker',
       tick: snapshot.tick,
-      groups: [
-        {
-          unitTypeId: unit.id,
-          count: members,
-          formation: plan.formation,
-          routeId: plan.route.id,
-          delaySeconds: 0,
-        },
-      ],
+      groups: sizes.map((count, i) => ({
+        unitTypeId: unit.id,
+        count,
+        formation: plan.formation,
+        routeId: plan.route.id,
+        delaySeconds: i * gap,
+      })),
     };
+  }
+
+  /** A wave as groups of at most `size` members (the last ones larger when the wave has more groups than allowed). */
+  private splitWave(members: number, size: number | undefined): number[] {
+    if (!size || members <= size) return [members];
+    const groups = Math.min(MAX_GROUPS_PER_WAVE, Math.ceil(members / size));
+    return Array.from({ length: groups }, (_, i) => Math.floor((members + i) / groups)).reverse();
   }
 
   /** Easy: a group of a random size on a random route, no estimates. */
@@ -663,7 +702,7 @@ export class AttackerAi extends AiBase {
         if (maxMembers < 1) continue;
         for (const formation of Object.keys(FORMATIONS) as Formation[]) {
           if (!this.tuning.formations && formation !== 'column') continue;
-          const transit = routeExposure(this.model, route, known, { unit, formation, members: 10 });
+          const transit = this.transit(route, unit, formation, known);
           // Members lost per second on the objective, and seconds of the hold still to win.
           const lossRate = (goal.pressure * FORMATIONS[formation].pressureTaken) / unit.resilience;
           // Units built for the objective win its hold time faster.
@@ -673,7 +712,15 @@ export class AttackerAi extends AiBase {
           const arriving = Math.max(0, members - transit.losses);
           const holdWon = lossRate > 0 ? (arriving / lossRate) * rate : holdLeft;
           const value = Math.min(holdWon, holdLeft) / (members * unit.capacity);
-          plans.push({ route, unit, formation, members, losses: transit.losses, value });
+          plans.push({
+            route,
+            unit,
+            formation,
+            members,
+            losses: transit.losses,
+            value,
+            ...(transit.groupSize ? { groupSize: transit.groupSize } : {}),
+          });
         }
       }
     }
@@ -697,10 +744,34 @@ export class AttackerAi extends AiBase {
     return best;
   }
 
+  /**
+   * Members a wave of about ten would lose on a route. With a narrow crossing on it, a wave that does not fit is either
+   * sent as one packed group (slow and pressed hard on the crossing) or split into groups that fit, each of which
+   * walks the defenses on its own; the AI takes whichever loses fewer (Route Capacity).
+   */
+  private transit(
+    route: RouteModel,
+    unit: SimUnitType,
+    formation: Formation,
+    known: KnownDefense[],
+  ): { losses: number; groupSize?: number } {
+    const whole = routeExposure(this.model, route, known, { unit, formation, members: 10 });
+    if (route.narrowest === null || !this.tuning.formations) return { losses: whole.losses };
+    const size = Math.max(1, Math.floor(route.narrowest / unit.capacity));
+    if (size >= 10) return { losses: whole.losses };
+    const groups = Math.min(MAX_GROUPS_PER_WAVE, Math.ceil(10 / size));
+    const part = routeExposure(this.model, route, known, {
+      unit,
+      formation,
+      members: Math.ceil(10 / groups),
+    });
+    const split = part.losses * groups;
+    return split < whole.losses ? { losses: split, groupSize: size } : { losses: whole.losses };
+  }
+
   /** Not enough time left to wait for another wave after this one. */
   private timeIsShort(snapshot: MatchSnapshot, plan: WavePlan): boolean {
-    const speed = plan.unit.speed * FORMATIONS[plan.formation].speed;
-    const walk = plan.route.length / speed;
+    const walk = this.model.travelTime(plan.route, plan.unit, plan.formation, plan.groupSize ?? plan.members);
     const holdLeft = (snapshot.objective.requiredTicks - snapshot.objective.heldTicks) / TICK_RATE;
     const spare = snapshot.remainingTicks / TICK_RATE - walk - (holdLeft * 2) / plan.unit.objectiveRate;
     return spare < this.model.setup.level.launchCooldownSeconds * 2;

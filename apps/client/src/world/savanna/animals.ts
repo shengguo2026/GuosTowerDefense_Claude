@@ -108,3 +108,52 @@ export function leopardGeometry(lying: boolean): THREE.BufferGeometry {
   b.add(new THREE.IcosahedronGeometry(0.1, 0), ROSETTE, transform(-2.05, y - 1.2, 0));
   return b.build();
 }
+
+const HIDE = 0x8d8a86;
+const HIDE_DARK = 0x77736f;
+const TUSK = 0xf1ead8;
+
+/**
+ * A standing African elephant: a big rounded body, wide flat ears, a hanging trunk curling at the tip, and pillar legs.
+ * A calf is the same shape, smaller and without tusks. Scenery only, like every animal in the game.
+ */
+export function elephantGeometry(calf: boolean): THREE.BufferGeometry {
+  const b = new ColorGeometryBuilder();
+  const legH = 1.5;
+  const y = legH + 0.95;
+  b.add(new THREE.IcosahedronGeometry(1, 1), HIDE, transform(0, y, 0, [0, 0, 0], [1.75, 1.15, 1.05]));
+  // Head, slightly higher than the shoulders.
+  b.add(new THREE.IcosahedronGeometry(0.8, 1), HIDE, transform(1.8, y + 0.45, 0, [0, 0, 0], [0.9, 1, 0.85]));
+  // Ears: wide flat flaps either side of the head.
+  for (const side of [-1, 1])
+    b.add(
+      new THREE.CylinderGeometry(0.95, 0.75, 0.12, 7),
+      HIDE_DARK,
+      transform(1.55, y + 0.45, side * 0.78, [Math.PI / 2, 0, 0.15], [1, 1, 1.25]),
+    );
+  // Trunk in three tapering pieces, the last one curling forward.
+  b.add(new THREE.CylinderGeometry(0.26, 0.32, 1.1, 6), HIDE, transform(2.45, y - 0.15, 0, [0, 0, 0.35]));
+  b.add(new THREE.CylinderGeometry(0.19, 0.25, 1, 6), HIDE, transform(2.62, y - 1.1, 0, [0, 0, -0.05]));
+  b.add(
+    new THREE.CylinderGeometry(0.14, 0.18, 0.55, 6),
+    HIDE_DARK,
+    transform(2.75, y - 1.75, 0, [0, 0, -0.6]),
+  );
+  if (!calf)
+    for (const side of [-0.3, 0.3])
+      b.add(new THREE.ConeGeometry(0.09, 0.85, 5), TUSK, transform(2.35, y - 0.45, side, [0, 0, -2.3]));
+  for (const [lx, lz] of [
+    [1.05, 0.5],
+    [1.05, -0.5],
+    [-1.05, 0.5],
+    [-1.05, -0.5],
+  ] as const)
+    b.add(new THREE.CylinderGeometry(0.34, 0.38, legH + 0.4, 7), HIDE, transform(lx, legH / 2 + 0.1, lz));
+  b.add(
+    new THREE.CylinderGeometry(0.05, 0.04, 1.1, 4),
+    HIDE_DARK,
+    transform(-1.85, y - 0.3, 0, [0, 0, -0.35]),
+  );
+  const geometry = b.build();
+  return calf ? geometry.scale(0.55, 0.55, 0.55) : geometry;
+}
