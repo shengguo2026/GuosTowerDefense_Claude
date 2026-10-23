@@ -39,7 +39,16 @@ Needs [Node.js](https://nodejs.org) 20.19 or newer (LTS).
 | `start.bat` | `./start.sh` | Installs libraries on first run, builds the client, starts the game server on the first free port from 3000, opens the browser |
 | `dev.bat` | `./dev.sh` | Developer mode: game server on port 3100 with auto-restart, client with hot reload on port 5173 |
 
-Progress and settings live in `user-data/` next to the game files, so copying the folder keeps them.
+Progress and settings live in `user-data/` next to the game files, so copying the folder keeps them. The save is
+written after every match and every change (`user-data/saves/save.json`); the last five versions stay in
+`user-data/backups/`, and a damaged save is kept aside there while the newest readable backup is used. Settings › **Save**
+exports the save to a file and imports one back (on the PC only).
+
+**Progress:** every finished match (against the computer, two players on one PC, or Wi-Fi) gives each side a score; the
+sides people play also earn profile XP, high scores and statistics, all in the one save on the PC. Each profile has five
+levels; levels 2 to 5 each unlock one small improvement (an ability rank or a better unit or defense) that a person's
+profile uses in every mode, while the computer always plays the starting kit. A win against the computer still unlocks
+the next level. Main menu › **Progress** shows levels and unlocks, high scores and statistics.
 
 In the current build, **Open the Lion level** shows the first level with a demo match the server plays by itself.
 Camera: drag (or one finger) to move, right-drag (or two-finger twist) to rotate and tilt, wheel (or pinch) to zoom,
@@ -55,6 +64,7 @@ packages/sim/           deterministic simulation (no DOM, rendering, network or 
 packages/content-schema stage-pack schemas, loader, validator CLI
 packages/protocol/      messages and shared data shapes between client and server
 packages/i18n/          EN / DE / ZH-CN texts, language detection and fallback
+packages/progression/   score, XP and profile-level rules shared by server and client
 packages/test-kit/      headless match runner and scripted controllers
 content/stages/         stage packs (test-stage proves stage independence)
 docs/                   specification, plan, masterplan, art prompts
