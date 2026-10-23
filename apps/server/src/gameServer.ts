@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import type { StagePack } from '@gtd/content-schema';
+import { levelForXp } from '@gtd/progression';
 import {
   NetworkPatchSchema,
   PROTOCOL_VERSION,
@@ -20,6 +21,7 @@ import { DemoMatches } from './demoMatches';
 import { Discovery } from './discovery';
 import { isLoopback, lanAddresses, LanSharing } from './network';
 import { PlayerMatches } from './playerMatches';
+import { applyMatch } from './progress';
 import type { SaveManager } from './saveManager';
 import { WifiRooms } from './wifiRooms';
 
@@ -67,6 +69,8 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 const MAX_BODY_BYTES = 64 * 1024;
+/** An exported save with many high scores is larger than a settings change. */
+const MAX_SAVE_BYTES = 4 * 1024 * 1024;
 /** The server checks every connection this often and drops one that did not answer this many checks in a row. */
 const HEARTBEAT_MS = 5000;
 const MISSED_CHECKS = 3;
@@ -75,11 +79,15 @@ export function createGameServer(options: GameServerOptions): Server {
   const visibleStages = options.stages.filter((stage) => options.showDevStages || !stage.manifest.devOnly);
   const demos = new DemoMatches(visibleStages);
   const players = new PlayerMatches(visibleStages, {
-    onWin: (win) => {
-      options.saves
-        .recordWin(win.stageId, win.levelId, win.side, win.difficulty)
-        .catch((error: unknown) => console.error('Could not save the win:', error));
+    onFinished: async (match) => {
+      let rewards: ReturnType<typeof applyMatch> = {};
+      const pack = visibleStages.find((stage) => stage.manifest.id === match.stageId);
+      await options.saves.update((save) => {
+        rewards = applyMatch(save, match, pack, new Date().toISOString());
+      });
+      return rewards;
     },
+    profileLevel: (stageId, profileId) => levelForXp(options.saves.profileXp(stageId, profileId)),
   });
   const stageSummaries: StageSummary[] = options.stages
     .filter((stage) => options.showDevStages || !stage.manifest.devOnly)
@@ -186,6 +194,26 @@ export function createGameServer(options: GameServerOptions): Server {
       return sendJson(res, 200, await discovery.nearby());
     }
     if (route === 'GET /api/progress') return sendJson(res, 200, options.saves.progress);
+    if (route === 'GET /api/records') return sendJson(res, 200, options.saves.records);
+    // The save itself (export, import, backups) is only handled from the PC that holds it.
+    if (url.pathname.startsWith('/api/save') && !isLoopback(req.socket.remoteAddress))
+      return sendJson(res, 403, { error: 'hostOnly' });
+    if (route === 'GET /api/save') return sendJson(res, 200, await options.saves.info());
+    if (route === 'GET /api/save/export') {
+      const day = new Date().toISOString().slice(0, 10);
+      res.writeHead(200, {
+        'content-type': 'application/json; charset=utf-8',
+        'content-disposition': `attachment; filename="GuosTowerDefense-save-${day}.json"`,
+        'cache-control': 'no-store',
+      });
+      res.end(`${JSON.stringify(options.saves.data, null, 2)}\n`);
+      return;
+    }
+    if (route === 'POST /api/save/import') {
+      const imported = await options.saves.importSave(await readJsonBody(req, MAX_SAVE_BYTES));
+      if (!imported) return sendJson(res, 400, { error: 'invalidSave' });
+      return sendJson(res, 200, await options.saves.info());
+    }
     if (route === 'GET /api/art') return sendJson(res, 200, await listArt(options.artDir));
     if (url.pathname.startsWith('/api/')) return sendJson(res, 404, { error: 'notFound' });
 
@@ -402,12 +430,12 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
-async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+async function readJsonBody(req: IncomingMessage, limit = MAX_BODY_BYTES): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of req) {
     size += (chunk as Buffer).length;
-    if (size > MAX_BODY_BYTES) return undefined;
+    if (size > limit) return undefined;
     chunks.push(chunk as Buffer);
   }
   try {

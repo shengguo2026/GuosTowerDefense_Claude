@@ -27,5 +27,43 @@
   "units": ["scout", "guide", "expedition-team", "expedition-vehicle"],
   "defenses": [],
   "abilities": ["reconnaissance", "rapid-reroute", "field-guide"],
-  "commands": ["hold", "advance", "retreat", "reroute", "formation", "scout-ahead"]
+  "commands": ["hold", "advance", "retreat", "reroute", "formation", "scout-ahead"],
+  "ranks": [
+    {
+      "level": 2,
+      "name": "profile.explorer.rank.2.name",
+      "description": "profile.explorer.rank.2.description",
+      "unit": "scout",
+      "changes": {
+        "speed": 1.1
+      }
+    },
+    {
+      "level": 3,
+      "name": "profile.explorer.rank.3.name",
+      "description": "profile.explorer.rank.3.description",
+      "ability": "reconnaissance",
+      "changes": {
+        "cooldownSeconds": 0.85
+      }
+    },
+    {
+      "level": 4,
+      "name": "profile.explorer.rank.4.name",
+      "description": "profile.explorer.rank.4.description",
+      "unit": "expedition-team",
+      "changes": {
+        "resilience": 1.12
+      }
+    },
+    {
+      "level": 5,
+      "name": "profile.explorer.rank.5.name",
+      "description": "profile.explorer.rank.5.description",
+      "ability": "field-guide",
+      "changes": {
+        "durationSeconds": 1.15
+      }
+    }
+  ]
 }

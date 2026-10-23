@@ -25,5 +25,43 @@
   "units": ["observer", "camera-team", "spotter", "utility-vehicle"],
   "defenses": [],
   "abilities": ["concealed-approach", "perfect-position", "snapshot-window"],
-  "commands": ["hold", "advance", "retreat", "reroute", "stay-low", "formation"]
+  "commands": ["hold", "advance", "retreat", "reroute", "stay-low", "formation"],
+  "ranks": [
+    {
+      "level": 2,
+      "name": "profile.photographer.rank.2.name",
+      "description": "profile.photographer.rank.2.description",
+      "unit": "observer",
+      "changes": {
+        "speed": 1.1
+      }
+    },
+    {
+      "level": 3,
+      "name": "profile.photographer.rank.3.name",
+      "description": "profile.photographer.rank.3.description",
+      "ability": "concealed-approach",
+      "changes": {
+        "durationSeconds": 1.15
+      }
+    },
+    {
+      "level": 4,
+      "name": "profile.photographer.rank.4.name",
+      "description": "profile.photographer.rank.4.description",
+      "unit": "camera-team",
+      "changes": {
+        "resilience": 1.12
+      }
+    },
+    {
+      "level": 5,
+      "name": "profile.photographer.rank.5.name",
+      "description": "profile.photographer.rank.5.description",
+      "ability": "snapshot-window",
+      "changes": {
+        "cooldownSeconds": 0.85
+      }
+    }
+  ]
 }

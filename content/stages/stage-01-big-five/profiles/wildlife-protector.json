@@ -37,5 +37,43 @@
     "relocation-unit"
   ],
   "abilities": ["conservation-barrier", "protected-zone", "habitat-lockdown"],
-  "commands": ["upgrade", "repair", "sell", "focus", "guard", "fortify"]
+  "commands": ["upgrade", "repair", "sell", "focus", "guard", "fortify"],
+  "ranks": [
+    {
+      "level": 2,
+      "name": "profile.wildlife-protector.rank.2.name",
+      "description": "profile.wildlife-protector.rank.2.description",
+      "defense": "heavy-barrier",
+      "changes": {
+        "cost": 0.9
+      }
+    },
+    {
+      "level": 3,
+      "name": "profile.wildlife-protector.rank.3.name",
+      "description": "profile.wildlife-protector.rank.3.description",
+      "ability": "protected-zone",
+      "changes": {
+        "durationSeconds": 1.15
+      }
+    },
+    {
+      "level": 4,
+      "name": "profile.wildlife-protector.rank.4.name",
+      "description": "profile.wildlife-protector.rank.4.description",
+      "defense": "protection-tower",
+      "changes": {
+        "range": 1.1
+      }
+    },
+    {
+      "level": 5,
+      "name": "profile.wildlife-protector.rank.5.name",
+      "description": "profile.wildlife-protector.rank.5.description",
+      "ability": "habitat-lockdown",
+      "changes": {
+        "cooldownSeconds": 0.85
+      }
+    }
+  ]
 }

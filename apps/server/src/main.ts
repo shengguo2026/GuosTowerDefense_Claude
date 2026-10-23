@@ -42,9 +42,10 @@ async function main(): Promise<void> {
   console.log(`Guo's Tower Defense ${version}${devMode ? ' (dev mode)' : ''}`);
 
   await prepareUserData(userDataDir);
-  const saves = new SaveManager(userDataDir);
+  const saves = new SaveManager(userDataDir, { gameVersion: version });
   await saves.load();
-  if (saves.lastLoadSource === 'backup') console.warn('The save could not be read; the backup was restored.');
+  if (saves.lastLoadSource === 'backup')
+    console.warn('The save could not be read; the newest readable backup was restored.');
 
   const report = await loadAllStages(resolve(gameRoot, 'content/stages'));
   for (const warning of report.warnings) console.warn(`Skipped stage pack: ${warning}`);

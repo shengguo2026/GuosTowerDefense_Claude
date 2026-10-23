@@ -1,15 +1,24 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { loadAllStages } from '@gtd/content-schema/node';
-import { PROTOCOL_VERSION, type HealthResponse, type NetworkInfo, type ServerMessage } from '@gtd/protocol';
+import {
+  PROTOCOL_VERSION,
+  type HealthResponse,
+  type NetworkInfo,
+  type Progress,
+  type Records,
+  type SaveInfo,
+  type ServerMessage,
+} from '@gtd/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { createGameServer, listen, type GameServerOptions, type RunningGameServer } from './gameServer';
 import { isLoopback, LanSharing, lanAddresses } from './network';
-import { PlayerMatches, type SinglePlayerWin } from './playerMatches';
+import { PlayerMatches } from './playerMatches';
+import { applyMatch, type FinishedMatch } from './progress';
 import { findFreePort } from './ports';
-import { SaveManager, defaultSave } from './saveManager';
+import { BACKUPS_KEPT, SaveManager, defaultSave, migrateSave, type SaveData } from './saveManager';
 import { USER_DATA_FOLDERS, prepareUserData } from './userData';
 
 let dir: string;
@@ -68,9 +77,73 @@ describe('SaveManager', () => {
     await saves.load();
     await saves.updateSettings({ language: 'de' });
     await saves.updateSettings({ language: 'en' });
-    const backup = JSON.parse(await readFile(saves.backupPath, 'utf8'));
+    const [newest] = await saves.backups();
+    const backup = JSON.parse(await readFile(newest as string, 'utf8'));
     expect(backup.settings.language).toBe('de');
     await expect(readFile(`${saves.savePath}.tmp`)).rejects.toThrow();
+  });
+
+  it('keeps a few rolling backups and drops the oldest', async () => {
+    const saves = new SaveManager(dir);
+    await saves.load();
+    for (let i = 0; i < BACKUPS_KEPT + 3; i++) await saves.updateSettings({ playerName: `Guo ${i}` });
+    const backups = await saves.backups();
+    expect(backups).toHaveLength(BACKUPS_KEPT);
+    const newest = JSON.parse(await readFile(backups[0] as string, 'utf8'));
+    expect(newest.settings.playerName).toBe(`Guo ${BACKUPS_KEPT + 1}`);
+    expect((await saves.info()).backups).toBe(BACKUPS_KEPT);
+  });
+
+  it('keeps a damaged save aside and recovers from the newest readable backup', async () => {
+    const saves = new SaveManager(dir);
+    await saves.load();
+    await saves.updateSettings({ language: 'de' });
+    await saves.updateSettings({ graphics: 'low' });
+    await saves.updateSettings({ graphics: 'medium' });
+    // The newest backup is damaged too: the one before it is used.
+    const [newest] = await saves.backups();
+    await writeFile(newest as string, 'not json');
+    await writeFile(saves.savePath, '{ half a save');
+
+    const restored = new SaveManager(dir);
+    const save = await restored.load();
+    expect(restored.lastLoadSource).toBe('backup');
+    expect(save.settings).toMatchObject({ language: 'de', graphics: 'auto' });
+    const kept = await readdir(join(dir, 'backups'));
+    expect(kept.some((file) => file.startsWith('damaged-'))).toBe(true);
+    expect((await restored.info()).loadedFrom).toBe('backup');
+  });
+
+  it('never reads a save from a newer game, and keeps it aside', async () => {
+    expect(migrateSave({ ...defaultSave(), version: 99 })).toBeNull();
+    await mkdir(join(dir, 'saves'), { recursive: true });
+    await writeFile(join(dir, 'saves', 'save.json'), JSON.stringify({ ...defaultSave(), version: 99 }));
+    const saves = new SaveManager(dir);
+    await saves.load();
+    expect(saves.lastLoadSource).toBe('new');
+    expect((await readdir(join(dir, 'backups'))).some((file) => file.startsWith('damaged-'))).toBe(true);
+  });
+
+  it('imports an exported save, keeps this PC network choice and backs up the one it replaces', async () => {
+    const source = new SaveManager(join(dir, 'a'), { gameVersion: '1.2.3' });
+    await source.load();
+    await source.updateSettings({ playerName: 'Guo' });
+    await source.update((save) => {
+      save.profiles['stage-01-big-five'] = { explorer: { xp: 1200 } };
+    });
+    const exported = JSON.parse(JSON.stringify(source.data));
+    expect(exported.meta).toMatchObject({ gameVersion: '1.2.3', balanceVersion: 1 });
+
+    const target = new SaveManager(join(dir, 'b'));
+    await target.load();
+    await target.setSharing(true);
+    expect(await target.importSave({ version: 2, nonsense: true })).toBeNull();
+    const imported = await target.importSave(exported);
+    expect(imported?.settings.playerName).toBe('Guo');
+    expect(imported?.network.shareOnWifi).toBe(true);
+    expect(target.progress.profileXp['stage-01-big-five']).toEqual({ explorer: 1200 });
+    const [backup] = await target.backups();
+    expect(JSON.parse(await readFile(backup as string, 'utf8')).settings.playerName).toBe('');
   });
 
   it('falls back to the backup when the save is damaged', async () => {
@@ -141,6 +214,26 @@ describe('SaveManager', () => {
     expect(save.settings.language).toBe('de');
     expect(save.settings.onboarding.tutorialsDone).toEqual([]);
     expect(save.records).toEqual({});
+    expect(save.profiles).toEqual({});
+    expect(save.highScores).toEqual([]);
+    expect(save.statistics.matchesPlayed).toBe(0);
+  });
+
+  it('reads the M9 save of a player who already won (version 1 → 2)', async () => {
+    const old = {
+      version: 1,
+      settings: { language: 'zh-CN', playerName: 'Guo' },
+      unlocks: { stages: { 'stage-01-big-five': { completedLevels: ['lion'] } } },
+      records: { 'stage-01-big-five': { lion: { attacker: ['hard'], defender: [] } } },
+      network: { shareOnWifi: true, firewallExplained: true },
+      updatedAt: '2026-10-20T00:00:00Z',
+    };
+    const save = migrateSave(old);
+    expect(save?.version).toBe(2);
+    expect(save?.unlocks.stages['stage-01-big-five']?.completedLevels).toEqual(['lion']);
+    expect(save?.records['stage-01-big-five']?.lion?.attacker).toEqual(['hard']);
+    expect(save?.network.shareOnWifi).toBe(true);
+    expect(save?.settings.playerName).toBe('Guo');
   });
 });
 
@@ -288,7 +381,39 @@ describe('levels', () => {
     expect(await (await fetch(`${server.url}/api/progress`)).json()).toEqual({
       completedLevels: {},
       wins: {},
+      profileXp: {},
     });
+  });
+
+  it('reports records and the save, exports it and imports it back', async () => {
+    const server = await startServer();
+    const records = (await (await fetch(`${server.url}/api/records`)).json()) as Records;
+    expect(records.highScores).toEqual([]);
+    expect(records.statistics.matchesPlayed).toBe(0);
+    const info = (await (await fetch(`${server.url}/api/save`)).json()) as SaveInfo;
+    expect(info).toMatchObject({ loadedFrom: 'new', saveSchemaVersion: 2 });
+
+    await fetch(`${server.url}/api/settings`, {
+      method: 'PUT',
+      body: JSON.stringify({ playerName: 'Guo' }),
+    });
+    const exported = await fetch(`${server.url}/api/save/export`);
+    expect(exported.headers.get('content-disposition')).toMatch(
+      /attachment; filename="GuosTowerDefense-save-/,
+    );
+    const save = (await exported.json()) as SaveData;
+    expect(save.settings.playerName).toBe('Guo');
+
+    const bad = await fetch(`${server.url}/api/save/import`, { method: 'POST', body: '{"version":2}' });
+    expect(bad.status).toBe(400);
+    save.settings.playerName = 'Mia';
+    save.profiles = { 'stage-01-big-five': { ranger: { xp: 450 } } };
+    const good = await fetch(`${server.url}/api/save/import`, { method: 'POST', body: JSON.stringify(save) });
+    expect(good.status).toBe(200);
+    expect(((await good.json()) as SaveInfo).backups).toBeGreaterThan(0);
+    expect(await (await fetch(`${server.url}/api/settings`)).json()).toMatchObject({ playerName: 'Mia' });
+    const progress = (await (await fetch(`${server.url}/api/progress`)).json()) as Progress;
+    expect(progress.profileXp).toEqual({ 'stage-01-big-five': { ranger: 450 } });
   });
 
   it('streams a demo match of a level to a watcher', async () => {
@@ -523,20 +648,37 @@ describe('matches between people', () => {
   });
 });
 
-describe('single-player progress', () => {
+describe('progress at the end of a match', () => {
   const SEED = 1234;
-  /** Plays a short test-stage match against the easy computer with a manual clock; one big wave wins it. */
-  async function play(options: { tutorial?: boolean; wave: number }): Promise<SinglePlayerWin[]> {
+  /**
+   * Plays a short test-stage match against the easy computer with a manual clock; one big wave wins it. The save is a
+   * plain object here, so the test sees exactly what the match wrote.
+   */
+  async function play(options: { tutorial?: boolean; wave: number; xp?: number }) {
     const { stages } = await loadAllStages(resolve(import.meta.dirname, '../../../content/stages'));
-    const wins: SinglePlayerWin[] = [];
+    const save: SaveData = defaultSave();
+    if (options.xp) save.profiles['test-stage'] = { courier: { xp: options.xp } };
+    const finished: FinishedMatch[] = [];
+    const received: ServerMessage[] = [];
     let now = 0;
     // A fixed seed: the outcome must not depend on when the test runs.
     const players = new PlayerMatches(stages, {
-      onWin: (win) => wins.push(win),
+      onFinished: (match) => {
+        finished.push(match);
+        return Promise.resolve(
+          applyMatch(
+            save,
+            match,
+            stages.find((stage) => stage.manifest.id === 'test-stage'),
+            '2026-10-23T00:00:00Z',
+          ),
+        );
+      },
+      profileLevel: (_stage, profileId) => (profileId === 'courier' && options.xp ? 3 : 1),
       now: () => now,
       seed: () => SEED,
     });
-    const send = () => undefined;
+    const send = (message: ServerMessage) => received.push(message);
     players.create(
       {
         stageId: 'test-stage',
@@ -544,6 +686,7 @@ describe('single-player progress', () => {
         seat: 'attacker',
         opponent: 'easy',
         tutorial: options.tutorial,
+        names: { attacker: 'Guo' },
       },
       send,
     );
@@ -574,18 +717,60 @@ describe('single-player progress', () => {
         );
       }
     }
-    return wins;
+    await Promise.resolve();
+    await Promise.resolve();
+    return { save, finished, received };
   }
 
-  it('records a win against the computer', async () => {
-    expect(await play({ wave: 16 })).toEqual([
-      { stageId: 'test-stage', levelId: 'meadow', side: 'attacker', difficulty: 'easy' },
-    ]);
+  it('records a win against the computer with score, XP, a high score and statistics', async () => {
+    const { save, received } = await play({ wave: 16 });
+    expect(save.records['test-stage']?.meadow).toEqual({ attacker: ['easy'], defender: [] });
+    expect(save.unlocks.stages['test-stage']?.completedLevels).toEqual(['meadow']);
+    const xp = save.profiles['test-stage']?.courier?.xp ?? 0;
+    expect(xp).toBeGreaterThanOrEqual(200);
+    // The computer's profile earns no XP.
+    expect(save.profiles['test-stage']?.gatekeeper).toBeUndefined();
+    expect(save.highScores).toHaveLength(1);
+    expect(save.highScores[0]).toMatchObject({
+      levelId: 'meadow',
+      side: 'attacker',
+      opponent: 'easy',
+      teamSize: 1,
+      won: true,
+      mode: 'single',
+      players: [{ name: 'Guo', profileId: 'courier', controller: 'human' }],
+    });
+    expect(save.statistics).toMatchObject({
+      matchesPlayed: 1,
+      wins: 1,
+      attackerWins: 1,
+      singlePlayerMatches: 1,
+    });
+    expect(save.statistics.profileUsage).toEqual({ courier: 1 });
+    expect(save.statistics.wavesLaunched).toBe(1);
+    const rewards = received.find((m) => m.type === 'matchRewards');
+    expect(rewards).toMatchObject({
+      rewards: {
+        attacker: { controller: 'human', opponent: 'easy', highScorePlace: 1, xp: { before: 0, after: xp } },
+        defender: { controller: 'ai', xp: null, highScorePlace: null },
+      },
+    });
   });
 
-  it('records nothing for a loss or a tutorial', async () => {
-    expect(await play({ wave: 4 })).toEqual([]);
-    expect(await play({ wave: 12, tutorial: true })).toEqual([]);
+  it('gives a loss some XP but no unlock, and a tutorial nothing', async () => {
+    const lost = await play({ wave: 4 });
+    expect(lost.save.records).toEqual({});
+    expect(lost.save.profiles['test-stage']?.courier?.xp).toBeGreaterThan(0);
+    expect(lost.save.statistics).toMatchObject({ matchesPlayed: 1, losses: 1, wins: 0 });
+    const tutorial = await play({ wave: 12, tutorial: true });
+    expect(tutorial.finished).toEqual([]);
+    expect(tutorial.received.some((m) => m.type === 'matchRewards')).toBe(false);
+  });
+
+  it("plays a person's profile with its unlocked ranks and tells the client", async () => {
+    const { received, finished } = await play({ wave: 16, xp: 1000 });
+    expect(received.find((m) => m.type === 'matchStarted')).toMatchObject({ ranks: { attacker: 3 } });
+    expect(finished[0]?.sides.attacker).toEqual({ profileId: 'courier', controller: 'human', name: 'Guo' });
   });
 });
 

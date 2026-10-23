@@ -15,5 +15,26 @@
   "units": ["runner", "hauler", "shade"],
   "defenses": [],
   "abilities": ["tailwind", "supply-drop", "call-runner"],
-  "commands": ["wait", "sprint", "pry-open"]
+  "commands": ["wait", "sprint", "pry-open"],
+  "ranks": [
+    {
+      "level": 2,
+      "name": "profile.courier.rank.2.name",
+      "description": "profile.courier.rank.2.description",
+      "unit": "runner",
+      "changes": {
+        "speed": 1.1
+      }
+    },
+    {
+      "level": 3,
+      "name": "profile.courier.rank.3.name",
+      "description": "profile.courier.rank.3.description",
+      "ability": "tailwind",
+      "changes": {
+        "cooldownSeconds": 0.85,
+        "cost": 0.9
+      }
+    }
+  ]
 }

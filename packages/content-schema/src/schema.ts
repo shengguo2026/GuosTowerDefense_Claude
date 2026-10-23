@@ -340,6 +340,50 @@ export const CatalogSchema = z.object({
   commands: z.array(ActionSchema).default([]),
 });
 
+/** Profile XP (spec §12, G11): a profile has this many levels; level 1 is the starting kit. */
+export const PROFILE_LEVELS = 5;
+
+/** What a rank can change, per kind of thing it improves. Every change is a factor on the catalog value. */
+export const RANK_CHANGES = {
+  ability: ['cost', 'cooldownSeconds', 'durationSeconds', 'range', 'magnitude'],
+  unit: ['cost', 'speed', 'resilience', 'sightRange'],
+  defense: ['cost', 'range', 'detectionRange', 'pressurePerSecond', 'slow', 'speed'],
+} as const;
+const rankFactor = z.number().min(0.5).max(1.5);
+
+/**
+ * One XP unlock (G11): reaching `level` with the profile improves one of its abilities (an ability rank) or one of its
+ * units or defenses (a unit variant). Only a person's profile uses its ranks; the computer plays the starting kit.
+ */
+export const RankSchema = z
+  .object({
+    level: z.number().int().min(2).max(PROFILE_LEVELS),
+    name: textKey,
+    description: textKey,
+    ability: id.optional(),
+    unit: id.optional(),
+    defense: id.optional(),
+    changes: z
+      .object({
+        cost: rankFactor,
+        cooldownSeconds: rankFactor,
+        durationSeconds: rankFactor,
+        range: rankFactor,
+        magnitude: rankFactor,
+        speed: rankFactor,
+        resilience: rankFactor,
+        sightRange: rankFactor,
+        detectionRange: rankFactor,
+        pressurePerSecond: rankFactor,
+        slow: rankFactor,
+      })
+      .partial(),
+  })
+  .refine((rank) => [rank.ability, rank.unit, rank.defense].filter(Boolean).length === 1, {
+    message: 'a rank improves exactly one ability, unit or defense',
+    path: ['ability'],
+  });
+
 export const ProfileSchema = z.object({
   id,
   side: z.enum(['attacker', 'defender']),
@@ -356,6 +400,11 @@ export const ProfileSchema = z.object({
   defenses: z.array(id).default([]),
   abilities: z.array(id).max(MAX_ABILITY_SLOTS),
   commands: z.array(id).max(MAX_COMMAND_SLOTS),
+  /** XP unlocks, at most one per level from 2 to PROFILE_LEVELS. */
+  ranks: z
+    .array(RankSchema)
+    .max(PROFILE_LEVELS - 1)
+    .default([]),
 });
 
 export const TextsSchema = z.record(z.string(), z.string());
@@ -367,6 +416,7 @@ export type Catalog = z.infer<typeof CatalogSchema>;
 export type Profile = z.infer<typeof ProfileSchema>;
 export type Action = z.infer<typeof ActionSchema>;
 export type Effect = z.infer<typeof EffectSchema>;
+export type Rank = z.infer<typeof RankSchema>;
 export type Texts = z.infer<typeof TextsSchema>;
 export type TutorialStep = z.infer<typeof TutorialStepSchema>;
 export type TutorialCondition = z.infer<typeof TutorialConditionSchema>;

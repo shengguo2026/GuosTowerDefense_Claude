@@ -1,13 +1,15 @@
 import { DIFFICULTIES, type AiThought, type Difficulty } from '@gtd/ai';
 import { LANGUAGES } from '@gtd/i18n';
+import type { Opponent, ScoreBreakdown, XpBreakdown } from '@gtd/progression';
 import type { Command, MatchSnapshot, Side } from '@gtd/sim';
 import { z } from 'zod';
 
 /** Bumped whenever a message changes shape, so an old browser tab gets a clear "please reload" instead of errors. */
-export const PROTOCOL_VERSION = 8;
+export const PROTOCOL_VERSION = 9;
 export const WEBSOCKET_PATH = '/ws';
 
 const language = z.enum(LANGUAGES);
+const playerName = z.string().trim().max(24);
 
 // ---- Settings (stored in the save on the PC, edited from any device) ----
 
@@ -92,6 +94,104 @@ export interface Progress {
   completedLevels: Record<string, string[]>;
   /** Wins per stage, then per level. */
   wins: Record<string, Record<string, LevelRecord>>;
+  /** Profile XP per stage, then per profile (spec §12, G11); the level is derived from it. */
+  profileXp: Record<string, Record<string, number>>;
+}
+
+// ---- Records: high scores and statistics (stored in the save on the PC) ----
+
+const contentKey = z.string().min(1).max(64);
+const count = z.number().int().nonnegative().default(0);
+export const OPPONENTS = [...DIFFICULTIES, 'human'] as const;
+export const MATCH_MODES = ['single', 'hotSeat', 'wifi'] as const;
+export type MatchMode = (typeof MATCH_MODES)[number];
+
+/**
+ * One high score (masterplan §37), kept per stage, level, side, opponent and team size. It lists the whole team:
+ * names, profiles and who controlled them; the name is only a label, it never makes a separate save.
+ */
+export const HighScoreSchema = z.object({
+  stageId: contentKey,
+  levelId: contentKey,
+  side,
+  opponent: z.enum(OPPONENTS),
+  teamSize: z.number().int().min(1).max(2),
+  score: z.number().int().nonnegative(),
+  players: z
+    .array(z.object({ name: z.string().max(24), profileId: contentKey, controller: z.enum(['human', 'ai']) }))
+    .max(2),
+  mode: z.enum(MATCH_MODES),
+  won: z.boolean(),
+  date: z.string(),
+  /** Chaotic matches (R4) also keep their seed. */
+  seed: z.number().int().optional(),
+});
+export type HighScore = z.infer<typeof HighScoreSchema>;
+/** How many high scores are kept for each stage, level, side, opponent and team size. */
+export const HIGH_SCORES_KEPT = 10;
+
+/** Local statistics (masterplan §38). Counted for the sides people played; the computer's own play is not counted. */
+export const StatisticsSchema = z.object({
+  matchesPlayed: count,
+  wins: count,
+  losses: count,
+  attackerWins: count,
+  defenderWins: count,
+  matches1v1: count,
+  matches2v2: count,
+  singlePlayerMatches: count,
+  hotSeatMatches: count,
+  wifiMatches: count,
+  /** Matches per profile a person played. */
+  profileUsage: z.record(contentKey, z.number().int().nonnegative()).default({}),
+  wavesLaunched: count,
+  reroutes: count,
+  defensesDisrupted: count,
+  defensesDismantled: count,
+  attackersStopped: count,
+  patrolInterceptions: count,
+  detections: count,
+  defensesBuilt: count,
+  abilitiesUsed: count,
+  chaoticMatches: count,
+  uniqueSeedsPlayed: count,
+  playSeconds: count,
+  bestScore: count,
+});
+export type Statistics = z.infer<typeof StatisticsSchema>;
+
+/** `GET /api/records`. */
+export interface Records {
+  highScores: HighScore[];
+  statistics: Statistics;
+}
+
+/** `GET /api/save`, from the PC only: what the Settings page shows about the save. */
+export interface SaveInfo {
+  /** Where the save came from at start: the save itself, a backup (the save was damaged), or a new save. */
+  loadedFrom: 'save' | 'backup' | 'new';
+  updatedAt: string;
+  backups: number;
+  saveSchemaVersion: number;
+  gameVersion: string;
+}
+
+/** What a side got for a finished match (shown under the 50/50 result). */
+export interface SideReward {
+  profileId: string;
+  controller: 'human' | 'ai';
+  opponent: Opponent;
+  score: ScoreBreakdown;
+  /** Only people's profiles earn XP; `null` for the computer's side (and its score is not kept). */
+  xp: {
+    gained: XpBreakdown;
+    before: number;
+    after: number;
+    /** Ranks (by profile level) the match unlocked. */
+    unlocked: number[];
+  } | null;
+  /** Place among this side's kept high scores (1 = best), or `null` if the score did not make the list. */
+  highScorePlace: number | null;
 }
 
 // ---- HTTP API ----
@@ -301,7 +401,6 @@ export const RoomCodeSchema = z.string().regex(/^\d{6}$/);
 const roomToken = z.string().regex(/^[0-9a-f]{32}$/);
 const slotId = z.enum(['A1', 'D1']);
 export type SlotId = z.infer<typeof slotId>;
-const playerName = z.string().trim().max(24);
 
 /** `247433` → `247 433`. */
 export function formatRoomCode(code: string): string {
@@ -385,6 +484,8 @@ export const ClientMessageSchema = z.discriminatedUnion('type', [
     tutorial: z.boolean().optional(),
     /** Two people on one PC (spec §5.2): needs the `both` seat and no computer; planning pauses instead of pause. */
     hotSeat: z.boolean().optional(),
+    /** The players' names for high scores (a name is only a label, it never makes a separate save). */
+    names: z.object({ attacker: playerName, defender: playerName }).partial().optional(),
   }),
   z.object({ type: z.literal('joinMatch'), matchId: contentId, seat: z.enum(SEATS) }),
   z.object({ type: z.literal('leaveMatch') }),
@@ -440,6 +541,8 @@ export type ServerMessage =
       attackerProfileId: string;
       defenderProfileId: string;
       computer?: ComputerPlayer;
+      /** Profile levels the people's sides play with (their unlocked ranks are in effect). */
+      ranks?: Partial<Record<Side, number>>;
     }
   | { type: 'snapshot'; matchId: string; snapshot: MatchSnapshot }
   /** One round of the computer's reasoning, sent only when the match was started with `showAiReasoning`. */
@@ -460,6 +563,8 @@ export type ServerMessage =
       wifi?: true;
     }
   | { type: 'matches'; matches: MatchSummary[] }
+  /** Score, XP and high scores for a finished match, once the save on the PC has them. */
+  | { type: 'matchRewards'; matchId: string; rewards: Partial<Record<Side, SideReward>> }
   /** The room this connection is in, as seen by this player (sent on every change). */
   | { type: 'room'; room: RoomState; playerId: string; host: boolean }
   /** This device is in the room; keep the token to come back after a reload or a dropped connection. */

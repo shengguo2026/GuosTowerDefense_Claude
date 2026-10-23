@@ -59,5 +59,9 @@
   "command.patch-up.name": "Patch Up",
   "command.patch-up.description": "Repairs the selected asset.",
   "command.brace.name": "Brace",
-  "command.brace.description": "Protects the selected asset for a while."
+  "command.brace.description": "Protects the selected asset for a while.",
+  "profile.courier.rank.2.name": "Quick Runners",
+  "profile.courier.rank.2.description": "Runners move 10% faster.",
+  "profile.courier.rank.3.name": "Tailwind II",
+  "profile.courier.rank.3.description": "Tailwind is ready sooner and costs less."
 }

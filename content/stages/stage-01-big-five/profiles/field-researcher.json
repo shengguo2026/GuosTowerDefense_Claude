@@ -25,5 +25,43 @@
   "units": [],
   "defenses": ["sensor-beacon", "observation-station", "research-team", "surveillance-drone"],
   "abilities": ["area-scan", "route-analysis", "deep-analysis"],
-  "commands": ["upgrade", "repair", "sell", "priority", "guard", "scan"]
+  "commands": ["upgrade", "repair", "sell", "priority", "guard", "scan"],
+  "ranks": [
+    {
+      "level": 2,
+      "name": "profile.field-researcher.rank.2.name",
+      "description": "profile.field-researcher.rank.2.description",
+      "defense": "sensor-beacon",
+      "changes": {
+        "detectionRange": 1.15
+      }
+    },
+    {
+      "level": 3,
+      "name": "profile.field-researcher.rank.3.name",
+      "description": "profile.field-researcher.rank.3.description",
+      "ability": "area-scan",
+      "changes": {
+        "range": 1.12
+      }
+    },
+    {
+      "level": 4,
+      "name": "profile.field-researcher.rank.4.name",
+      "description": "profile.field-researcher.rank.4.description",
+      "defense": "research-team",
+      "changes": {
+        "pressurePerSecond": 1.12
+      }
+    },
+    {
+      "level": 5,
+      "name": "profile.field-researcher.rank.5.name",
+      "description": "profile.field-researcher.rank.5.description",
+      "ability": "route-analysis",
+      "changes": {
+        "cooldownSeconds": 0.85
+      }
+    }
+  ]
 }

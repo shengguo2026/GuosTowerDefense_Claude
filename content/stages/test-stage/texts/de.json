@@ -59,5 +59,9 @@
   "command.patch-up.name": "Ausbessern",
   "command.patch-up.description": "Repariert die gewählte Anlage.",
   "command.brace.name": "Absichern",
-  "command.brace.description": "Schützt die gewählte Anlage eine Weile."
+  "command.brace.description": "Schützt die gewählte Anlage eine Weile.",
+  "profile.courier.rank.2.name": "Flinke Läufer",
+  "profile.courier.rank.2.description": "Läufer gehen 10 % schneller.",
+  "profile.courier.rank.3.name": "Rückenwind II",
+  "profile.courier.rank.3.description": "Rückenwind ist früher bereit und kostet weniger."
 }

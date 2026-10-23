@@ -31,5 +31,43 @@
   "units": ["tracker", "hunter-team", "breach-specialist", "offroad-vehicle"],
   "defenses": [],
   "abilities": ["sabotage", "breach", "coordinated-assault"],
-  "commands": ["hold", "advance", "retreat", "reroute", "focus-defense", "rush"]
+  "commands": ["hold", "advance", "retreat", "reroute", "focus-defense", "rush"],
+  "ranks": [
+    {
+      "level": 2,
+      "name": "profile.hunter.rank.2.name",
+      "description": "profile.hunter.rank.2.description",
+      "unit": "tracker",
+      "changes": {
+        "sightRange": 1.15
+      }
+    },
+    {
+      "level": 3,
+      "name": "profile.hunter.rank.3.name",
+      "description": "profile.hunter.rank.3.description",
+      "ability": "sabotage",
+      "changes": {
+        "cooldownSeconds": 0.85
+      }
+    },
+    {
+      "level": 4,
+      "name": "profile.hunter.rank.4.name",
+      "description": "profile.hunter.rank.4.description",
+      "unit": "hunter-team",
+      "changes": {
+        "resilience": 1.12
+      }
+    },
+    {
+      "level": 5,
+      "name": "profile.hunter.rank.5.name",
+      "description": "profile.hunter.rank.5.description",
+      "ability": "coordinated-assault",
+      "changes": {
+        "cooldownSeconds": 0.85
+      }
+    }
+  ]
 }
