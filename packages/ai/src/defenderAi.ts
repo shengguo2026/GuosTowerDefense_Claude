@@ -162,8 +162,8 @@ export class DefenderAi extends AiBase {
       let weights = 0;
       for (const [unit, weight] of this.references) {
         exposure +=
-          routeExposure(this.model, route, layout, { unit, formation: 'spread', members: 10 }).pressure *
-          weight;
+          routeExposure(this.model, route, layout, { unit, formation: 'spread', members: 10, ambushes: true })
+            .pressure * weight;
         weights += weight;
       }
       exposure /= weights;

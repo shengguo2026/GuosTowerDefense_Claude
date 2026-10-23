@@ -7,6 +7,7 @@ folder; these are resized and compressed for the browser.
 |---|---|---|
 | `textures/` | seamless ground tiles (1024², JPEG); `TEX-MUD` for mud (M12) | M1 |
 | `LEVEL-03-ELEPHANT.webp` | Elephant level picture for the level list and briefing (1536×1024, WebP) | M12 |
+| `LEVEL-04-RHINOCEROS.webp` | Rhinoceros level picture for the level list and briefing (1536×1024, WebP) | M13 |
 | `MENU-BG.webp` | main menu background (1672×941) | M4 |
 | `STAGE-01.webp` | Stage 1 card (1536×1024) | M4 |
 | `LEVEL-01-LION.webp`, `LEVEL-02-LEOPARD.webp` | level pictures for the level list and briefing (1536×1024) | M4, M11 |

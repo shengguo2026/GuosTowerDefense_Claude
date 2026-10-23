@@ -22,6 +22,11 @@ export interface VisionArea {
   exposure: number;
   /** Factor on how far whoever stands in it sees (a ledge looks further). */
   vantage: number;
+  /**
+   * An Ambush Zone (Rhinoceros): Defender assets standing in it are hard to spot, and one the Attacker has not seen
+   * catches a group by surprise the first time it reaches it.
+   */
+  ambush?: boolean;
 }
 
 /**
@@ -51,6 +56,12 @@ export class VisionField {
     let factor = 1;
     for (const area of this.areas) if (area.exposure !== 1 && this.contains(area, p)) factor *= area.exposure;
     return factor;
+  }
+
+  /** Whether `p` lies in an Ambush Zone. */
+  ambushAt(p: Point): boolean {
+    for (const area of this.areas) if (area.ambush && this.contains(area, p)) return true;
+    return false;
   }
 
   /** Factor on the sight of whoever stands at `p` (the best vantage point it stands on). */

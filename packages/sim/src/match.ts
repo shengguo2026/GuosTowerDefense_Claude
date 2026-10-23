@@ -32,6 +32,14 @@ import {
   VISIBILITY_FACTORS,
   secondsToTicks,
 } from './constants';
+import {
+  AMBUSH_PIN_SECONDS,
+  AMBUSH_PRESSURE,
+  AMBUSH_SECONDS,
+  AMBUSH_SIGHT,
+  contactFactor,
+  inContact,
+} from './contact';
 import { EntityStore } from './entityStore';
 import { VisionField } from './vision';
 import { CROWD_PRESSURE_TAKEN, CROWD_SPLASH, crowdSpeed, crowding, groundOf, groundSpeed } from './ground';
@@ -204,6 +212,10 @@ export class Match {
   /** What the Attacker remembers of each structure it has seen: a copy from the last time it was in sight. */
   private readonly seenDefenses = new Map<number, DefenseEntity>();
   private readonly visibleToAttacker = new Set<number>();
+  /** What the Attacker saw last tick: an asset it had not seen can still spring an ambush. */
+  private seenLastTick = new Set<number>();
+  /** Ambushes already sprung, by asset and group: each asset catches each group by surprise once. */
+  private readonly ambushes = new Set<string>();
   /** Assets put out of action by sabotage right now (to notice when they come back). */
   private readonly sabotaged = new Set<number>();
   private readonly closures = new Map<string, number>();
@@ -1636,17 +1648,18 @@ export class Match {
       const exposure = this.vision.exposureAt(group);
       const seen =
         this.status.active(group.id, 'revealed', this.tickCount) ||
-        defenses.some((d) =>
-          this.vision.sees(
-            d,
-            group,
-            this.detectionRange(d) *
-              this.vision.vantageAt(d) *
-              detectionBonus *
-              plain *
-              exposure *
-              (this.defenseType(d).seesHidden ? 1 : hidden),
-          ),
+        defenses.some(
+          (d) =>
+            this.vision.sees(
+              d,
+              group,
+              this.detectionRange(d) *
+                this.vision.vantageAt(d) *
+                detectionBonus *
+                plain *
+                exposure *
+                (this.defenseType(d).seesHidden ? 1 : hidden),
+            ) || this.touching(d, group),
         );
       if (seen) {
         data.unseenTicks = 0;
@@ -1668,14 +1681,25 @@ export class Match {
     }
   }
 
-  /** The Attacker sees a defense while one of its groups is close enough, or a reveal ability covers it. */
+  /**
+   * The Attacker sees a defense while one of its groups is close enough, or a reveal ability covers it. One hidden in
+   * an Ambush Zone is only spotted from much closer, and Close Contact does not give it away.
+   */
   private updateAttackerSight(): void {
+    this.seenLastTick = new Set(this.visibleToAttacker);
     this.visibleToAttacker.clear();
     const lookers = this.groups().filter((g) => g.state !== 'waiting');
     for (const defense of this.defenses()) {
       const revealed = this.status.active(defense.id, 'revealed', this.tickCount);
       const cover = 1 - this.status.magnitude(defense.id, 'concealed', this.tickCount);
-      const inSight = revealed || lookers.some((g) => this.inSight(g, defense, cover));
+      const lurking = this.vision.ambushAt(defense);
+      const inSight =
+        revealed ||
+        lookers.some((g) =>
+          lurking
+            ? this.spotsLurking(g, defense, cover)
+            : this.inSight(g, defense, cover) || this.touching(g, defense),
+        );
       if (!inSight) continue;
       this.visibleToAttacker.add(defense.id);
       if (!this.seenDefenses.has(defense.id))
@@ -1692,6 +1716,20 @@ export class Match {
   /** Whether a group sees a spot: its sight range, from a vantage point further, cut by what the line crosses. */
   private inSight(group: GroupEntity, at: Point, cover = 1): boolean {
     return this.vision.sees(group, at, this.sightRange(group) * this.vision.vantageAt(group) * cover);
+  }
+
+  /**
+   * Whether a group spots an asset waiting in an Ambush Zone: only within a share of its sight range, whatever brush
+   * the line passes (the thicket's cover is already counted in that share), and never through a wall.
+   */
+  private spotsLurking(group: GroupEntity, at: Point, cover: number): boolean {
+    const range = this.sightRange(group) * this.vision.vantageAt(group) * cover * AMBUSH_SIGHT;
+    return distance(group, at) <= range && !this.vision.blocked(group, at);
+  }
+
+  /** Close Contact: within the contact range two sides see each other past any cover, though not through a wall. */
+  private touching(a: Point, b: Point): boolean {
+    return inContact(this.setup.level.closeContact, distance(a, b)) && !this.vision.blocked(a, b);
   }
 
   private sightRange(group: GroupEntity): number {
@@ -1723,8 +1761,10 @@ export class Match {
         candidates.find((g) => g.id === defense.focusGroupId) ?? this.pickTarget(defense, candidates);
       if (!target) continue;
       defense.targetGroupId = target.id;
-      const type = this.defenseType(defense);
-      let pressure = type.pressurePerSecond * (1 + UPGRADE_PRESSURE_BONUS * (defense.level - 1));
+      if (this.pressurePerSecondFor(defense) > 0) this.springAmbush(defense, target);
+      let pressure = this.pressurePerSecondFor(defense);
+      // Close Contact: stronger up close, weaker from further away.
+      pressure *= contactFactor(this.setup.level.closeContact, distance(defense, target));
       pressure *= 1 + this.status.magnitude(defense.id, 'boost:pressure', this.tickCount);
       if (defense.mobile) pressure *= 1 + this.status.magnitude(defense.id, 'boost:plain', this.tickCount);
       // Packed on a full crossing, the groups next to the target take part of it too (Route Capacity).
@@ -1740,6 +1780,25 @@ export class Match {
     }
   }
 
+  private pressurePerSecondFor(defense: DefenseEntity): number {
+    return this.defenseType(defense).pressurePerSecond * (1 + UPGRADE_PRESSURE_BONUS * (defense.level - 1));
+  }
+
+  /**
+   * Ambush Zones: an asset hidden in one that the Attacker had not seen catches each group by surprise once. The group
+   * stops for a moment and takes more pressure for a few seconds.
+   */
+  private springAmbush(defense: DefenseEntity, group: GroupEntity): void {
+    if (!this.vision.ambushAt(defense) || this.seenLastTick.has(defense.id)) return;
+    const key = `${defense.id}:${group.id}`;
+    if (this.ambushes.has(key)) return;
+    this.ambushes.add(key);
+    const tick = this.tickCount;
+    this.status.apply(group.id, 'pinned', tick + secondsToTicks(AMBUSH_PIN_SECONDS), 1, tick);
+    this.status.apply(group.id, 'ambushed', tick + secondsToTicks(AMBUSH_SECONDS), AMBUSH_PRESSURE, tick);
+    this.events.push({ tick, type: 'groupAmbushed', groupId: group.id, byDefenseId: defense.id });
+  }
+
   /** A group squeezed on (or queued at) a crossing that is over its capacity. */
   private packed(group: GroupEntity): boolean {
     const data = this.data(group);
@@ -1749,8 +1808,14 @@ export class Match {
   private press(target: GroupEntity, pressure: number, defense: DefenseEntity): void {
     const protect = this.status.magnitude(target.id, 'protected', this.tickCount);
     const crowded = this.packed(target) ? 1 + CROWD_PRESSURE_TAKEN : 1;
+    const surprised = 1 + this.status.magnitude(target.id, 'ambushed', this.tickCount);
     target.pressure +=
-      pressure * FORMATIONS[this.formationOf(target)].pressureTaken * crowded * (1 - protect) * TICK_SECONDS;
+      pressure *
+      FORMATIONS[this.formationOf(target)].pressureTaken *
+      crowded *
+      surprised *
+      (1 - protect) *
+      TICK_SECONDS;
     this.turnBackMembers(target, defense);
   }
 
@@ -1946,6 +2011,7 @@ export class Match {
       if (this.status.active(group.id, 'pinned', tick)) statuses.push('pinned');
       if (this.status.active(group.id, 'protected', tick)) statuses.push('protected');
       if (this.entities.get(group.id) && this.packed(group)) statuses.push('crowded');
+      if (this.status.active(group.id, 'ambushed', tick)) statuses.push('ambushed');
       group.statuses = statuses;
     }
     for (const defense of this.defenses()) {
@@ -1957,6 +2023,7 @@ export class Match {
       if (this.status.active(defense.id, 'protected', tick)) statuses.push('protected');
       if (this.status.active(defense.id, 'revealed', tick)) statuses.push('revealed');
       if (this.status.active(defense.id, 'concealed', tick)) statuses.push('concealed');
+      if (this.vision.ambushAt(defense) && !this.visibleToAttacker.has(defense.id)) statuses.push('hidden');
       defense.statuses = statuses;
     }
   }
@@ -1981,7 +2048,8 @@ export class Match {
             boosted: false,
             // The Defender sees what its own effects do, not the Attacker's.
             statuses: entity.statuses.filter(
-              (s) => s === 'slowed' || s === 'revealed' || s === 'pinned' || s === 'crowded',
+              (s) =>
+                s === 'slowed' || s === 'revealed' || s === 'pinned' || s === 'crowded' || s === 'ambushed',
             ),
           });
         }

@@ -1641,6 +1641,12 @@ button.primary-small {
 .status-chip.status-crowded {
   background: #f3e0cf;
 }
+.status-chip.status-ambushed {
+  background: #f6d5c2;
+}
+.status-chip.status-hidden {
+  background: #d9e8d4;
+}
 .status-chip.status-disrupted {
   background: #f9d9d6;
 }
@@ -1922,6 +1928,12 @@ button.primary-small {
 }
 .minimap-zone.brush {
   fill: rgba(40, 90, 40, 0.55);
+}
+/* Ambush thickets: darker still, with a dashed rim so they read without colour. */
+.minimap-zone.thicket {
+  fill: rgba(25, 65, 30, 0.7);
+  stroke: rgba(240, 230, 200, 0.85);
+  stroke-dasharray: 2 2;
 }
 .minimap-zone.rockWall {
   stroke: rgba(150, 150, 150, 0.95);

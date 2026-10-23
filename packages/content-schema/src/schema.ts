@@ -58,8 +58,11 @@ export const SceneSchema = z.object({
   seed: z.number().int(),
   /** Width and depth of the terrain in map units. */
   size: z.number().positive(),
-  /** Plant mix of the kit: open savanna (acacias, grass) or woodland (dense broad-leaf trees and thickets). */
-  flora: z.enum(['savanna', 'woodland']).default('savanna'),
+  /**
+   * Plant mix of the kit: open savanna (acacias, grass), woodland (dense broad-leaf trees and thickets) or thornveld
+   * (acacias over thick thorn bush).
+   */
+  flora: z.enum(['savanna', 'woodland', 'thornveld']).default('savanna'),
   /** Route whose path carves a dry streambed into the terrain. */
   streambedRoute: id.optional(),
   /** Rivers drawn as water across the map; routes cross them at fords (edges with water terrain). */
@@ -129,6 +132,11 @@ export const VisionAreaSchema = z
     exposure: z.number().positive().default(1),
     /** Factor on how far whoever stands in it sees (a ledge: above 1). */
     vantage: z.number().positive().default(1),
+    /**
+     * Ambush Zone (Rhinoceros): Defender assets in it are spotted only from close by, and one the Attacker has not
+     * seen catches each group by surprise once.
+     */
+    ambush: z.boolean().default(false),
   })
   .refine((area) => (area.circle === undefined) !== (area.wall === undefined), {
     message: 'needs either a circle or a wall',
@@ -251,6 +259,17 @@ export const LevelSchema = z.object({
     .default({ open: { speed: 1.15, detection: 1.3 }, cover: { speed: 0.85, detection: 0.6 } }),
   /** Concealment Zones and line-of-sight objects (none on open levels like Lion). */
   vision: z.array(VisionAreaSchema).default([]),
+  /**
+   * Close Contact (Rhinoceros): within `range` assets press at `near` times their strength and both sides see each
+   * other past cover; beyond it they press at `far` times, so long-range defense is less dominant.
+   */
+  closeContact: z
+    .object({
+      range: z.number().positive(),
+      near: z.number().positive(),
+      far: z.number().positive(),
+    })
+    .optional(),
   /**
    * First-time hints for this level, shown once each outside tutorials: at the start of a match on it, or when the
    * player first meets one of its areas (`area`: a group of theirs enters it, or, for the Defender, builds in it).

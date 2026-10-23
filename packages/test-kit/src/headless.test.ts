@@ -281,3 +281,42 @@ describe('AI against AI on Elephant', { timeout: 180_000 }, () => {
     expect(report.defenderWins).toBeGreaterThan(0);
   });
 });
+
+// M13: Rhinoceros' Close Contact and Ambush Zones change how both AIs plan; every matchup must still play cleanly.
+describe('AI against AI on Rhinoceros', { timeout: 180_000 }, () => {
+  it('plays every matchup at every difficulty to the end with only accepted commands', async () => {
+    const result = await loadStageDirectory(
+      resolve(import.meta.dirname, '../../../content/stages/stage-01-big-five'),
+    );
+    if (!result.ok) throw new Error(result.issues.map((i) => i.message).join('\n'));
+    const pack = result.pack;
+    for (const attackerProfileId of pack.manifest.profiles.attacker)
+      for (const defenderProfileId of pack.manifest.profiles.defender)
+        for (const difficulty of DIFFICULTIES) {
+          const setupFor = (seed: number) =>
+            createMatchSetup(pack, { levelId: 'rhinoceros', attackerProfileId, defenderProfileId, seed });
+          const report = runBalance(setupFor, difficulty, difficulty, 1);
+          const label = `${attackerProfileId} vs ${defenderProfileId} at ${difficulty}`;
+          expect(report.failures, label).toBe(0);
+          expect(report.rejectedCommands, label).toBe(0);
+        }
+  });
+
+  it('lets both sides win at medium in the Explorer vs Ranger matchup', async () => {
+    const result = await loadStageDirectory(
+      resolve(import.meta.dirname, '../../../content/stages/stage-01-big-five'),
+    );
+    if (!result.ok) throw new Error(result.issues.map((i) => i.message).join('\n'));
+    const pack = result.pack;
+    const setupFor = (seed: number) =>
+      createMatchSetup(pack, {
+        levelId: 'rhinoceros',
+        attackerProfileId: 'explorer',
+        defenderProfileId: 'ranger',
+        seed,
+      });
+    const report = runBalance(setupFor, 'medium', 'medium', 12);
+    expect(report.attackerWins).toBeGreaterThan(0);
+    expect(report.defenderWins).toBeGreaterThan(0);
+  });
+});

@@ -1,0 +1,502 @@
+{
+  "id": "rhinoceros",
+  "title": "level.rhinoceros.title",
+  "description": "level.rhinoceros.description",
+  "picture": "LEVEL-04-RHINOCEROS",
+  "briefing": {
+    "attacker": "level.rhinoceros.briefing.attacker",
+    "defender": "level.rhinoceros.briefing.defender"
+  },
+  "unlockedBy": "elephant",
+  "timerSeconds": 720,
+  "preparationSeconds": 30,
+  "objective": {
+    "nodeId": "rhino-clearing",
+    "holdSeconds": 15,
+    "radius": 4.5
+  },
+  "map": {
+    "nodes": [
+      {
+        "id": "thornveld-gate",
+        "x": -58,
+        "z": 4,
+        "kind": "spawn"
+      },
+      {
+        "id": "thorn-fork",
+        "x": -42,
+        "z": 4,
+        "kind": "junction"
+      },
+      {
+        "id": "thorn-bend",
+        "x": -30,
+        "z": -14,
+        "kind": "checkpoint"
+      },
+      {
+        "id": "acacia-gap",
+        "x": -4,
+        "z": -17,
+        "kind": "checkpoint"
+      },
+      {
+        "id": "gully-mouth",
+        "x": -28,
+        "z": 6,
+        "kind": "checkpoint"
+      },
+      {
+        "id": "gully-narrows",
+        "x": -8,
+        "z": 7,
+        "kind": "connector"
+      },
+      {
+        "id": "gully-head",
+        "x": 9,
+        "z": 6,
+        "kind": "junction"
+      },
+      {
+        "id": "scrub-flat",
+        "x": -28,
+        "z": 26,
+        "kind": "checkpoint"
+      },
+      {
+        "id": "termite-rise",
+        "x": -6,
+        "z": 30,
+        "kind": "checkpoint"
+      },
+      {
+        "id": "scrub-edge",
+        "x": 9,
+        "z": 22,
+        "kind": "junction"
+      },
+      {
+        "id": "rhino-clearing",
+        "x": 24,
+        "z": 3,
+        "kind": "objective"
+      },
+      {
+        "id": "fork-rise",
+        "x": -48,
+        "z": -8,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "thorn-hide",
+        "x": -15,
+        "z": -11,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "gully-hide",
+        "x": 13,
+        "z": 11,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "scrub-knoll",
+        "x": -18,
+        "z": 36,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "clearing-north-hide",
+        "x": 17,
+        "z": -10,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "clearing-south-hide",
+        "x": 19,
+        "z": 17,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "lookout-thorn",
+        "x": 34,
+        "z": -4,
+        "kind": "buildZone",
+        "buildable": true
+      }
+    ],
+    "edges": [
+      {
+        "from": "thornveld-gate",
+        "to": "thorn-fork",
+        "via": [[-50, 5]],
+        "terrain": "open"
+      },
+      {
+        "from": "thorn-fork",
+        "to": "thorn-bend",
+        "via": [[-38, -6]],
+        "terrain": "cover"
+      },
+      {
+        "from": "thorn-bend",
+        "to": "acacia-gap",
+        "via": [
+          [-21, -21],
+          [-12, -19]
+        ],
+        "terrain": "cover"
+      },
+      {
+        "from": "acacia-gap",
+        "to": "rhino-clearing",
+        "via": [
+          [8, -12],
+          [17, -3]
+        ],
+        "terrain": "cover"
+      },
+      {
+        "from": "thorn-fork",
+        "to": "gully-mouth",
+        "via": [[-35, 5]],
+        "terrain": "cover"
+      },
+      {
+        "from": "gully-mouth",
+        "to": "gully-narrows",
+        "via": [[-18, 7]],
+        "terrain": "cover"
+      },
+      {
+        "from": "gully-narrows",
+        "to": "gully-head",
+        "via": [[1, 6.5]],
+        "terrain": "cover"
+      },
+      {
+        "from": "gully-head",
+        "to": "rhino-clearing",
+        "via": [[16, 4]],
+        "terrain": "cover"
+      },
+      {
+        "from": "thorn-fork",
+        "to": "scrub-flat",
+        "via": [[-37, 17]],
+        "terrain": "open"
+      },
+      {
+        "from": "scrub-flat",
+        "to": "termite-rise",
+        "via": [[-17, 31]],
+        "terrain": "open"
+      },
+      {
+        "from": "termite-rise",
+        "to": "scrub-edge",
+        "via": [[3, 28]],
+        "terrain": "open"
+      },
+      {
+        "from": "scrub-edge",
+        "to": "rhino-clearing",
+        "via": [[17, 13]],
+        "terrain": "cover"
+      }
+    ]
+  },
+  "routes": [
+    {
+      "id": "thorn-track",
+      "name": "route.thorn-track",
+      "nodes": ["thornveld-gate", "thorn-fork", "thorn-bend", "acacia-gap", "rhino-clearing"]
+    },
+    {
+      "id": "dry-gully",
+      "name": "route.dry-gully",
+      "nodes": [
+        "thornveld-gate",
+        "thorn-fork",
+        "gully-mouth",
+        "gully-narrows",
+        "gully-head",
+        "rhino-clearing"
+      ]
+    },
+    {
+      "id": "open-scrub",
+      "name": "route.open-scrub",
+      "nodes": ["thornveld-gate", "thorn-fork", "scrub-flat", "termite-rise", "scrub-edge", "rhino-clearing"]
+    }
+  ],
+  "vision": [
+    {
+      "id": "acacia-thicket",
+      "kind": "thicket",
+      "label": "vision.acacia-thicket",
+      "circle": {
+        "x": -14,
+        "z": -16,
+        "radius": 8
+      },
+      "los": "partial",
+      "cover": 0.45,
+      "exposure": 0.6,
+      "ambush": true
+    },
+    {
+      "id": "gully-thicket",
+      "kind": "thicket",
+      "label": "vision.gully-thicket",
+      "circle": {
+        "x": 12,
+        "z": 9,
+        "radius": 5.5
+      },
+      "los": "partial",
+      "cover": 0.45,
+      "exposure": 0.6,
+      "ambush": true
+    },
+    {
+      "id": "north-thicket",
+      "kind": "thicket",
+      "circle": {
+        "x": 16,
+        "z": -9,
+        "radius": 5
+      },
+      "los": "partial",
+      "cover": 0.45,
+      "exposure": 0.6,
+      "ambush": true
+    },
+    {
+      "id": "south-thicket",
+      "kind": "thicket",
+      "circle": {
+        "x": 17,
+        "z": 17,
+        "radius": 5
+      },
+      "los": "partial",
+      "cover": 0.45,
+      "exposure": 0.6,
+      "ambush": true
+    },
+    {
+      "id": "bend-brush",
+      "kind": "brush",
+      "circle": {
+        "x": -33,
+        "z": -10,
+        "radius": 6
+      },
+      "los": "partial",
+      "cover": 0.55,
+      "exposure": 0.7
+    },
+    {
+      "id": "gully-north-bank",
+      "kind": "rockWall",
+      "label": "vision.gully-banks",
+      "wall": {
+        "points": [
+          [-23, 2.5],
+          [-12, 3.5],
+          [-2, 3],
+          [5, 2.5]
+        ],
+        "width": 2.5
+      },
+      "los": "blocker"
+    },
+    {
+      "id": "gully-south-bank",
+      "kind": "rockWall",
+      "wall": {
+        "points": [
+          [-23, 10],
+          [-12, 11],
+          [-2, 10.5],
+          [4, 10]
+        ],
+        "width": 2.5
+      },
+      "los": "blocker"
+    },
+    {
+      "id": "open-scrub",
+      "kind": "clearing",
+      "label": "vision.open-scrub",
+      "circle": {
+        "x": -16,
+        "z": 28,
+        "radius": 9
+      },
+      "exposure": 1.35
+    },
+    {
+      "id": "rhino-clearing",
+      "kind": "clearing",
+      "circle": {
+        "x": 24,
+        "z": 3,
+        "radius": 4
+      },
+      "exposure": 1.3
+    }
+  ],
+  "closeContact": {
+    "range": 6,
+    "near": 1.15,
+    "far": 0.6
+  },
+  "hints": [
+    {
+      "id": "close-contact",
+      "text": "hint.rhinoceros.closeContact",
+      "when": "start"
+    },
+    {
+      "id": "ambush-attacker",
+      "text": "hint.rhinoceros.ambushAttacker",
+      "side": "attacker",
+      "when": "combat"
+    },
+    {
+      "id": "thicket-attacker",
+      "text": "hint.rhinoceros.thicketAttacker",
+      "side": "attacker",
+      "when": "area",
+      "area": "thicket"
+    },
+    {
+      "id": "mobile-defender",
+      "text": "hint.rhinoceros.mobileDefender",
+      "side": "defender",
+      "when": "combat"
+    },
+    {
+      "id": "thicket-defender",
+      "text": "hint.rhinoceros.thicketDefender",
+      "side": "defender",
+      "when": "area",
+      "area": "thicket"
+    }
+  ],
+  "scene": {
+    "kit": "savanna",
+    "flora": "thornveld",
+    "seed": 41,
+    "size": 260,
+    "streambedRoute": "dry-gully",
+    "landmarks": [
+      {
+        "id": "thornveld-gate",
+        "kind": "entrance",
+        "x": -58,
+        "z": 4,
+        "radius": 5,
+        "rotation": 1.57,
+        "label": "landmark.thornveld-gate"
+      },
+      {
+        "id": "thorn-fork",
+        "kind": "acaciaGrove",
+        "x": -46,
+        "z": 12,
+        "radius": 4,
+        "label": "landmark.thorn-fork"
+      },
+      {
+        "id": "dry-gully",
+        "kind": "ravine",
+        "x": -10,
+        "z": 7,
+        "radius": 3,
+        "label": "landmark.dry-gully"
+      },
+      {
+        "id": "termite-rise",
+        "kind": "termiteHill",
+        "x": -4,
+        "z": 36,
+        "radius": 3
+      },
+      {
+        "id": "rhino-clearing",
+        "kind": "wallow",
+        "x": 31,
+        "z": 8,
+        "radius": 3,
+        "label": "landmark.rhino-clearing"
+      }
+    ],
+    "animals": [
+      {
+        "kind": "rhino",
+        "x": 31,
+        "z": 6,
+        "rotation": 2.4
+      },
+      {
+        "kind": "rhinoCalf",
+        "x": 33.5,
+        "z": 9.5,
+        "rotation": 2.9
+      }
+    ],
+    "camera": {
+      "x": -10,
+      "z": 8,
+      "yaw": -1.05,
+      "pitch": 0.6,
+      "distance": 96
+    }
+  },
+  "deploymentCapacity": 80,
+  "launchCooldownSeconds": 15,
+  "maxActiveWaves": 2,
+  "startingResources": {
+    "attacker": 240,
+    "defender": 150
+  },
+  "incomePerSecond": {
+    "attacker": 3.6,
+    "defender": 2
+  },
+  "startingPoints": {
+    "attacker": 20,
+    "defender": 20
+  },
+  "pointsPerSecond": {
+    "attacker": 0.5,
+    "defender": 0.5
+  },
+  "bonuses": {
+    "checkpointPass": 8,
+    "memberTurnedBack": 3,
+    "waveStopped": 20,
+    "retreatRefund": 0.5
+  },
+  "terrain": {
+    "open": {
+      "speed": 1.15,
+      "detection": 1.3
+    },
+    "cover": {
+      "speed": 0.85,
+      "detection": 0.6
+    }
+  }
+}
