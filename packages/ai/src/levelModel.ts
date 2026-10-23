@@ -4,6 +4,7 @@ import {
   UPGRADE_PRESSURE_BONUS,
   UPGRADE_RANGE_BONUS,
   VISIBILITY_FACTORS,
+  VisionField,
   distance,
   type BoostStat,
   type DefenseEntity,
@@ -21,6 +22,8 @@ const SAMPLE_STEP = 1;
 
 export interface RouteSample extends Point {
   terrain: Terrain;
+  /** Factor on detection distance at this spot from the level's Concealment Zones (clearings above 1, brush below). */
+  exposure: number;
   /** Distance from the spawn along the route. */
   along: number;
 }
@@ -51,6 +54,8 @@ export interface KnownDefense extends Point {
  */
 export class LevelModel {
   readonly graph: RouteGraph;
+  /** Line of sight on the level: where brush hides, walls block, ledges see further and clearings expose. */
+  readonly vision: VisionField;
   readonly routes: RouteModel[];
   readonly objective: Point & { id: string; radius: number };
   readonly detectionBonus: number;
@@ -60,10 +65,13 @@ export class LevelModel {
   readonly dismantleBonus: number;
   /** Exposure estimates already worked out, by route, group and the defenses they were worked out against. */
   readonly exposureCache = new Map<string, Exposure>();
+  /** Line-of-sight factors from a spot to every sample of a route, by route and spot. */
+  private readonly sightLines = new Map<string, Float32Array>();
 
   constructor(readonly setup: MatchSetup) {
     const { level } = setup;
     this.graph = new RouteGraph(level);
+    this.vision = new VisionField(level.vision ?? []);
     this.routes = level.routes.map((route) => {
       const samples: RouteSample[] = [];
       const nodeAlong = new Map<string, number>([[route.nodes[0] as string, 0]]);
@@ -80,6 +88,7 @@ export class LevelModel {
               x: a.x + (b.x - a.x) * t,
               z: a.z + (b.z - a.z) * t,
               terrain: leg.terrain,
+              exposure: 1,
               along: along + length * t,
             });
           }
@@ -87,6 +96,7 @@ export class LevelModel {
         }
         nodeAlong.set(leg.to, along);
       }
+      for (const sample of samples) sample.exposure = this.vision.exposureAt(sample);
       return { id: route.id, nodes: route.nodes, length: along, samples, nodeAlong };
     });
     const node = this.graph.node(level.objective.nodeId);
@@ -99,6 +109,23 @@ export class LevelModel {
         .reduce((sum, e) => sum + (e.magnitude ?? 0), 0),
     );
     this.dismantleBonus = passiveTotal(setup.attacker.passive, 'dismantle');
+  }
+
+  /**
+   * How much of its reach a sight line from `from` keeps to each sample of a route (0 behind a rock wall), worked out
+   * once per spot. Every sample is 1 on a level without Concealment Zones.
+   */
+  sightLine(from: Point, route: RouteModel): Float32Array {
+    const key = `${route.id}|${Math.round(from.x * 2)},${Math.round(from.z * 2)}`;
+    let line = this.sightLines.get(key);
+    if (!line) {
+      line = new Float32Array(route.samples.length);
+      if (this.vision.empty) line.fill(1);
+      else route.samples.forEach((sample, i) => (line![i] = this.vision.lineFactor(from, sample)));
+      if (this.sightLines.size > 4000) this.sightLines.clear();
+      this.sightLines.set(key, line);
+    }
+    return line;
   }
 
   route(id: string): RouteModel {
@@ -222,18 +249,23 @@ function computeExposure(
   // Sensors see hidden units as easily as any other; other assets only see them from closer.
   const hidden = VISIBILITY_FACTORS[unit.visibility] * (1 - model.lowProfile);
   let pressureSeconds = 0;
-  for (const sample of route.samples) {
+  const vantage = active.map((d) => model.vision.vantageAt(d));
+  const lines = active.map((d) => model.sightLine(d, route));
+  for (let index = 0; index < route.samples.length; index++) {
+    const sample = route.samples[index] as RouteSample;
     if (sample.along < from) continue;
     const ground = terrain[sample.terrain];
-    const visibility = FORMATIONS[formation].detection * ground.detection;
+    const visibility = FORMATIONS[formation].detection * ground.detection * sample.exposure;
     let detected = false;
     let pressure = 0;
     let slow = 0;
-    for (const d of active) {
+    for (let k = 0; k < active.length; k++) {
+      const d = active[k] as KnownDefense;
       const gap = distance(d, sample);
-      const sight = detectionOf(d.type, d.level) * model.detectionBonus * visibility;
-      if (gap <= sight * (d.type.seesHidden ? 1 : hidden)) detected = true;
-      if (gap <= reachOf(d.type, d.level)) {
+      const sight = detectionOf(d.type, d.level) * model.detectionBonus * visibility * (vantage[k] as number);
+      const line = (lines[k] as Float32Array)[index] as number;
+      if (gap <= sight * (d.type.seesHidden ? 1 : hidden) * line) detected = true;
+      if (gap <= reachOf(d.type, d.level) && line > 0) {
         pressure += pressureOf(d.type, d.level) * (d.boosted ? 1.5 : 1);
         slow = Math.max(slow, d.type.slow);
       }
@@ -269,7 +301,8 @@ export function objectivePressure(
   for (const d of defenses) {
     if (d.condition <= 0) continue;
     const gap = distance(d, model.objective);
-    if (gap <= reachOf(d.type, d.level)) pressure += pressureOf(d.type, d.level);
+    if (gap <= reachOf(d.type, d.level) && !model.vision.blocked(d, model.objective))
+      pressure += pressureOf(d.type, d.level);
     if (d.type.mobile && gap <= model.objective.radius) contested = true;
   }
   return { pressure, contested };

@@ -18,6 +18,87 @@ export const SAVANNA = {
   mud: 0x7d5f3e,
 };
 
+/** Woodland palette for levels like Leopard: deeper greens and grey granite. */
+export const WOODLAND = {
+  bark: 0x4e3622,
+  leaf: [0x4f6b2c, 0x5d7a31, 0x6a8a38, 0x47612a],
+  thicket: [0x4a6328, 0x587330, 0x3f5524],
+  granite: [0x9a958c, 0x8a857c, 0xaaa59a, 0x7f7a72],
+};
+
+/** Broad-leaf woodland tree (marula, mopane): a straight trunk under a rounded, clumped crown. */
+export function broadleaf(rng: Rng, scale: number): THREE.BufferGeometry {
+  const b = new ColorGeometryBuilder();
+  const height = rng.range(3.4, 5) * scale;
+  b.add(
+    new THREE.CylinderGeometry(0.2 * scale, 0.36 * scale, height, 6),
+    WOODLAND.bark,
+    transform(0, height / 2, 0, [rng.range(-0.08, 0.08), 0, rng.range(-0.08, 0.08)]),
+  );
+  const clumps = rng.int(4, 7);
+  for (let k = 0; k < clumps; k++) {
+    const angle = (k / clumps) * Math.PI * 2 + rng.range(0, 0.8);
+    const out = rng.range(0.6, 1.6) * scale;
+    b.add(
+      new THREE.IcosahedronGeometry(rng.range(1.2, 1.9) * scale, 0),
+      rng.pick(WOODLAND.leaf),
+      transform(
+        Math.cos(angle) * out,
+        height + rng.range(-0.3, 0.9) * scale,
+        Math.sin(angle) * out,
+        [0, rng.range(0, 6), 0],
+        [1, rng.range(0.7, 0.95), 1],
+      ),
+    );
+  }
+  b.add(
+    new THREE.IcosahedronGeometry(1.8 * scale, 0),
+    rng.pick(WOODLAND.leaf),
+    transform(0, height + 1.1 * scale, 0, [0, rng.range(0, 6), 0], [1, 0.8, 1]),
+  );
+  return b.build();
+}
+
+/** Dense thicket bush: taller and darker than a savanna bush; it hides whoever walks through it. */
+export function thicket(rng: Rng): THREE.BufferGeometry {
+  const b = new ColorGeometryBuilder();
+  for (let k = 0; k < 6; k++) {
+    b.add(
+      new THREE.IcosahedronGeometry(rng.range(0.6, 1.1), 0),
+      WOODLAND.thicket[k % 3] as number,
+      transform(
+        rng.range(-1, 1),
+        rng.range(0.4, 1.3),
+        rng.range(-1, 1),
+        [0, rng.range(0, 6), 0],
+        [1, 0.9, 1],
+      ),
+    );
+  }
+  return b.build();
+}
+
+/** Rounded granite boulder, grey instead of the savanna's sandy rock. */
+export function granite(rng: Rng, size: number, flat = 0.75): THREE.BufferGeometry {
+  let shape: THREE.BufferGeometry = new THREE.DodecahedronGeometry(size, 1);
+  shape.deleteAttribute('normal');
+  shape.deleteAttribute('uv');
+  shape = mergeVertices(shape);
+  const p = shape.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < p.count; i++) {
+    p.setXYZ(
+      i,
+      p.getX(i) * rng.range(0.9, 1.15),
+      p.getY(i) * rng.range(flat * 0.85, flat),
+      p.getZ(i) * rng.range(0.9, 1.15),
+    );
+  }
+  shape.computeVertexNormals();
+  return new ColorGeometryBuilder()
+    .add(shape, rng.pick(WOODLAND.granite), transform(0, size * flat * 0.45, 0, [0, rng.range(0, 6), 0]))
+    .build();
+}
+
 /** Umbrella acacia: forked trunk and a layered flat canopy. */
 export function acacia(rng: Rng, scale: number): THREE.BufferGeometry {
   const b = new ColorGeometryBuilder();

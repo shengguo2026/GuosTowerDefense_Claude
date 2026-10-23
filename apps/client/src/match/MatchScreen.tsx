@@ -36,6 +36,7 @@ import type { ServerConnection } from '../useServerConnection';
 import type { SettingsState } from '../useSettings';
 import type { MapOverlay } from '../world/selectionView';
 import { LevelView, type MapPick } from '../world/levelView';
+import { structureViewArea, visionOf } from './viewArea';
 import { currentDevice, resolvePreset } from '../world/presets';
 import { otherSide, type MatchConfig } from './matchConfig';
 import { nextStep, noActions, type PlayerActions } from './tutorial';
@@ -145,7 +146,9 @@ export function MatchScreen({
   const wave = useWaveDrafts(units, level);
   const { drafts, current: currentDraft, update: updateDraft } = wave;
   const [hoverRoute, setHoverRoute] = useState<string | null>(null);
-  const [hints, setHints] = useState<HintId[]>([]);
+  const [hoverSite, setHoverSite] = useState<string | null>(null);
+  // Engine hints by id, and the level's own hints as `level:<level>:<id>`.
+  const [hints, setHints] = useState<string[]>([]);
   const [tutorialStep, setTutorialStep] = useState(0);
   const [tutorialSkipped, setTutorialSkipped] = useState(false);
   const actionsRef = useRef<PlayerActions>(noActions());
@@ -473,8 +476,10 @@ export function MatchScreen({
   const tapRef = useRef(tap);
   tapRef.current = tap;
   const hoverRef = useRef((pick: MapPick) => setHoverRoute(pick.routeId));
-  hoverRef.current = (pick: MapPick) =>
+  hoverRef.current = (pick: MapPick) => {
     setHoverRoute(side === 'attacker' || mode?.type === 'ability' ? pick.routeId : null);
+    setHoverSite(mode?.type === 'build' ? pick.nodeId : null);
+  };
 
   // Marks on the map for the current mode and selection.
   const overlay: MapOverlay = useMemo(() => {
@@ -497,10 +502,19 @@ export function MatchScreen({
           .filter((n) => n !== undefined)
           .map((n) => ({ id: n.id, x: n.x, z: n.z }));
     }
-    if (selectedAsset)
-      result.selectedRange = defenseTypes.find((d) => d.id === selectedAsset.defenseTypeId)?.range;
+    if (selectedAsset) {
+      const type = defenseTypes.find((d) => d.id === selectedAsset.defenseTypeId);
+      result.selectedRange = type?.range;
+      result.viewArea = structureViewArea(level, type, selectedAsset, selectedAsset.level);
+    } else if (mode?.type === 'build' && hoverSite) {
+      // Placing on a level with Concealment Zones: what the structure would see from the site under the pointer.
+      const site = level.map.nodes.find((n) => n.id === hoverSite);
+      const type = defenseTypes.find((d) => d.id === mode.defenseTypeId);
+      if (site && result.buildSites?.some((s) => s.id === site.id))
+        result.viewArea = structureViewArea(level, type, site);
+    }
     return result;
-  }, [level, mode, selectedId, selectedAsset, defenses, defenseTypes, abilities]);
+  }, [level, mode, selectedId, selectedAsset, defenses, defenseTypes, abilities, hoverSite]);
 
   useEffect(() => viewRef.current?.setOverlay(overlay), [overlay]);
   const shownRoute =
@@ -580,8 +594,25 @@ export function MatchScreen({
       side === 'defender'
         ? s.entities.filter((e) => e.kind === 'group' && e.detection !== 'unknown').length
         : s.entities.filter((e) => e.kind === 'defense').length;
-    const raise: HintId[] = [];
+    const raise: (HintId | `level:${string}`)[] = [];
     if (!before) raise.push(side === 'attacker' ? 'startAttacker' : 'startDefender');
+    // The level's own hints (Leopard's Concealment Zones …): at the start, when combat starts, or in an area.
+    for (const levelHint of level?.hints ?? []) {
+      if (levelHint.side && levelHint.side !== side) continue;
+      const key = `level:${config.levelId}:${levelHint.id}` as const;
+      if (levelHint.when === 'start' && !before) raise.push(key);
+      if (levelHint.when === 'combat' && before?.phase === 'preparation' && snapshot.phase === 'combat')
+        raise.push(key);
+      if (levelHint.when === 'area' && level) {
+        const vision = visionOf(level);
+        const areas = vision.areas.filter((a) => a.kind === levelHint.area);
+        const spots =
+          side === 'attacker'
+            ? groups.filter((g) => g.state !== 'waiting')
+            : defenses.filter((d) => !d.mobile);
+        if (spots.some((spot) => areas.some((a) => vision.contains(a, spot)))) raise.push(key);
+      }
+    }
     if (before) {
       if (spotted(snapshot) > spotted(before)) {
         sounds.play('spotted');
@@ -607,9 +638,24 @@ export function MatchScreen({
     if (config.tutorial) return;
     const fresh = raise.filter((id) => !onboarding.hintsSeen.includes(id));
     if (fresh.length > 0) setHints((queue) => [...queue, ...fresh.filter((id) => !queue.includes(id))]);
-  }, [snapshot, side, groups, defenses, abilities, config.tutorial, onboarding.hintsSeen]);
+  }, [
+    snapshot,
+    side,
+    groups,
+    defenses,
+    abilities,
+    config.tutorial,
+    config.levelId,
+    level,
+    onboarding.hintsSeen,
+  ]);
 
   const hint = hints[0];
+  const hintText = (id: string) => {
+    if (!id.startsWith('level:')) return t(`hint.${id}`);
+    const levelHint = level?.hints.find((h) => `level:${config.levelId}:${h.id}` === id);
+    return levelHint ? stageText(levelHint.text) : '';
+  };
   useEffect(() => {
     if (hint) sounds.play('hint');
   }, [hint]);
@@ -1051,7 +1097,7 @@ export function MatchScreen({
         />
       )}
       {hint && !step && !ended && !menuOpen && (
-        <HintToast text={t(`hint.${hint}`)} t={t} onDismiss={dismissHint} />
+        <HintToast text={hintText(hint)} t={t} onDismiss={dismissHint} />
       )}
 
       {menuOpen && !ended && (

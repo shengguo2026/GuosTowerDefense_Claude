@@ -1913,6 +1913,22 @@ button.primary-small {
 .minimap-ground {
   fill: #9caf6e;
 }
+/* Concealment Zones on the minimap: thickets darker green, rock walls grey lines, ledges grey, clearings light. */
+.minimap-zone {
+  pointer-events: none;
+}
+.minimap-zone.brush {
+  fill: rgba(40, 90, 40, 0.55);
+}
+.minimap-zone.rockWall {
+  stroke: rgba(150, 150, 150, 0.95);
+}
+.minimap-zone.ledge {
+  fill: rgba(170, 170, 165, 0.5);
+}
+.minimap-zone.clearing {
+  fill: rgba(255, 240, 180, 0.4);
+}
 .minimap-objective {
   fill: rgba(255, 212, 71, 0.5);
   stroke: #b8860b;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Match, hashValue, secondsToTicks, type Command, type WaveGroupOrder } from './index';
 import { FIXTURE_DEFENSES, fixtureSetup } from './testFixture';
 import type { DefenseEntity, GroupEntity, MatchSetup, SimAbility, SimDefenseType, SimLevel } from './types';
+import type { VisionArea } from './vision';
 
 type CommandInput = Command extends infer C ? (C extends Command ? Omit<C, 'tick'> : never) : never;
 
@@ -356,6 +357,80 @@ describe('detection', () => {
     launch(match, order({ unitTypeId: 'sneaker', count: 1, routeId: 'south' }));
     runUntil(match, () => groups(match)[0]?.state === 'atObjective');
     expect(groups(match)[0]?.pressure).toBe(0);
+  });
+});
+
+describe('line of sight (Concealment Zones)', () => {
+  const wall: VisionArea = {
+    id: 'wall',
+    kind: 'rockWall',
+    wall: {
+      points: [
+        { x: 12, z: 11.5 },
+        { x: 28, z: 11.5 },
+      ],
+      width: 2,
+    },
+    los: 'blocker',
+    cover: 0,
+    exposure: 1,
+    vantage: 1,
+  };
+  const patch = (overrides: Partial<VisionArea>): VisionArea => ({
+    id: 'patch',
+    kind: 'clearing',
+    circle: { x: 20, z: -10, radius: 3 },
+    los: 'none',
+    cover: 1,
+    exposure: 1,
+    vantage: 1,
+    ...overrides,
+  });
+
+  it('hides groups and structures from each other behind a rock wall', () => {
+    const match = newMatch({}, { vision: [wall] });
+    place(match, 'post', 'north-zone');
+    skipPreparation(match);
+    launch(match, order({ count: 4 }));
+    runUntil(match, () => groups(match)[0]?.state === 'atObjective');
+    expect(eventsOf(match, 'groupDetected')).toHaveLength(0);
+    expect(eventsOf(match, 'defenseSeen')).toHaveLength(0);
+    expect(match.snapshot('attacker').entities.filter((e) => e.kind === 'defense')).toHaveLength(0);
+    // Without the wall, the same post sees them and they see it.
+    const open = newMatch();
+    place(open, 'post', 'north-zone');
+    skipPreparation(open);
+    launch(open, order({ count: 4 }));
+    runUntil(open, () => groups(open)[0]?.state === 'atObjective');
+    expect(eventsOf(open, 'groupDetected').length).toBeGreaterThan(0);
+    expect(eventsOf(open, 'defenseSeen').length).toBeGreaterThan(0);
+  });
+
+  it('detects hidden groups in a clearing, and from a ledge, that cover would otherwise hide', () => {
+    const detected = (vision: VisionArea[]) => {
+      const match = newMatch({}, { vision });
+      place(match, 'post', 'south-zone');
+      skipPreparation(match);
+      launch(match, order({ unitTypeId: 'sneaker', count: 1, routeId: 'south' }));
+      runUntil(match, () => groups(match)[0]?.state === 'atObjective');
+      return eventsOf(match, 'groupDetected').length > 0;
+    };
+    expect(detected([])).toBe(false);
+    expect(detected([patch({ exposure: 2 })])).toBe(true);
+    expect(detected([patch({ kind: 'ledge', circle: { x: 20, z: -14, radius: 2 }, vantage: 2 })])).toBe(true);
+  });
+
+  it('spots groups later through dense brush', () => {
+    const detectedAt = (vision: VisionArea[]) => {
+      const match = newMatch({}, { vision });
+      place(match, 'post', 'north-zone');
+      skipPreparation(match);
+      launch(match, order({ count: 3 }));
+      runUntil(match, () => eventsOf(match, 'groupDetected').length > 0);
+      return match.tick;
+    };
+    const brush = patch({ kind: 'brush', circle: { x: 14, z: 4, radius: 5 }, los: 'partial', cover: 0.4 });
+    expect(detectedAt([brush])).toBeGreaterThan(detectedAt([]));
   });
 });
 

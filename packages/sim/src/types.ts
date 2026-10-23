@@ -1,3 +1,5 @@
+import type { VisionArea } from './vision';
+
 export type Side = 'attacker' | 'defender';
 
 /** Open ground is faster but easier to detect; cover is slower but safer (Open Ground Exposure, Lion). */
@@ -66,6 +68,8 @@ export interface SimLevel {
   pointsPerSecond: Record<Side, number>;
   bonuses: EconomyBonuses;
   terrain: Record<Terrain, TerrainModifiers>;
+  /** Concealment Zones and environment objects that shape line of sight (none on open levels). */
+  vision?: VisionArea[];
 }
 
 export type Visibility = 'normal' | 'concealed' | 'stealth';

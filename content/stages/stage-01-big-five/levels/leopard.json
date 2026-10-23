@@ -1,0 +1,431 @@
+{
+  "id": "leopard",
+  "title": "level.leopard.title",
+  "description": "level.leopard.description",
+  "picture": "LEVEL-02-LEOPARD",
+  "briefing": {
+    "attacker": "level.leopard.briefing.attacker",
+    "defender": "level.leopard.briefing.defender"
+  },
+  "unlockedBy": "lion",
+  "timerSeconds": 720,
+  "preparationSeconds": 30,
+  "objective": {
+    "nodeId": "leopard-lookout",
+    "holdSeconds": 15,
+    "radius": 4.5
+  },
+  "map": {
+    "nodes": [
+      {
+        "id": "forest-edge",
+        "x": -60,
+        "z": 30,
+        "kind": "spawn"
+      },
+      {
+        "id": "fig-junction",
+        "x": -40,
+        "z": 26,
+        "kind": "junction"
+      },
+      {
+        "id": "thicket-bend",
+        "x": -18,
+        "z": 38,
+        "kind": "checkpoint"
+      },
+      {
+        "id": "granite-steps",
+        "x": -26,
+        "z": 10,
+        "kind": "junction"
+      },
+      {
+        "id": "ravine-floor",
+        "x": -10,
+        "z": 16,
+        "kind": "connector"
+      },
+      {
+        "id": "ledge-path",
+        "x": -4,
+        "z": -6,
+        "kind": "checkpoint"
+      },
+      {
+        "id": "woodland-gate",
+        "x": 4,
+        "z": 26,
+        "kind": "junction"
+      },
+      {
+        "id": "leopard-lookout",
+        "x": 20,
+        "z": 4,
+        "kind": "objective"
+      },
+      {
+        "id": "junction-knoll",
+        "x": -40,
+        "z": 14,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "high-ledge",
+        "x": -15,
+        "z": -12,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "thicket-hide",
+        "x": -10,
+        "z": 30,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "gate-knoll",
+        "x": 14,
+        "z": 27,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "kopje-ledge",
+        "x": 25,
+        "z": -3,
+        "kind": "buildZone",
+        "buildable": true
+      },
+      {
+        "id": "lookout-east",
+        "x": 34,
+        "z": 10,
+        "kind": "buildZone",
+        "buildable": true
+      }
+    ],
+    "edges": [
+      {
+        "from": "forest-edge",
+        "to": "fig-junction",
+        "via": [[-50, 29]],
+        "terrain": "cover"
+      },
+      {
+        "from": "fig-junction",
+        "to": "thicket-bend",
+        "via": [[-30, 34]],
+        "terrain": "cover"
+      },
+      {
+        "from": "thicket-bend",
+        "to": "woodland-gate",
+        "via": [
+          [-6, 36],
+          [0, 32]
+        ],
+        "terrain": "cover"
+      },
+      {
+        "from": "woodland-gate",
+        "to": "leopard-lookout",
+        "via": [[12, 16]],
+        "terrain": "open"
+      },
+      {
+        "from": "fig-junction",
+        "to": "granite-steps",
+        "via": [[-34, 17]],
+        "terrain": "open"
+      },
+      {
+        "from": "granite-steps",
+        "to": "ledge-path",
+        "via": [[-16, 0]],
+        "terrain": "open"
+      },
+      {
+        "from": "ledge-path",
+        "to": "leopard-lookout",
+        "via": [[8, -2]],
+        "terrain": "open"
+      },
+      {
+        "from": "granite-steps",
+        "to": "ravine-floor",
+        "via": [[-18, 14]],
+        "terrain": "cover"
+      },
+      {
+        "from": "ravine-floor",
+        "to": "woodland-gate",
+        "via": [[-3, 20]],
+        "terrain": "cover"
+      }
+    ]
+  },
+  "routes": [
+    {
+      "id": "woodland",
+      "name": "route.woodland",
+      "nodes": ["forest-edge", "fig-junction", "thicket-bend", "woodland-gate", "leopard-lookout"]
+    },
+    {
+      "id": "rocky",
+      "name": "route.rocky",
+      "nodes": ["forest-edge", "fig-junction", "granite-steps", "ledge-path", "leopard-lookout"]
+    },
+    {
+      "id": "ravine",
+      "name": "route.ravine",
+      "nodes": [
+        "forest-edge",
+        "fig-junction",
+        "granite-steps",
+        "ravine-floor",
+        "woodland-gate",
+        "leopard-lookout"
+      ]
+    }
+  ],
+  "vision": [
+    {
+      "id": "fig-thicket",
+      "kind": "brush",
+      "label": "vision.fig-thicket",
+      "circle": {
+        "x": -29,
+        "z": 36,
+        "radius": 8
+      },
+      "los": "partial",
+      "cover": 0.55,
+      "exposure": 0.7
+    },
+    {
+      "id": "thorn-thicket",
+      "kind": "brush",
+      "label": "vision.thorn-thicket",
+      "circle": {
+        "x": -7,
+        "z": 34,
+        "radius": 8
+      },
+      "los": "partial",
+      "cover": 0.55,
+      "exposure": 0.7
+    },
+    {
+      "id": "ravine-north-wall",
+      "kind": "rockWall",
+      "label": "vision.ravine-wall",
+      "wall": {
+        "points": [
+          [-19, 8.5],
+          [-9, 11.5],
+          [-1, 15.5]
+        ],
+        "width": 3
+      },
+      "los": "blocker"
+    },
+    {
+      "id": "ravine-south-wall",
+      "kind": "rockWall",
+      "wall": {
+        "points": [
+          [-21, 18.5],
+          [-12, 20.5],
+          [-5, 24]
+        ],
+        "width": 3
+      },
+      "los": "blocker"
+    },
+    {
+      "id": "granite-ledge",
+      "kind": "ledge",
+      "label": "vision.granite-ledge",
+      "circle": {
+        "x": -10,
+        "z": -9,
+        "radius": 8
+      },
+      "vantage": 1.4
+    },
+    {
+      "id": "kopje-ledge",
+      "kind": "ledge",
+      "circle": {
+        "x": 25,
+        "z": -3,
+        "radius": 3.5
+      },
+      "vantage": 1.3
+    },
+    {
+      "id": "sunlit-glade",
+      "kind": "clearing",
+      "label": "vision.sunlit-glade",
+      "circle": {
+        "x": 12,
+        "z": 15,
+        "radius": 6
+      },
+      "exposure": 1.5
+    },
+    {
+      "id": "granite-clearing",
+      "kind": "clearing",
+      "circle": {
+        "x": -27,
+        "z": 9,
+        "radius": 5
+      },
+      "exposure": 1.4
+    }
+  ],
+  "hints": [
+    {
+      "id": "concealment",
+      "text": "hint.leopard.concealment",
+      "when": "start"
+    },
+    {
+      "id": "ravine",
+      "text": "hint.leopard.ravine",
+      "side": "attacker",
+      "when": "combat"
+    },
+    {
+      "id": "ledge-attacker",
+      "text": "hint.leopard.ledgeAttacker",
+      "side": "attacker",
+      "when": "area",
+      "area": "ledge"
+    },
+    {
+      "id": "clearing",
+      "text": "hint.leopard.clearing",
+      "side": "attacker",
+      "when": "area",
+      "area": "clearing"
+    },
+    {
+      "id": "ledge-defender",
+      "text": "hint.leopard.ledgeDefender",
+      "side": "defender",
+      "when": "area",
+      "area": "ledge"
+    },
+    {
+      "id": "brush-defender",
+      "text": "hint.leopard.brushDefender",
+      "side": "defender",
+      "when": "combat"
+    }
+  ],
+  "scene": {
+    "kit": "savanna",
+    "flora": "woodland",
+    "seed": 23,
+    "size": 260,
+    "landmarks": [
+      {
+        "id": "forest-edge",
+        "kind": "entrance",
+        "x": -60,
+        "z": 30,
+        "radius": 5,
+        "rotation": 0.3,
+        "label": "landmark.forest-edge"
+      },
+      {
+        "id": "fig-junction",
+        "kind": "figTree",
+        "x": -42,
+        "z": 30,
+        "radius": 5,
+        "label": "landmark.fig-junction"
+      },
+      {
+        "id": "granite-steps",
+        "kind": "rockyRidge",
+        "x": -22,
+        "z": 2,
+        "radius": 6,
+        "label": "landmark.granite-steps"
+      },
+      {
+        "id": "ravine",
+        "kind": "ravine",
+        "x": -10,
+        "z": 16,
+        "radius": 4
+      },
+      {
+        "id": "leopard-rock",
+        "kind": "kopje",
+        "x": 32,
+        "z": -8,
+        "radius": 8,
+        "label": "landmark.leopard-rock"
+      }
+    ],
+    "animals": [
+      {
+        "kind": "leopard",
+        "x": 32,
+        "z": -9,
+        "rotation": 2.6,
+        "pose": "lying"
+      }
+    ],
+    "camera": {
+      "x": -12,
+      "z": 12,
+      "yaw": -1.05,
+      "pitch": 0.55,
+      "distance": 96
+    }
+  },
+  "deploymentCapacity": 60,
+  "launchCooldownSeconds": 15,
+  "maxActiveWaves": 2,
+  "startingResources": {
+    "attacker": 240,
+    "defender": 150
+  },
+  "incomePerSecond": {
+    "attacker": 3,
+    "defender": 2
+  },
+  "startingPoints": {
+    "attacker": 20,
+    "defender": 20
+  },
+  "pointsPerSecond": {
+    "attacker": 0.5,
+    "defender": 0.5
+  },
+  "bonuses": {
+    "checkpointPass": 8,
+    "memberTurnedBack": 3,
+    "waveStopped": 20,
+    "retreatRefund": 0.5
+  },
+  "terrain": {
+    "open": {
+      "speed": 1.15,
+      "detection": 1.3
+    },
+    "cover": {
+      "speed": 0.85,
+      "detection": 0.6
+    }
+  }
+}

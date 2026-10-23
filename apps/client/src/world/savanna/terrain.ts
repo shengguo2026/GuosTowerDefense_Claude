@@ -11,9 +11,20 @@ export interface Landmark {
   rotation: number;
 }
 
+/** A Concealment Zone as the world builder sees it: what kind it is and where. */
+export interface VisionShape {
+  kind: string;
+  circle?: { x: number; z: number; radius: number };
+  wall?: { points: Point2[]; width: number };
+}
+
 export interface TerrainInput {
   size: number;
   landmarks: Landmark[];
+  /** Concealment Zones: ledges rise as plateaus, rock walls on ridges, brush and clearings tint the ground. */
+  vision?: VisionShape[];
+  /** Woodland ground is greener than open savanna. */
+  flora?: 'savanna' | 'woodland';
   /** Path of the dry streambed, carved into the ground. */
   streambed: Point2[] | null;
   /** Other route paths, drawn as worn dirt tracks. */
@@ -30,10 +41,28 @@ export function rolling(x: number, z: number): number {
 export function createHeightField(input: TerrainInput): HeightAt {
   const ridges = input.landmarks.filter((l) => l.kind === 'rockyRidge');
   const waterholes = input.landmarks.filter((l) => l.kind === 'waterhole');
+  const kopjes = input.landmarks.filter((l) => l.kind === 'kopje');
+  const ledges = (input.vision ?? []).filter((v) => v.kind === 'ledge' && v.circle).map((v) => v.circle!);
+  const walls = (input.vision ?? []).filter((v) => v.kind === 'rockWall' && v.wall).map((v) => v.wall!);
   const rimStart = input.size * 0.3;
   return (x, z) => {
     let h = rolling(x, z) * 0.9;
     for (const ridge of ridges) h += Math.max(0, ridge.radius - Math.hypot(x - ridge.x, z - ridge.z)) * 0.5;
+    // A kopje: a steep granite hill the leopard rests on.
+    for (const kopje of kopjes) {
+      const d = Math.hypot(x - kopje.x, z - kopje.z);
+      h += Math.max(0, kopje.radius - d) * 0.8;
+    }
+    // A ledge: a raised, flat-topped shelf of rock.
+    for (const ledge of ledges) {
+      const d = Math.hypot(x - ledge.x, z - ledge.z);
+      h += 2.4 * smooth((ledge.radius + 2.5 - d) / 3.5);
+    }
+    // Rock walls stand on a low ridge.
+    for (const wall of walls) {
+      const d = distanceToPath(x, z, wall.points);
+      h += Math.max(0, wall.width + 1.5 - d) * 0.7;
+    }
     if (input.streambed) {
       const d = distanceToPath(x, z, input.streambed);
       if (d < 4.5) h -= (4.5 - d) * 0.35;
@@ -58,6 +87,10 @@ export interface GroundTextures {
 const GRASS_TINT = new THREE.Color(1, 1, 1);
 const DRY_TINT = new THREE.Color(0.93, 0.9, 0.82);
 const GREEN_TINT = new THREE.Color(0.82, 0.95, 0.66);
+const WOODLAND_TINT = new THREE.Color(0.46, 0.72, 0.36);
+const THICKET_TINT = new THREE.Color(0.42, 0.6, 0.34);
+const CLEARING_TINT = new THREE.Color(1.08, 1.02, 0.78);
+const GRANITE_TINT = new THREE.Color(0.78, 0.78, 0.76);
 
 function groundVertexHeight(heightAt: HeightAt, x: number, z: number): number {
   return heightAt(x, z) + jitter(x, z) * 0.06;
@@ -140,6 +173,18 @@ export function createGround(
     for (const hole of waterholes) {
       if (Math.hypot(x - hole.x, z - hole.z) < hole.radius + 4) tint.lerp(GREEN_TINT, 0.55);
     }
+    if (input.flora === 'woodland') tint.lerp(WOODLAND_TINT, 0.6 + patch * 0.25);
+    for (const area of input.vision ?? []) {
+      const inside = area.circle
+        ? Math.hypot(x - area.circle.x, z - area.circle.z) < area.circle.radius
+        : area.wall
+          ? distanceToPath(x, z, area.wall.points) < area.wall.width + 1.5
+          : false;
+      if (!inside) continue;
+      if (area.kind === 'brush') tint.lerp(THICKET_TINT, 0.5);
+      else if (area.kind === 'clearing') tint.lerp(CLEARING_TINT, 0.6);
+      else if (area.kind === 'ledge' || area.kind === 'rockWall') tint.lerp(GRANITE_TINT, 0.55);
+    }
     tint.offsetHSL(0, 0, jitter(z, x) * 0.03);
 
     const track = Math.min(...input.tracks.map((p) => distanceToPath(x, z, p)), Infinity);
@@ -203,6 +248,11 @@ export function createGround(
 export function jitter(x: number, z: number): number {
   const s = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
   return (s - Math.floor(s)) * 2 - 1;
+}
+
+function smooth(value: number): number {
+  const t = clamp01(value);
+  return t * t * (3 - 2 * t);
 }
 
 function clamp01(value: number): number {

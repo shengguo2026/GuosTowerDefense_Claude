@@ -48,6 +48,27 @@ export function Minimap({ level, snapshot, camera, selectedId, highContrast, t, 
         data-testid="minimap"
       >
         <rect width={SIZE} height={SIZE} className="minimap-ground" />
+        {level.vision.map((area) =>
+          area.circle ? (
+            <circle
+              key={area.id}
+              cx={px(area.circle.x)}
+              cy={pz(area.circle.z)}
+              r={(area.circle.radius / bounds.span) * SIZE}
+              className={`minimap-zone ${area.kind}`}
+            />
+          ) : (
+            <polyline
+              key={area.id}
+              points={(area.wall?.points ?? []).map(([x, z]) => `${px(x)},${pz(z)}`).join(' ')}
+              className={`minimap-zone ${area.kind}`}
+              fill="none"
+              strokeWidth={((area.wall?.width ?? 2) / bounds.span) * SIZE + 1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ),
+        )}
         {level.routes.map((route) => (
           <polyline
             key={route.id}
