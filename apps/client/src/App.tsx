@@ -21,6 +21,7 @@ import { ManualScreen } from './menu/ManualScreen';
 import { RotateHint } from './menu/RotateHint';
 import { ShareScreen } from './menu/ShareScreen';
 import { SinglePlayerSetup } from './menu/SinglePlayerSetup';
+import { ProgressScreen } from './progress/ProgressScreen';
 import { WorldCanvas } from './scene/WorldCanvas';
 import { useServerConnection } from './useServerConnection';
 import { useSettings } from './useSettings';
@@ -38,6 +39,7 @@ type Screen =
   | { name: 'hotseat-setup' }
   | { name: 'hotseat'; config: HotSeatConfig }
   | { name: 'manual' }
+  | { name: 'progress' }
   | { name: 'share' }
   /** Wi-Fi play: host or join; `code` came with the QR code. */
   | { name: 'wifi'; code?: string }
@@ -314,7 +316,8 @@ export function App() {
               screen.name === 'hotseat-setup' ||
               screen.name === 'share' ||
               screen.name === 'wifi' ||
-              screen.name === 'manual') && <WorldCanvas />}
+              screen.name === 'manual' ||
+              screen.name === 'progress') && <WorldCanvas />}
 
           {!inRoom && screen.name === 'menu' && (
             <header className="top-bar">
@@ -344,6 +347,7 @@ export function App() {
               onShare={() => setScreen({ name: 'share' })}
               onWifi={() => setScreen({ name: 'wifi' })}
               onManual={() => setScreen({ name: 'manual' })}
+              onProgress={() => setScreen({ name: 'progress' })}
               onSettings={() => setSettingsOpen(true)}
               onDemo={() => setScreen({ name: 'level', mode: 'demo' })}
             />
@@ -401,6 +405,9 @@ export function App() {
           )}
           {!inRoom && screen.name === 'manual' && (
             <ManualScreen stageId={LION.stageId} language={language} t={t} onBack={toMenu} />
+          )}
+          {!inRoom && screen.name === 'progress' && (
+            <ProgressScreen stageId={LION.stageId} language={language} t={t} onBack={toMenu} />
           )}
           {manualOver && (
             <div className="manual-over">

@@ -18,6 +18,7 @@ interface Props {
   onShare(): void;
   onWifi(): void;
   onManual(): void;
+  onProgress(): void;
   onSettings(): void;
   onDemo(): void;
 }
@@ -35,6 +36,7 @@ export function MainMenu({
   onShare,
   onWifi,
   onManual,
+  onProgress,
   onSettings,
   onDemo,
 }: Props) {
@@ -101,6 +103,14 @@ export function MainMenu({
           <div className="menu-row">
             <button type="button" className="menu-button small" onClick={onManual} data-testid="menu-manual">
               <strong>{t('menu.manual')}</strong>
+            </button>
+            <button
+              type="button"
+              className="menu-button small"
+              onClick={onProgress}
+              data-testid="menu-progress"
+            >
+              <strong>{t('menu.progress')}</strong>
             </button>
             <button
               type="button"

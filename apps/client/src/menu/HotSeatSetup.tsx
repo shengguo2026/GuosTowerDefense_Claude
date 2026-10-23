@@ -1,5 +1,6 @@
 import type { StagePack } from '@gtd/content-schema';
 import { createTranslator, type Language, type Translate } from '@gtd/i18n';
+import { levelForXp } from '@gtd/progression';
 import type { Progress, StageSummary } from '@gtd/protocol';
 import type { Side } from '@gtd/sim';
 import { useEffect, useMemo, useState } from 'react';
@@ -231,7 +232,14 @@ export function HotSeatSetup({ stages, language, t, initial, onStart, onBack }: 
                           className="portrait"
                         />
                         <span className="profile-text">
-                          <strong>{stageText(profile.name)}</strong>
+                          <strong>
+                            {stageText(profile.name)}{' '}
+                            <span className="profile-level" data-testid={`level-${profile.id}`}>
+                              {t('progress.levelShort', {
+                                level: levelForXp(progress?.profileXp[pack.manifest.id]?.[profile.id] ?? 0),
+                              })}
+                            </span>
+                          </strong>
                           <span className="muted">{stageText(profile.description)}</span>
                         </span>
                       </button>

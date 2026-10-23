@@ -1,6 +1,6 @@
-import type { Action, StagePack } from '@gtd/content-schema';
+import { withRanks, type Action, type ProfileLevels, type StagePack } from '@gtd/content-schema';
 import { createTranslator, type Translate } from '@gtd/i18n';
-import type { MatchCommand, PlanningPauses } from '@gtd/protocol';
+import type { MatchCommand, PlanningPauses, SideReward } from '@gtd/protocol';
 import {
   TARGET_PRIORITIES,
   type DefenseEntity,
@@ -73,7 +73,7 @@ type AttackerMode = { type: 'reroute' } | { type: 'ability'; abilityId: string }
  */
 export function HotSeatScreen({
   config,
-  pack,
+  pack: basePack,
   connection,
   settings,
   overlayOpen,
@@ -83,11 +83,15 @@ export function HotSeatScreen({
 }: Props) {
   const { t, bindings } = settings;
   const { accessibility, graphics } = settings.settings;
-  const level = pack.levels.find((l) => l.id === config.levelId);
+  const level = basePack.levels.find((l) => l.id === config.levelId);
   const stageText: Translate = useMemo(
-    () => createTranslator(settings.language, pack.texts),
-    [settings.language, pack],
+    () => createTranslator(settings.language, basePack.texts),
+    [settings.language, basePack],
   );
+  // Both players' profile levels: the HUD shows the costs and cooldowns of their unlocked ranks.
+  const [ranks, setRanks] = useState<ProfileLevels | undefined>(undefined);
+  const [rewards, setRewards] = useState<Partial<Record<Side, SideReward>> | null>(null);
+  const pack = useMemo(() => withRanks(basePack, config, ranks), [basePack, config, ranks]);
   const profileOf = (side: Side) =>
     pack.profiles.find(
       (p) => p.id === (side === 'attacker' ? config.attackerProfileId : config.defenderProfileId),
@@ -163,7 +167,7 @@ export function HotSeatScreen({
     const view = new LevelView({
       canvas,
       labelLayer,
-      pack,
+      pack: basePack,
       level,
       preset,
       stageText,
@@ -178,7 +182,7 @@ export function HotSeatScreen({
       viewRef.current = null;
       view.dispose();
     };
-  }, [pack, level, preset, stageText, accessibility.reducedEffects, accessibility.highContrastRoutes]);
+  }, [basePack, level, preset, stageText, accessibility.reducedEffects, accessibility.highContrastRoutes]);
 
   // ── Match messages ───────────────────────────────────────────────────
   const startMatch = useCallback(() => {
@@ -190,6 +194,7 @@ export function HotSeatScreen({
       hotSeat: true,
       attackerProfileId: config.attackerProfileId,
       defenderProfileId: config.defenderProfileId,
+      names: config.names,
     });
   }, [send, config]);
 
@@ -199,6 +204,8 @@ export function HotSeatScreen({
       switch (message.type) {
         case 'matchStarted':
           viewRef.current?.buffer.clear();
+          setRanks(message.ranks);
+          setRewards(null);
           setSnapshot(null);
           setGroupId(null);
           setAssetId(null);
@@ -208,6 +215,8 @@ export function HotSeatScreen({
           return;
         case 'joined':
           return setJoined(true);
+        case 'matchRewards':
+          return setRewards(message.rewards);
         case 'clock':
           setPaused(message.paused);
           setPlanning(message.planning ?? null);
@@ -1030,6 +1039,9 @@ export function HotSeatScreen({
           t={t}
           onPlayAgain={startMatch}
           onBack={onQuit}
+          rewards={rewards}
+          pack={basePack}
+          stageText={stageText}
         />
       )}
     </div>

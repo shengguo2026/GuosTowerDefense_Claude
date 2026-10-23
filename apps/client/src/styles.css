@@ -2058,7 +2058,7 @@ button.primary-small {
 
 /* Settings */
 .settings {
-  width: min(560px, calc(100vw - 32px));
+  width: min(620px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   display: flex;
   flex-direction: column;
@@ -3315,4 +3315,251 @@ kbd {
   .lobby-footer .action {
     min-width: 0;
   }
+}
+
+/* M10 progress: level bars, rewards under the 50/50 result, the Progress screen and the save tab. */
+.level-bar {
+  display: grid;
+  gap: 3px;
+  min-width: min(260px, 36vw);
+  font-size: 13px;
+}
+.level-bar-track {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(27, 36, 51, 0.15);
+  overflow: hidden;
+}
+.level-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #f2c14e, #e8742c);
+}
+.result-half .level-bar-track {
+  background: rgba(255, 255, 255, 0.25);
+}
+.result-half .level-bar-fill {
+  background: #fff;
+}
+
+.result-reward {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+  max-width: min(360px, 42vw);
+}
+.result-reward p {
+  margin: 0;
+}
+.reward-score {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+.result-half.defender .reward-score,
+.result-half.defender .reward-xp {
+  justify-content: flex-end;
+}
+.reward-score strong {
+  font-size: 26px;
+}
+.reward-parts {
+  font-size: 12px;
+  opacity: 0.85;
+}
+.reward-xp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.reward-badge {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.reward-badge.level-up {
+  background: #f2c14e;
+}
+.reward-unlock {
+  font-size: 13px;
+}
+
+@media (max-width: 900px), (max-height: 480px) {
+  .result-half {
+    overflow-y: auto;
+    padding-bottom: 96px;
+  }
+  .result-reward {
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    gap: 2px;
+  }
+  .reward-score strong {
+    font-size: 18px;
+  }
+  .reward-parts {
+    display: none;
+  }
+  .result-reward .level-bar {
+    font-size: 11px;
+  }
+  .reward-unlock {
+    font-size: 11px;
+  }
+}
+
+.rank-list {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.rank-list li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(27, 36, 51, 0.05);
+  font-size: 14px;
+}
+.rank-list li.locked {
+  opacity: 0.6;
+}
+.rank-list li.unlocked {
+  background: rgba(47, 158, 91, 0.12);
+}
+.rank-level {
+  font-weight: 700;
+  white-space: nowrap;
+}
+.rank-state {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.rank-list li.unlocked .rank-state {
+  color: var(--ok);
+}
+
+.progress-profiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.progress-profile {
+  padding: 12px;
+  border-radius: 12px;
+  border: 2px solid var(--line);
+  background: #fff;
+}
+.progress-profile.attacker {
+  border-left: 6px solid var(--attacker);
+}
+.progress-profile.defender {
+  border-left: 6px solid var(--defender);
+}
+.progress-profile-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.progress-profile-head > div {
+  display: grid;
+  gap: 4px;
+  flex: 1;
+}
+.progress-profile-head .mini-icon {
+  width: 48px;
+  height: 48px;
+}
+
+.progress-filters {
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.segmented {
+  display: inline-flex;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.segmented button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  background: #fff;
+  color: var(--ink);
+  font-weight: 700;
+  cursor: pointer;
+}
+.segmented button.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+.score-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.score-table th,
+.score-table td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px 16px;
+  margin: 0;
+}
+.stat-grid div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--line);
+}
+.stat-grid dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.profile-level {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(27, 36, 51, 0.1);
+  font-size: 11px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+a.action {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+.settings-body [data-testid='save-message'] {
+  margin-top: 8px;
+  font-weight: 700;
 }

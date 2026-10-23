@@ -6,6 +6,7 @@ import { Art, initials } from '../art/Art';
 import { commandSlots, inProfileOrder } from '../hud/commandSlots';
 import { KeyHint, useKeyLabel } from '../hud/KeyHint';
 import { KEY_ACTIONS } from '../input/bindings';
+import { RankList } from '../progress/RankList';
 
 const RULE_PAGES = [
   'basics',
@@ -307,6 +308,13 @@ function ProfilePage({
               </li>
             ))}
           </ul>
+        </>
+      )}
+      {profile.ranks.length > 0 && (
+        <>
+          <h3>{t('progress.ranks')}</h3>
+          <p className="muted">{t('progress.ranksHint')}</p>
+          <RankList profile={profile} t={t} stageText={stageText} />
         </>
       )}
     </>

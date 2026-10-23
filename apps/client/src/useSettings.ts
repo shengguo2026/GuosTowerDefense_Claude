@@ -51,8 +51,14 @@ export function useSettings() {
     }
   }, []);
 
+  /** Reads the settings again (after a save was imported). */
+  const reload = useCallback(async () => {
+    setStored(await api.settings());
+  }, []);
+
   return {
     settings,
+    reload,
     loaded: stored !== null,
     loadError,
     language,
