@@ -95,8 +95,8 @@
       },
       {
         "id": "kopje-ledge",
-        "x": 27,
-        "z": -8,
+        "x": 25,
+        "z": -3,
         "kind": "buildZone",
         "buildable": true
       },
@@ -251,9 +251,9 @@
       "kind": "ledge",
       "label": "vision.granite-ledge",
       "circle": {
-        "x": -9,
-        "z": -8,
-        "radius": 7
+        "x": -10,
+        "z": -9,
+        "radius": 8
       },
       "vantage": 1.4
     },
@@ -261,8 +261,8 @@
       "id": "kopje-ledge",
       "kind": "ledge",
       "circle": {
-        "x": 27,
-        "z": -8,
+        "x": 25,
+        "z": -3,
         "radius": 3.5
       },
       "vantage": 1.3

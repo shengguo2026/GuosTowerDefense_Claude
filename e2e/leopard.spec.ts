@@ -28,6 +28,7 @@ function save(lionWon: boolean) {
     version: 2,
     settings: SETTINGS,
     unlocks: { stages: { 'stage-01-big-five': { completedLevels: lionWon ? ['lion'] : [] } } },
+    updatedAt: '2026-10-23T08:00:00.000Z',
   };
 }
 
