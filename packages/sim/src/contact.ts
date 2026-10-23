@@ -6,7 +6,10 @@ import type { CloseContact } from './types';
  * defenders that close in matter more. Nobody stays hidden at arm's length.
  */
 
-/** Share of its sight range at which the Attacker spots a Defender asset standing in an Ambush Zone. */
+/**
+ * Share of its sight range at which the Attacker spots a Defender asset standing in an Ambush Zone: a Scout (16) sees a
+ * patrol there just before it is in its reach, a team (10) only once it is.
+ */
 export const AMBUSH_SIGHT = 0.4;
 /** How long a group caught in an ambush stops in surprise. */
 export const AMBUSH_PIN_SECONDS = 1.5;

@@ -1697,7 +1697,7 @@ export class Match {
         revealed ||
         lookers.some((g) =>
           lurking
-            ? this.inSight(g, defense, cover * AMBUSH_SIGHT)
+            ? this.spotsLurking(g, defense, cover)
             : this.inSight(g, defense, cover) || this.touching(g, defense),
         );
       if (!inSight) continue;
@@ -1716,6 +1716,15 @@ export class Match {
   /** Whether a group sees a spot: its sight range, from a vantage point further, cut by what the line crosses. */
   private inSight(group: GroupEntity, at: Point, cover = 1): boolean {
     return this.vision.sees(group, at, this.sightRange(group) * this.vision.vantageAt(group) * cover);
+  }
+
+  /**
+   * Whether a group spots an asset waiting in an Ambush Zone: only within a share of its sight range, whatever brush
+   * the line passes (the thicket's cover is already counted in that share), and never through a wall.
+   */
+  private spotsLurking(group: GroupEntity, at: Point, cover: number): boolean {
+    const range = this.sightRange(group) * this.vision.vantageAt(group) * cover * AMBUSH_SIGHT;
+    return distance(group, at) <= range && !this.vision.blocked(group, at);
   }
 
   /** Close Contact: within the contact range two sides see each other past any cover, though not through a wall. */
