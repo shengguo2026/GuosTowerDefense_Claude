@@ -282,6 +282,10 @@ export class WifiRooms {
         if (missing) return fail('notReady');
         if (room.matchId) this.matches.stop(room.matchId);
         const profile = (side: Side) => room.slots.find((s) => s.side === side)?.profileId ?? '';
+        const nameOf = (side: Side) => {
+          const playerId = room.slots.find((s) => s.side === side)?.playerId;
+          return (playerId && room.players.get(playerId)?.name) || '';
+        };
         const players: [Send, Side][] = [];
         const computer: Side[] = [];
         for (const slot of room.slots) {
@@ -299,6 +303,8 @@ export class WifiRooms {
           difficulty: room.difficulty,
           players,
           computer,
+          humans: room.slots.filter((slot) => slot.controller === 'human').map((slot) => slot.side),
+          names: { attacker: nameOf('attacker'), defender: nameOf('defender') },
           host,
           onEnd: () => {
             if (room.matchId !== matchId || room.phase !== 'match') return;

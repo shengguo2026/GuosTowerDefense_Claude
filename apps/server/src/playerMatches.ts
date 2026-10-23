@@ -12,8 +12,10 @@ import {
   type Seat,
   type ServerMessage,
 } from '@gtd/protocol';
-import type { Match, Side } from '@gtd/sim';
+import type { SideReward } from '@gtd/protocol';
+import type { Match, MatchSetup, Side } from '@gtd/sim';
 import { MatchHost } from './matchHost';
+import { finishedMatch, type FinishedMatch, type PlayedSide } from './progress';
 
 type Send = (message: ServerMessage) => void;
 
@@ -27,6 +29,12 @@ interface PlayerMatch {
   computer?: ComputerPlayer;
   /** A guided tutorial: never counts for progress. */
   tutorial: boolean;
+  setup: MatchSetup;
+  /** Single player, hot-seat or Wi-Fi: counts for progress. A debug match (people seated by hand) does not. */
+  mode: FinishedMatch['mode'] | null;
+  sides: Record<Side, PlayedSide>;
+  /** Score and XP once the save has them, for players who come back to the result. */
+  rewards?: Partial<Record<Side, SideReward>>;
   /** Two people on one PC: planning pauses (spec §5.2) instead of free pause and speed. */
   hotSeat?: {
     left: Record<Side, number>;
@@ -55,16 +63,11 @@ export interface WifiMatchRequest {
   difficulty: Difficulty;
   players: [Send, Side][];
   computer: Side[];
+  /** Sides people hold (also while the computer stands in for a device that is away); they earn XP. */
+  humans: Side[];
+  names: Record<Side, string>;
   host: Send | null;
   onEnd(): void;
-}
-
-/** A person beat the computer: the stage, level, the person's side and the difficulty. */
-export interface SinglePlayerWin {
-  stageId: string;
-  levelId: string;
-  side: Side;
-  difficulty: Difficulty;
 }
 
 type Result<T> = { ok: true; value: T } | { ok: false; message: ServerMessage };
@@ -81,7 +84,10 @@ export class PlayerMatches {
   constructor(
     private readonly stages: StagePack[],
     private readonly options: {
-      onWin?(win: SinglePlayerWin): void;
+      /** A match that counts ended: the save records it and says what each side got. */
+      onFinished?(match: FinishedMatch): Promise<Partial<Record<Side, SideReward>>>;
+      /** The profile level a person plays a profile with (their unlocked ranks are in effect). */
+      profileLevel?(stageId: string, profileId: string): number;
       /** Injectable clock for tests. */
       now?: () => number;
       /** Injectable match seed for tests (normally taken from the clock, so every match plays out differently). */
@@ -100,6 +106,7 @@ export class PlayerMatches {
       showAiReasoning?: boolean;
       tutorial?: boolean;
       hotSeat?: boolean;
+      names?: Partial<Record<Side, string>>;
     },
     send: Send,
   ): boolean {
@@ -111,6 +118,12 @@ export class PlayerMatches {
     if (!pack?.levels.some((level) => level.id === request.levelId)) return false;
     const attackerProfileId = request.attackerProfileId ?? (pack.manifest.profiles.attacker[0] as string);
     const defenderProfileId = request.defenderProfileId ?? (pack.manifest.profiles.defender[0] as string);
+    const tutorial = request.tutorial === true && request.opponent !== undefined;
+    const mode = tutorial ? null : request.hotSeat ? 'hotSeat' : request.opponent ? 'single' : null;
+    const humans: Side[] =
+      mode === 'hotSeat' ? ['attacker', 'defender'] : mode === 'single' ? [request.seat as Side] : [];
+    const profileIds = { attacker: attackerProfileId, defender: defenderProfileId };
+    const ranks = this.ranksOf(pack.manifest.id, profileIds, humans);
     let setup;
     try {
       setup = createMatchSetup(pack, {
@@ -118,6 +131,7 @@ export class PlayerMatches {
         attackerProfileId,
         defenderProfileId,
         seed: this.options.seed?.() ?? Date.now() % 1_000_000,
+        ranks,
       });
     } catch {
       return false;
@@ -142,7 +156,10 @@ export class PlayerMatches {
       levelId: request.levelId,
       players: new Map(),
       ...(computer ? { computer } : {}),
-      tutorial: request.tutorial === true && computer !== undefined,
+      tutorial,
+      setup,
+      mode,
+      sides: sidesOf(profileIds, humans, request.names ?? {}),
       ...(request.hotSeat
         ? { hotSeat: { left: { attacker: PLANNING_PAUSES, defender: PLANNING_PAUSES }, by: null, endsAt: 0 } }
         : {}),
@@ -155,6 +172,7 @@ export class PlayerMatches {
         attackerProfileId,
         defenderProfileId,
         ...(computer ? { computer } : {}),
+        ...(Object.keys(ranks).length > 0 ? { ranks } : {}),
       },
       host: new MatchHost({
         setup,
@@ -174,6 +192,8 @@ export class PlayerMatches {
   /** Starts a Wi-Fi match for a room; returns its id, or null if the level or a profile does not exist. */
   createWifi(request: WifiMatchRequest): string | null {
     const pack = this.stages.find((stage) => stage.manifest.id === request.stageId);
+    const profileIds = { attacker: request.attackerProfileId, defender: request.defenderProfileId };
+    const ranks = this.ranksOf(request.stageId, profileIds, request.humans);
     let setup;
     try {
       if (!pack) return null;
@@ -182,6 +202,7 @@ export class PlayerMatches {
         attackerProfileId: request.attackerProfileId,
         defenderProfileId: request.defenderProfileId,
         seed: this.options.seed?.() ?? Date.now() % 1_000_000,
+        ranks,
       });
     } catch {
       return null;
@@ -196,6 +217,9 @@ export class PlayerMatches {
       levelId: request.levelId,
       players: new Map(),
       tutorial: false,
+      setup,
+      mode: 'wifi',
+      sides: sidesOf(profileIds, request.humans, request.names),
       eventIndex: 0,
       wifi: { host: request.host, difficulty: request.difficulty, seed: setup.seed, onEnd: request.onEnd },
       started: {
@@ -205,6 +229,7 @@ export class PlayerMatches {
         levelId: request.levelId,
         attackerProfileId: request.attackerProfileId,
         defenderProfileId: request.defenderProfileId,
+        ...(Object.keys(ranks).length > 0 ? { ranks } : {}),
       },
       host: new MatchHost({
         setup,
@@ -374,6 +399,21 @@ export class PlayerMatches {
     send(match.started);
     send({ type: 'joined', matchId: match.matchId, seat });
     send(this.clockOf(match, send));
+    if (match.rewards) send({ type: 'matchRewards', matchId: match.matchId, rewards: match.rewards });
+  }
+
+  /** The profile levels people play with; a profile at level 1 (or the computer's side) plays the starting kit. */
+  private ranksOf(
+    stageId: string,
+    profileIds: Record<Side, string>,
+    humans: Side[],
+  ): Partial<Record<Side, number>> {
+    const ranks: Partial<Record<Side, number>> = {};
+    for (const side of humans) {
+      const level = this.options.profileLevel?.(stageId, profileIds[side]) ?? 1;
+      if (level > 1) ranks[side] = level;
+    }
+    return ranks;
   }
 
   /** Single player: the computer plays one side and the person holds the other (pause and speed are allowed). */
@@ -430,14 +470,28 @@ export class PlayerMatches {
 
   private ended(match: PlayerMatch): void {
     match.wifi?.onEnd();
-    const result = match.host.match.result;
-    if (!result || !match.computer || match.tutorial || result.winner === match.computer.side) return;
-    this.options.onWin?.({
-      stageId: match.stageId,
-      levelId: match.levelId,
-      side: result.winner,
-      difficulty: match.computer.difficulty,
-    });
+    const sim = match.host.match;
+    if (!sim.result || !match.mode || !this.options.onFinished) return;
+    const finished = finishedMatch(
+      {
+        stageId: match.stageId,
+        levelId: match.levelId,
+        mode: match.mode,
+        difficulty: match.computer?.difficulty ?? match.wifi?.difficulty ?? null,
+        sides: match.sides,
+      },
+      match.setup,
+      sim.snapshot(null),
+      sim.events.all(),
+    );
+    this.options.onFinished(finished).then(
+      (rewards) => {
+        match.rewards = rewards;
+        for (const player of match.players.keys())
+          player({ type: 'matchRewards', matchId: match.matchId, rewards });
+      },
+      (error: unknown) => console.error('Could not save the match result:', error),
+    );
   }
 
   private matchOf(send: Send): PlayerMatch | undefined {
@@ -484,4 +538,17 @@ function error(
   message: string,
 ): ServerMessage {
   return { type: 'error', code, message };
+}
+
+function sidesOf(
+  profileIds: Record<Side, string>,
+  humans: Side[],
+  names: Partial<Record<Side, string>>,
+): Record<Side, PlayedSide> {
+  const side = (s: Side): PlayedSide => ({
+    profileId: profileIds[s],
+    controller: humans.includes(s) ? 'human' : 'ai',
+    name: names[s] ?? '',
+  });
+  return { attacker: side('attacker'), defender: side('defender') };
 }

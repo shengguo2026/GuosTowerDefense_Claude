@@ -220,3 +220,63 @@ describe('loading several stage packs', () => {
     expect(report.errors.join('\n')).toContain('[broken-core] levels/missing-level.json');
   });
 });
+
+describe('profile ranks (XP unlocks)', () => {
+  it('gives every Big Five profile one small rank for each level from 2 to 5', async () => {
+    const result = await loadStageDirectory(join(STAGES, 'stage-01-big-five'));
+    if (!result.ok) throw new Error('stage did not load');
+    for (const profile of result.pack.profiles) {
+      expect(profile.ranks.map((rank) => rank.level).sort(), profile.id).toEqual([2, 3, 4, 5]);
+      for (const rank of profile.ranks)
+        for (const factor of Object.values(rank.changes))
+          expect(Math.abs(factor - 1)).toBeLessThanOrEqual(0.150001);
+    }
+  });
+
+  it('applies the unlocked ranks of the level a side plays with, and only those', async () => {
+    const result = await loadStageDirectory(TEST_STAGE);
+    if (!result.ok) throw new Error('stage did not load');
+    const choice = {
+      levelId: 'meadow',
+      attackerProfileId: 'courier',
+      defenderProfileId: 'gatekeeper',
+      seed: 1,
+    };
+    const base = createMatchSetup(result.pack, choice);
+    const level2 = createMatchSetup(result.pack, { ...choice, ranks: { attacker: 2 } });
+    const level3 = createMatchSetup(result.pack, { ...choice, ranks: { attacker: 3 } });
+    const speed = (setup: typeof base) => setup.attacker.units.find((u) => u.id === 'runner')?.speed ?? 0;
+    const tailwind = (setup: typeof base) => setup.attacker.abilities.find((a) => a.id === 'tailwind');
+    expect(speed(level2)).toBeCloseTo(speed(base) * 1.1);
+    expect(tailwind(level2)).toEqual(tailwind(base));
+    expect(tailwind(level3)?.cooldownSeconds).toBeCloseTo((tailwind(base)?.cooldownSeconds ?? 0) * 0.85);
+    expect(Number.isInteger(tailwind(level3)?.cost)).toBe(true);
+    // The pack itself is not changed.
+    expect(speed(createMatchSetup(result.pack, choice))).toBe(speed(base));
+  });
+
+  it('refuses a rank for something the profile does not have, or a change that does not fit', async () => {
+    const result = await loadWithChange('profiles/courier.json', (json) => {
+      json.ranks = [
+        {
+          level: 2,
+          name: 'profile.courier.name',
+          description: 'profile.courier.name',
+          unit: 'nobody',
+          changes: { speed: 1.1 },
+        },
+        {
+          level: 3,
+          name: 'profile.courier.name',
+          description: 'profile.courier.name',
+          unit: 'runner',
+          changes: { cooldownSeconds: 0.9 },
+        },
+      ];
+    });
+    expect(messages(result)).toEqual([
+      'profiles/courier.json ranks.0.unit: the profile has no unit "nobody"',
+      'profiles/courier.json ranks.1.changes.cooldownSeconds: a unit rank can change cost, speed, resilience, sightRange',
+    ]);
+  });
+});

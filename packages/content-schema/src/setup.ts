@@ -1,15 +1,76 @@
 import type { MatchSetup, SimAbility, SimEffect } from '@gtd/sim';
-import type { Action, Effect, StagePack } from './schema';
+import type { Action, Effect, Profile, Rank, StagePack } from './schema';
 
 export interface MatchChoice {
   levelId: string;
   attackerProfileId: string;
   defenderProfileId: string;
   seed: number;
+  /** Profile XP levels of the sides a person plays (G11); a side left out plays the starting kit. */
+  ranks?: ProfileLevels;
+}
+
+/** The profile level each side plays with, 1 (starting kit) to PROFILE_LEVELS. */
+export type ProfileLevels = Partial<Record<'attacker' | 'defender', number>>;
+
+/** The ranks a profile has unlocked at a profile level, lowest first. */
+export function unlockedRanks(profile: Profile, level: number): Rank[] {
+  return profile.ranks.filter((rank) => rank.level <= level).sort((a, b) => a.level - b.level);
+}
+
+/**
+ * The stage pack as a match with these profile levels plays it: the catalog entries the sides' unlocked ranks improve
+ * carry the improved numbers. The server builds the match from it, and the HUD shows costs and cooldowns from it.
+ */
+export function withRanks(
+  pack: StagePack,
+  profiles: { attackerProfileId: string; defenderProfileId: string },
+  levels: ProfileLevels | undefined,
+): StagePack {
+  const ranks = (['attacker', 'defender'] as const).flatMap((side) => {
+    const level = levels?.[side] ?? 1;
+    const id = side === 'attacker' ? profiles.attackerProfileId : profiles.defenderProfileId;
+    const profile = pack.profiles.find((p) => p.id === id && p.side === side);
+    return profile && level > 1 ? unlockedRanks(profile, level) : [];
+  });
+  if (ranks.length === 0) return pack;
+  const improve = <T extends { id: string }>(entry: T, target: string | undefined, rank: Rank): T => {
+    if (entry.id !== target) return entry;
+    const next: Record<string, unknown> = { ...entry };
+    for (const [key, factor] of Object.entries(rank.changes)) {
+      if (key === 'magnitude' && 'effects' in entry) {
+        next.effects = (entry.effects as Effect[]).map((effect) =>
+          effect.magnitude === undefined
+            ? effect
+            : { ...effect, magnitude: round(effect.magnitude * factor) },
+        );
+      } else if (typeof next[key] === 'number') {
+        // Costs stay whole numbers, so the HUD never shows a fraction of a supply or point.
+        const value = (next[key] as number) * factor;
+        next[key] = key === 'cost' ? Math.round(value) : round(value);
+      } else if (key === 'detectionRange' && typeof next.range === 'number') {
+        // A defense without its own detection range detects as far as it reaches.
+        next.detectionRange = round((next.range as number) * factor);
+      }
+    }
+    return next as T;
+  };
+  let { units, defenses, abilities } = pack.catalog;
+  for (const rank of ranks) {
+    units = units.map((unit) => improve(unit, rank.unit, rank));
+    defenses = defenses.map((defense) => improve(defense, rank.defense, rank));
+    abilities = abilities.map((ability) => improve(ability, rank.ability, rank));
+  }
+  return { ...pack, catalog: { ...pack.catalog, units, defenses, abilities } };
+}
+
+function round(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }
 
 /** Turns stage-pack data into the plain input the simulation runs on. */
-export function createMatchSetup(pack: StagePack, choice: MatchChoice): MatchSetup {
+export function createMatchSetup(basePack: StagePack, choice: MatchChoice): MatchSetup {
+  const pack = withRanks(basePack, choice, choice.ranks);
   const level = pack.levels.find((l) => l.id === choice.levelId);
   if (!level) throw new Error(`Stage "${pack.manifest.id}" has no level "${choice.levelId}"`);
   const attacker = findProfile(pack, choice.attackerProfileId, 'attacker');

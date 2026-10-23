@@ -35,5 +35,43 @@
     "patrol-beacon"
   ],
   "abilities": ["rapid-response", "intercept", "emergency-reinforcement"],
-  "commands": ["upgrade", "repair", "sell", "priority", "focus", "guard"]
+  "commands": ["upgrade", "repair", "sell", "priority", "focus", "guard"],
+  "ranks": [
+    {
+      "level": 2,
+      "name": "profile.ranger.rank.2.name",
+      "description": "profile.ranger.rank.2.description",
+      "defense": "observation-post",
+      "changes": {
+        "detectionRange": 1.12
+      }
+    },
+    {
+      "level": 3,
+      "name": "profile.ranger.rank.3.name",
+      "description": "profile.ranger.rank.3.description",
+      "ability": "rapid-response",
+      "changes": {
+        "cooldownSeconds": 0.85
+      }
+    },
+    {
+      "level": 4,
+      "name": "profile.ranger.rank.4.name",
+      "description": "profile.ranger.rank.4.description",
+      "defense": "ranger-patrol",
+      "changes": {
+        "pressurePerSecond": 1.12
+      }
+    },
+    {
+      "level": 5,
+      "name": "profile.ranger.rank.5.name",
+      "description": "profile.ranger.rank.5.description",
+      "ability": "intercept",
+      "changes": {
+        "cooldownSeconds": 0.85
+      }
+    }
+  ]
 }

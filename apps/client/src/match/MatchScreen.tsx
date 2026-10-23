@@ -1,7 +1,7 @@
 import type { AiThought } from '@gtd/ai';
-import type { Action, StagePack } from '@gtd/content-schema';
+import { withRanks, type Action, type ProfileLevels, type StagePack } from '@gtd/content-schema';
 import { createTranslator, type Translate } from '@gtd/i18n';
-import type { ComputerPlayer, MatchCommand, MatchSpeed } from '@gtd/protocol';
+import type { ComputerPlayer, MatchCommand, MatchSpeed, SideReward } from '@gtd/protocol';
 import {
   TARGET_PRIORITIES,
   type Side,
@@ -89,7 +89,7 @@ type HintId =
  */
 export function MatchScreen({
   config,
-  pack,
+  pack: basePack,
   connection,
   settings,
   overlayOpen,
@@ -101,11 +101,15 @@ export function MatchScreen({
   const { t, bindings, update } = settings;
   const { accessibility, onboarding, graphics } = settings.settings;
   const side = config.side;
-  const level = pack.levels.find((l) => l.id === config.levelId);
+  const level = basePack.levels.find((l) => l.id === config.levelId);
   const stageText: Translate = useMemo(
-    () => createTranslator(settings.language, pack.texts),
-    [settings.language, pack],
+    () => createTranslator(settings.language, basePack.texts),
+    [settings.language, basePack],
   );
+  // The profile levels the server plays this match with: the HUD shows the costs and cooldowns of unlocked ranks.
+  const [ranks, setRanks] = useState<ProfileLevels | undefined>(undefined);
+  const [rewards, setRewards] = useState<Partial<Record<Side, SideReward>> | null>(null);
+  const pack = useMemo(() => withRanks(basePack, config, ranks), [basePack, config, ranks]);
   const profile = pack.profiles.find(
     (p) => p.id === (side === 'attacker' ? config.attackerProfileId : config.defenderProfileId),
   );
@@ -158,7 +162,7 @@ export function MatchScreen({
     const view = new LevelView({
       canvas,
       labelLayer,
-      pack,
+      pack: basePack,
       level,
       preset,
       stageText,
@@ -175,12 +179,15 @@ export function MatchScreen({
       viewRef.current = null;
       view.dispose();
     };
-  }, [pack, level, preset, stageText, accessibility.reducedEffects, accessibility.highContrastRoutes]);
+  }, [basePack, level, preset, stageText, accessibility.reducedEffects, accessibility.highContrastRoutes]);
 
   // ── Match messages ───────────────────────────────────────────────────
   const wifiRef = useRef(wifi);
   wifiRef.current = wifi;
   const isWifi = wifi !== undefined;
+  // Read when a match starts; changing the name in Settings must not restart the match.
+  const playerNameRef = useRef(settings.settings.playerName);
+  playerNameRef.current = settings.settings.playerName;
   const startMatch = useCallback(() => {
     // A Wi-Fi match is already running on the PC: this device only takes its seat again.
     if (isWifi) return wifiRef.current?.resync();
@@ -194,6 +201,7 @@ export function MatchScreen({
       opponent: config.difficulty,
       showAiReasoning: config.showAiReasoning,
       tutorial: config.tutorial,
+      names: { [config.side]: playerNameRef.current },
     });
   }, [send, config, isWifi]);
 
@@ -203,6 +211,8 @@ export function MatchScreen({
       switch (message.type) {
         case 'matchStarted':
           viewRef.current?.buffer.clear();
+          setRanks(message.ranks);
+          setRewards(null);
           setComputer(message.computer ?? null);
           setThoughts([]);
           setSnapshot(null);
@@ -214,6 +224,8 @@ export function MatchScreen({
           return;
         case 'joined':
           return setJoined(true);
+        case 'matchRewards':
+          return setRewards(message.rewards);
         case 'clock':
           setPaused(message.paused);
           setSpeed(message.speed);
@@ -1069,6 +1081,9 @@ export function MatchScreen({
           t={t}
           onPlayAgain={startMatch}
           onBack={onQuit}
+          rewards={rewards}
+          pack={basePack}
+          stageText={stageText}
           {...(wifi
             ? {
                 names: wifi.names,

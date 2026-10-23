@@ -1,13 +1,14 @@
 import { LANGUAGE_NAMES, LANGUAGES, isLanguage } from '@gtd/i18n';
-import { GRAPHICS_PRESETS } from '@gtd/protocol';
-import { useEffect, useMemo, useState } from 'react';
+import { GRAPHICS_PRESETS, type SaveInfo } from '@gtd/protocol';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { api, SAVE_EXPORT_URL } from '../api';
 import { sounds } from '../audio/sound';
 import { useKeyLabel } from '../hud/KeyHint';
 import { DEFAULT_BINDINGS, KEY_ACTIONS, RESERVED_KEYS, findConflicts } from '../input/bindings';
 import type { SettingsState } from '../useSettings';
 
-type Tab = 'general' | 'audio' | 'controls' | 'accessibility' | 'help';
-const TABS: Tab[] = ['general', 'audio', 'controls', 'accessibility', 'help'];
+type Tab = 'general' | 'audio' | 'controls' | 'accessibility' | 'help' | 'save';
+const TABS: Tab[] = ['general', 'audio', 'controls', 'accessibility', 'help', 'save'];
 
 interface Props {
   settings: SettingsState;
@@ -164,6 +165,8 @@ export function SettingsPanel({ settings, onReplayTutorial, onClose }: Props) {
             </>
           )}
 
+          {tab === 'save' && <SaveTab settings={settings} />}
+
           {tab === 'help' && (
             <>
               <p>{t('settings.help.hintsText', { count: current.onboarding.hintsSeen.length })}</p>
@@ -205,6 +208,76 @@ export function SettingsPanel({ settings, onReplayTutorial, onClose }: Props) {
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * The save on the PC (spec §13): when it was last written, how many backups exist, export to a file and import one
+ * back. Only the PC handles the save; a tablet or phone is told so.
+ */
+function SaveTab({ settings }: { settings: SettingsState }) {
+  const { t } = settings;
+  const [info, setInfo] = useState<SaveInfo | null | 'guest'>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    api.saveInfo().then(setInfo, () => setInfo('guest'));
+  }, []);
+  if (info === 'guest') return <p data-testid="save-guest">{t('save.pcOnly')}</p>;
+  const importFile = async (file: File) => {
+    try {
+      const next = await api.importSave(await file.text());
+      setInfo(next);
+      await settings.reload();
+      setMessage({ ok: true, text: t('save.imported') });
+    } catch {
+      setMessage({ ok: false, text: t('save.importFailed') });
+    }
+  };
+  return (
+    <>
+      <p>{t('save.intro')}</p>
+      {info && (
+        <p className="muted" data-testid="save-info">
+          {t('save.info', {
+            date: new Date(info.updatedAt).getTime() > 0 ? new Date(info.updatedAt).toLocaleString() : '–',
+            backups: info.backups,
+          })}
+          {info.loadedFrom === 'backup' && ` ${t('save.restoredFromBackup')}`}
+        </p>
+      )}
+      <div className="row">
+        <a className="action secondary" href={SAVE_EXPORT_URL} download data-testid="save-export">
+          {t('save.export')}
+        </a>
+        <button
+          type="button"
+          className="action secondary"
+          onClick={() => fileRef.current?.click()}
+          data-testid="save-import"
+        >
+          {t('save.import')}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          data-testid="save-import-file"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = '';
+            if (file) void importFile(file);
+          }}
+        />
+      </div>
+      <p className="hint">{t('save.importHint')}</p>
+      {message && (
+        <p className={message.ok ? 'hint' : 'error'} role="status" data-testid="save-message">
+          {message.text}
+        </p>
+      )}
+    </>
   );
 }
 

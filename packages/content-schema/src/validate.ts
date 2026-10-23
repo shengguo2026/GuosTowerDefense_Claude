@@ -1,5 +1,12 @@
 import type { ContentIssue } from './loader';
-import { ATTACKER_ORDERS, DEFENDER_ORDERS, LANGUAGES, type Action, type StagePack } from './schema';
+import {
+  ATTACKER_ORDERS,
+  DEFENDER_ORDERS,
+  LANGUAGES,
+  RANK_CHANGES,
+  type Action,
+  type StagePack,
+} from './schema';
 
 type Side = 'attacker' | 'defender';
 
@@ -215,6 +222,24 @@ export function crossCheck(pack: StagePack): ContentIssue[] {
     profile.commands.forEach((ref, i) => {
       const command = catalog.commands.find((c) => c.id === ref);
       if (command) checkAction(file, `commands.${i}`, command, profile.side);
+    });
+    findDuplicates(profile.ranks.map((rank) => String(rank.level))).forEach((dup) =>
+      add(file, 'ranks', `level ${dup} has two ranks`),
+    );
+    profile.ranks.forEach((rank, i) => {
+      useText(rank.name, file);
+      useText(rank.description, file);
+      const kind = rank.ability ? 'ability' : rank.unit ? 'unit' : 'defense';
+      const target = (rank.ability ?? rank.unit ?? rank.defense) as string;
+      const own: string[] =
+        kind === 'ability' ? profile.abilities : kind === 'unit' ? profile.units : profile.defenses;
+      if (!own.includes(target)) add(file, `ranks.${i}.${kind}`, `the profile has no ${kind} "${target}"`);
+      const allowed: readonly string[] = RANK_CHANGES[kind];
+      const changes = Object.keys(rank.changes);
+      if (changes.length === 0) add(file, `ranks.${i}.changes`, 'a rank needs at least one change');
+      for (const change of changes)
+        if (!allowed.includes(change))
+          add(file, `ranks.${i}.changes.${change}`, `a ${kind} rank can change ${allowed.join(', ')}`);
     });
     profile.passive.effects.forEach((effect, i) => {
       const passives = profile.side === 'attacker' ? ['boost', 'conceal'] : ['boost', 'protect', 'reveal'];

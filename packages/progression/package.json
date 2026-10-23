@@ -1,0 +1,19 @@
+{
+  "name": "@gtd/progression",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Score, profile XP and level rules, shared by the game server and the client.",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@gtd/ai": "0.0.1",
+    "@gtd/sim": "0.0.1"
+  }
+}

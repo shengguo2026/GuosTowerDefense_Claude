@@ -59,5 +59,9 @@
   "command.patch-up.name": "修补",
   "command.patch-up.description": "修理所选设施。",
   "command.brace.name": "加固",
-  "command.brace.description": "在一段时间内保护所选设施。"
+  "command.brace.description": "在一段时间内保护所选设施。",
+  "profile.courier.rank.2.name": "快跑者",
+  "profile.courier.rank.2.description": "跑者移动速度提高 10%。",
+  "profile.courier.rank.3.name": "顺风 II",
+  "profile.courier.rank.3.description": "顺风冷却更短、费用更低。"
 }

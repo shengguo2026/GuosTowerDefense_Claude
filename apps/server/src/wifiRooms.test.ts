@@ -9,7 +9,8 @@ import WebSocket from 'ws';
 import { Discovery, broadcastAddresses } from './discovery';
 import { createGameServer, listen } from './gameServer';
 import { PlayerMatches } from './playerMatches';
-import { SaveManager } from './saveManager';
+import { applyMatch, type FinishedMatch } from './progress';
+import { SaveManager, defaultSave, type SaveData } from './saveManager';
 import { prepareUserData } from './userData';
 import { WifiRooms } from './wifiRooms';
 
@@ -33,9 +34,29 @@ function device() {
   };
 }
 
-function setup(progress: Progress = { completedLevels: {}, wins: {} }, awaySeconds = 60) {
+function setup(
+  progress: Progress = { completedLevels: {}, wins: {}, profileXp: {} },
+  awaySeconds = 60,
+  save?: SaveData,
+) {
   let now = 0;
-  const matches = new PlayerMatches(stages, { now: () => now, seed: () => 1234 });
+  const matches = new PlayerMatches(stages, {
+    now: () => now,
+    seed: () => 1234,
+    ...(save
+      ? {
+          onFinished: (match: FinishedMatch) =>
+            Promise.resolve(
+              applyMatch(
+                save,
+                match,
+                stages.find((p) => p.manifest.id === 'test-stage'),
+                'today',
+              ),
+            ),
+        }
+      : {}),
+  });
   const rooms = new WifiRooms(stages, matches, {
     addresses: () => ['http://192.168.1.20:3000/'],
     progress: () => progress,
@@ -119,7 +140,9 @@ describe('Wi-Fi rooms', () => {
   });
 
   it('opens the levels the host has unlocked to every guest', () => {
-    const { pc, rooms } = hostAndGuest(setup({ completedLevels: { 'test-stage': ['meadow'] }, wins: {} }));
+    const { pc, rooms } = hostAndGuest(
+      setup({ completedLevels: { 'test-stage': ['meadow'] }, wins: {}, profileXp: {} }),
+    );
     rooms.settings(pc.send, 'test-stage', 'canyon', 'easy');
     expect(pc.room().levelId).toBe('canyon');
   });
@@ -229,6 +252,41 @@ describe('Wi-Fi rooms', () => {
     expect(world.phone.last('roomClosed')?.reason).toBe('left');
     expect(host.controls('defender')).toBe(true);
     expect(world.pc.room().slots[1]).toMatchObject({ playerId: null, controller: 'human' });
+  });
+
+  it('gives both people XP and a high score against each other, and the computer none', async () => {
+    const save = defaultSave();
+    const world = hostAndGuest(setup(undefined, 60, save));
+    const host = startMatch(world);
+    let launched = false;
+    while (!host.match.isOver) {
+      world.tick(500);
+      host.advance();
+      if (!launched && host.match.phase === 'combat') {
+        launched = true;
+        world.matches.command(
+          {
+            type: 'launchWave',
+            side: 'attacker',
+            groups: [
+              { unitTypeId: 'runner', count: 16, formation: 'column', routeId: 'hill-path', delaySeconds: 0 },
+            ],
+          },
+          world.pc.send,
+        );
+      }
+    }
+    await vi.waitFor(() => expect(world.phone.last('matchRewards')).toBeDefined());
+    const xp = save.profiles['test-stage'] ?? {};
+    expect(Object.keys(xp).sort()).toEqual(['courier', 'gatekeeper']);
+    expect(save.statistics).toMatchObject({ matchesPlayed: 1, wifiMatches: 1, wins: 1, losses: 1 });
+    expect(save.highScores.map((h) => [h.side, h.opponent, h.players[0]?.name])).toEqual([
+      ['attacker', 'human', 'Guo'],
+      ['defender', 'human', 'Mia'],
+    ]);
+    // A win against a person does not unlock levels (only beating the computer does).
+    expect(save.records).toEqual({});
+    expect(world.pc.last('matchRewards')?.rewards.defender?.xp?.gained.victory).toBe(0);
   });
 
   it('shows the result, plays again and goes back to the lobby', () => {
