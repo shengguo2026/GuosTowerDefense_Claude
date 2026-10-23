@@ -102,7 +102,7 @@ describe('stage pack loader', () => {
       defenderProfileId: 'ranger',
       seed: 1,
     });
-    expect(setup.level.edges.find((e) => e.label === 'crossing.elephant-ford')?.capacity).toBe(6);
+    expect(setup.level.edges.find((e) => e.from === 'ford-west' && e.to === 'ford-east')?.capacity).toBe(6);
     expect(setup.level.terrain.water?.weight?.heavy).toBeGreaterThan(1);
     expect(elephant?.hints.map((hint) => hint.area).filter(Boolean)).toEqual(['mud', 'crossing', 'crossing']);
   });
