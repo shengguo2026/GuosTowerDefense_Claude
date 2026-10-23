@@ -15,12 +15,18 @@ export interface MapOverlay {
   /** Hot-seat: the Attacker's selected group (its own ring colour) and the junction cursor of the route schematic. */
   markedId?: number | null;
   cursor?: Point2 | null;
+  /**
+   * What a structure sees (or would see from a build site): its detection reach around `origin`, cut short by rock
+   * walls and brush (Concealment Zones). Drawn as a soft area with an outline.
+   */
+  viewArea?: { origin: Point2; edge: Point2[] } | null;
 }
 
 const SITE_COLOR = 0x7dffb0;
 const SELECT_COLOR = 0xffffff;
 const AIM_COLOR = 0xffd447;
 const ATTACKER_COLOR = 0xffa24a;
+const VIEW_COLOR = 0x8fe3ff;
 
 /**
  * Selection marks on the ground: glowing build sites while placing, a ring around the selected group or asset, and
@@ -43,6 +49,8 @@ export class SelectionView {
   private readonly cursor: THREE.Mesh;
   private readonly beacon: THREE.Mesh;
   private readonly dummy = new THREE.Object3D();
+  private readonly view = new THREE.Group();
+  private viewKey = '';
   private overlay: MapOverlay = {};
   private hoverSite: string | null = null;
   private hoverPoint: Point2 | null = null;
@@ -72,6 +80,8 @@ export class SelectionView {
       line(ATTACKER_COLOR, 0.6),
     );
     this.beacon.geometry.translate(0, 3, 0);
+    this.view.name = 'view-area';
+    this.root.add(this.view);
     for (const mesh of [
       this.ring,
       this.aim,
@@ -90,6 +100,61 @@ export class SelectionView {
   set(overlay: MapOverlay): void {
     this.overlay = overlay;
     this.siteList = overlay.buildSites ?? [];
+    this.setViewArea(overlay.viewArea ?? null);
+  }
+
+  private setViewArea(area: MapOverlay['viewArea']): void {
+    const key = area
+      ? `${area.origin.x},${area.origin.z}:${area.edge.map((p) => `${p.x.toFixed(1)},${p.z.toFixed(1)}`).join(';')}`
+      : '';
+    if (key === this.viewKey) return;
+    this.viewKey = key;
+    this.clearView();
+    if (!area || area.edge.length < 3) return;
+    const lift = (p: Point2) => this.heightAt(p.x, p.z) + 0.35;
+    // A fan from the origin; each slice is split in two along its length so it follows the ground.
+    const positions: number[] = [];
+    const { origin, edge } = area;
+    const mid = (p: Point2): Point2 => ({ x: (origin.x + p.x) / 2, z: (origin.z + p.z) / 2 });
+    const v = (p: Point2) => [p.x, lift(p), p.z];
+    for (let i = 0; i < edge.length; i++) {
+      const a = edge[i] as Point2;
+      const b = edge[(i + 1) % edge.length] as Point2;
+      const ma = mid(a);
+      const mb = mid(b);
+      positions.push(...v(origin), ...v(mb), ...v(ma));
+      positions.push(...v(ma), ...v(mb), ...v(b), ...v(ma), ...v(b), ...v(a));
+    }
+    const fill = new THREE.BufferGeometry();
+    fill.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const fillMesh = new THREE.Mesh(
+      fill,
+      new THREE.MeshBasicMaterial({
+        color: VIEW_COLOR,
+        transparent: true,
+        opacity: 0.16,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      }),
+    );
+    const outline = new THREE.BufferGeometry().setFromPoints(
+      edge.map((p) => new THREE.Vector3(p.x, lift(p) + 0.05, p.z)),
+    );
+    const line = new THREE.LineLoop(
+      outline,
+      new THREE.LineBasicMaterial({ color: VIEW_COLOR, transparent: true, opacity: 0.9, depthWrite: false }),
+    );
+    fillMesh.renderOrder = line.renderOrder = 3;
+    this.view.add(fillMesh, line);
+  }
+
+  private clearView(): void {
+    for (const child of [...this.view.children]) {
+      const mesh = child as THREE.Mesh;
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+      this.view.remove(child);
+    }
   }
 
   /** The pointer is over this build site and ground point (null when off the map). */
@@ -161,6 +226,7 @@ export class SelectionView {
   }
 
   dispose(): void {
+    this.clearView();
     this.sites.geometry.dispose();
     this.siteMaterial.dispose();
     this.sites.dispose();

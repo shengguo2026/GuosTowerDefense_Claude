@@ -3,8 +3,19 @@ import * as THREE from 'three';
 import { ColorGeometryBuilder, createFlatMaterial, transform } from '../geometryBuilder';
 import { distanceToPath, type Point2 } from '../paths';
 import type { PresetSettings } from '../presets';
-import { lionGeometry } from './animals';
-import { SAVANNA, acacia, bush, grassTuftGeometry, reed, rock, termiteMound } from './props';
+import { leopardGeometry, lionGeometry } from './animals';
+import {
+  SAVANNA,
+  acacia,
+  broadleaf,
+  bush,
+  granite,
+  grassTuftGeometry,
+  reed,
+  rock,
+  termiteMound,
+  thicket,
+} from './props';
 import {
   createGround,
   createHeightField,
@@ -12,6 +23,7 @@ import {
   loadGroundTexture,
   type HeightAt,
   type Landmark,
+  type VisionShape,
 } from './terrain';
 
 export interface SavannaInput {
@@ -24,6 +36,9 @@ export interface SavannaInput {
   routes: Point2[][];
   /** Spots that must stay free (build zones, objective). */
   keepClear: Point2[];
+  /** Concealment Zones, drawn as thickets, rock walls, ledges and clearings. */
+  vision?: VisionShape[];
+  flora?: 'savanna' | 'woodland';
 }
 
 export interface BuiltWorld {
@@ -43,9 +58,12 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
   root.name = 'savanna';
   const rng = new Rng(input.seed);
   const tracks = input.routes.filter((route) => route !== input.streambed);
+  const vision = input.vision ?? [];
+  const woodland = input.flora === 'woodland';
   const smoothHeight = createHeightField({
     size: input.size,
     landmarks: input.landmarks,
+    vision,
     streambed: input.streambed,
     tracks,
   });
@@ -62,7 +80,14 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
     riverbed: own(loadGroundTexture('/art/textures/TEX-RIVERBED.jpg', 0xb08a5a, anisotropy)),
   };
   const ground = createGround(
-    { size: input.size, landmarks: input.landmarks, streambed: input.streambed, tracks },
+    {
+      size: input.size,
+      landmarks: input.landmarks,
+      vision,
+      flora: input.flora,
+      streambed: input.streambed,
+      tracks,
+    },
     smoothHeight,
     textures,
     preset,
@@ -77,6 +102,13 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
     for (const spot of input.keepClear) if (Math.hypot(x - spot.x, z - spot.z) < margin + 2) return false;
     for (const l of input.landmarks) {
       if (l.kind === 'waterhole' && Math.hypot(x - l.x, z - l.z) < l.radius + 5) return false;
+      if (l.kind === 'kopje' && Math.hypot(x - l.x, z - l.z) < l.radius) return false;
+    }
+    // Clearings stay open, ledges bare rock, and the rock walls get their own boulders.
+    for (const area of vision) {
+      if (area.circle && area.kind !== 'brush') {
+        if (Math.hypot(x - area.circle.x, z - area.circle.z) < area.circle.radius + 1) return false;
+      } else if (area.wall && distanceToPath(x, z, area.wall.points) < area.wall.width + 1.5) return false;
     }
     return true;
   };
@@ -85,7 +117,12 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
 
   // ---- Static props, merged into one mesh ----
   const props = new ColorGeometryBuilder();
-  const treeVariants = Array.from({ length: 6 }, () => acacia(rng, 1));
+  // Woodland levels grow mostly broad-leaf trees with a few acacias between them.
+  const treeVariants = woodland
+    ? [...Array.from({ length: 6 }, () => broadleaf(rng, 1)), acacia(rng, 1), acacia(rng, 0.9)]
+    : Array.from({ length: 6 }, () => acacia(rng, 1));
+  const thicketVariants = Array.from({ length: 5 }, () => thicket(rng));
+  const graniteVariants = Array.from({ length: 8 }, (_, i) => granite(rng, 1, i < 4 ? 0.75 : 0.55));
   const bushVariants = Array.from({ length: 5 }, () => bush(rng));
   const mound = termiteMound();
 
@@ -97,7 +134,7 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
     }
   };
   // Acacias stand in loose groves with open grass between them, as in the approved sample.
-  const groves = Math.round(34 * preset.treeDensity);
+  const groves = Math.round((woodland ? 85 : 34) * preset.treeDensity);
   for (let g = 0; g < groves; g++) {
     const cx = rng.range(-half * 0.8, half * 0.8);
     const cz = rng.range(-half * 0.8, half * 0.8);
@@ -105,18 +142,69 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
     for (let t = 0; t < trees; t++) {
       const x = cx + rng.range(-7, 7);
       const z = cz + rng.range(-7, 7);
-      if (clearOf(x, z, 8.5))
+      if (clearOf(x, z, woodland ? 5.5 : 8.5))
         props.addColored(rng.pick(treeVariants), place(x, z, rng.range(0, 6), rng.range(0.75, 1.15)));
     }
   }
   scatter(Math.round(26 * preset.treeDensity), half * 0.82, 8.5, (x, z) =>
     props.addColored(rng.pick(treeVariants), place(x, z, rng.range(0, 6), rng.range(0.7, 1.05))),
   );
-  scatter(Math.round(160 * preset.treeDensity), half * 0.72, 2.5, (x, z) =>
+  scatter(Math.round((woodland ? 230 : 160) * preset.treeDensity), half * 0.72, 2.5, (x, z) =>
     props.addColored(rng.pick(bushVariants), place(x, z, rng.range(0, 6), rng.range(0.8, 1.2))),
   );
-  scatter(55, half * 0.72, 2, (x, z) => props.addColored(rock(rng, rng.range(0.4, 1.1)), place(x, z)));
-  scatter(14, half * 0.55, 3, (x, z) => props.addColored(mound, place(x, z, rng.range(0, 6))));
+  if (woodland)
+    scatter(45, half * 0.72, 2.5, (x, z) =>
+      props.addColored(rng.pick(graniteVariants), place(x, z, rng.range(0, 6), rng.range(0.6, 1.8))),
+    );
+  else scatter(55, half * 0.72, 2, (x, z) => props.addColored(rock(rng, rng.range(0.4, 1.1)), place(x, z)));
+  if (!woodland) scatter(14, half * 0.55, 3, (x, z) => props.addColored(mound, place(x, z, rng.range(0, 6))));
+
+  // ---- Concealment Zones ----
+  for (const area of vision) {
+    if (area.kind === 'brush' && area.circle) {
+      // Dense thicket right up to the trail: groups walking through are half hidden.
+      const { x: cx, z: cz, radius } = area.circle;
+      const count = Math.round(radius * radius * 1.1 * Math.max(0.5, preset.treeDensity));
+      for (let i = 0; i < count; i++) {
+        const a = rng.range(0, Math.PI * 2);
+        const d = Math.sqrt(rng.next()) * radius;
+        const x = cx + Math.cos(a) * d;
+        const z = cz + Math.sin(a) * d;
+        if (input.routes.some((route) => distanceToPath(x, z, route) < 1.8)) continue;
+        if (input.keepClear.some((spot) => Math.hypot(x - spot.x, z - spot.z) < 3)) continue;
+        props.addColored(rng.pick(thicketVariants), place(x, z, rng.range(0, 6), rng.range(0.8, 1.35)));
+      }
+    } else if (area.kind === 'rockWall' && area.wall) {
+      // Stacked granite along the wall line, tall enough to read as a barrier to the eye.
+      const points = area.wall.points;
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1] as Point2;
+        const b = points[i] as Point2;
+        const length = Math.hypot(b.x - a.x, b.z - a.z);
+        for (let at = 0; at <= length; at += 1.5) {
+          const t = at / length;
+          const x = a.x + (b.x - a.x) * t + rng.range(-0.4, 0.4);
+          const z = a.z + (b.z - a.z) * t + rng.range(-0.4, 0.4);
+          props.addColored(granite(rng, rng.range(1.3, 2), 0.95), place(x, z));
+          if (rng.next() < 0.6)
+            props.addColored(
+              granite(rng, rng.range(0.9, 1.4), 0.9),
+              transform(x + rng.range(-0.5, 0.5), heightAt(x, z) + 1.6, z + rng.range(-0.5, 0.5)),
+            );
+        }
+      }
+    } else if (area.kind === 'ledge' && area.circle) {
+      // Flat slabs around the rim of the shelf.
+      const { x: cx, z: cz, radius } = area.circle;
+      for (let i = 0; i < 10; i++) {
+        const a = (i / 10) * Math.PI * 2 + rng.range(-0.2, 0.2);
+        const x = cx + Math.cos(a) * (radius + rng.range(0.5, 2));
+        const z = cz + Math.sin(a) * (radius + rng.range(0.5, 2));
+        if (input.routes.some((route) => distanceToPath(x, z, route) < 2.2)) continue;
+        props.addColored(rng.pick(graniteVariants), place(x, z, rng.range(0, 6), rng.range(1.2, 2)));
+      }
+    }
+  }
 
   for (const landmark of input.landmarks) {
     if (landmark.kind === 'rockyRidge') {
@@ -141,6 +229,29 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
         const x = landmark.x + rng.range(-landmark.radius, landmark.radius);
         const z = landmark.z + rng.range(-landmark.radius, landmark.radius);
         props.addColored(rock(rng, rng.range(0.35, 0.7)), place(x, z));
+      }
+    } else if (landmark.kind === 'kopje') {
+      // Rounded granite boulders piled around a flat-topped rock where the leopard rests.
+      props.addColored(granite(rng, KOPJE_TOP_ROCK, 0.5), place(landmark.x, landmark.z, rng.range(0, 6)));
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2 + rng.range(-0.15, 0.15);
+        const d = landmark.radius * rng.range(0.45, 0.95);
+        const x = landmark.x + Math.cos(a) * d;
+        const z = landmark.z + Math.sin(a) * d;
+        props.addColored(granite(rng, rng.range(1.6, 3), 0.8), place(x, z, rng.range(0, 6)));
+      }
+      props.addColored(
+        broadleaf(rng, 1.3),
+        place(landmark.x - landmark.radius * 0.6, landmark.z + landmark.radius * 0.5, 0.4),
+      );
+    } else if (landmark.kind === 'figTree') {
+      props.addColored(broadleaf(rng, 2), place(landmark.x, landmark.z, rng.range(0, 6)));
+    } else if (landmark.kind === 'ravine') {
+      for (let i = 0; i < 12; i++) {
+        const x = landmark.x + rng.range(-landmark.radius * 2, landmark.radius * 2);
+        const z = landmark.z + rng.range(-landmark.radius, landmark.radius);
+        if (input.routes.some((route) => distanceToPath(x, z, route) < 1.2)) continue;
+        props.addColored(granite(rng, rng.range(0.3, 0.7)), place(x, z));
       }
     } else if (landmark.kind === 'entrance') {
       props.addColored(entranceGate(), place(landmark.x, landmark.z, landmark.rotation));
@@ -205,7 +316,8 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
     dummy.scale.setScalar(rng.range(0.7, 1.5));
     dummy.updateMatrix();
     tufts.setMatrixAt(tuftCount, dummy.matrix);
-    tint.setHSL(rng.range(0.1, 0.14), rng.range(0.45, 0.6), rng.range(0.5, 0.62));
+    if (woodland) tint.setHSL(rng.range(0.17, 0.24), rng.range(0.35, 0.5), rng.range(0.38, 0.5));
+    else tint.setHSL(rng.range(0.1, 0.14), rng.range(0.45, 0.6), rng.range(0.5, 0.62));
     tufts.setColorAt(tuftCount++, tint);
   }
   tufts.count = tuftCount;
@@ -240,12 +352,19 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
   // ---- Animals ----
   const animalMeshes: THREE.Mesh[] = [];
   for (const animal of input.animals) {
-    if (animal.kind !== 'lion' && animal.kind !== 'lioness') continue;
-    const mesh = new THREE.Mesh(
-      own(lionGeometry(animal.kind === 'lion', animal.pose === 'lying')),
-      propMaterial,
+    const lying = animal.pose === 'lying';
+    let geometry: THREE.BufferGeometry;
+    if (animal.kind === 'lion' || animal.kind === 'lioness')
+      geometry = lionGeometry(animal.kind === 'lion', lying);
+    else if (animal.kind === 'leopard') geometry = leopardGeometry(lying);
+    else continue;
+    const mesh = new THREE.Mesh(own(geometry), propMaterial);
+    // An animal on a kopje lies on the flat rock at its top.
+    const onRock = input.landmarks.some(
+      (l) => l.kind === 'kopje' && Math.hypot(animal.x - l.x, animal.z - l.z) < KOPJE_TOP_ROCK,
     );
-    mesh.position.set(animal.x, heightAt(animal.x, animal.z), animal.z);
+    const lift = onRock ? KOPJE_TOP_ROCK * 0.5 * 1.4 : 0;
+    mesh.position.set(animal.x, heightAt(animal.x, animal.z) + lift, animal.z);
     mesh.rotation.y = animal.rotation;
     mesh.castShadow = true;
     mesh.name = animal.kind;
@@ -260,7 +379,7 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
     heightAt,
     update(elapsed) {
       for (const material of waterMaterials) material.uniforms.time!.value = elapsed;
-      // Slow breathing so the lions read as alive and at rest.
+      // Slow breathing so the animals read as alive and at rest.
       animalMeshes.forEach((mesh, i) => mesh.scale.set(1, 1 + Math.sin(elapsed * 1.4 + i * 1.7) * 0.025, 1));
     },
     dispose() {
@@ -268,6 +387,9 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
     },
   };
 }
+
+/** Size of the flat rock on top of a kopje. */
+const KOPJE_TOP_ROCK = 3;
 
 function entranceGate(): THREE.BufferGeometry {
   const wood = 0x7a5532;

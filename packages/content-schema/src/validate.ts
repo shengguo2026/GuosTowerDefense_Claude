@@ -1,10 +1,13 @@
+import { RouteGraph, VisionField, type Point, type VisionArea } from '@gtd/sim';
 import type { ContentIssue } from './loader';
+import { toVisionArea } from './setup';
 import {
   ATTACKER_ORDERS,
   DEFENDER_ORDERS,
   LANGUAGES,
   RANK_CHANGES,
   type Action,
+  type Level,
   type StagePack,
 } from './schema';
 
@@ -127,6 +130,35 @@ export function crossCheck(pack: StagePack): ContentIssue[] {
       );
       scene.landmarks.forEach((landmark) => landmark.label && useText(landmark.label, file));
     }
+
+    // Concealment Zones: a rock wall may stand beside a route but never across it, and nothing is built inside one.
+    findDuplicates(level.vision.map((area) => area.id)).forEach((dup) =>
+      add(file, 'vision', `area "${dup}" is defined twice`),
+    );
+    const routeMapOk = level.routes.every((route) =>
+      route.nodes.every((node, n) => n === 0 || links.has(`${route.nodes[n - 1]}>${node}`)),
+    );
+    const paths = routeMapOk && nodeIds.has(level.objective.nodeId) ? routePaths(level) : [];
+    level.vision.forEach((area, i) => {
+      if (area.label) useText(area.label, file);
+      if (area.los !== 'blocker') return;
+      const blocker = new VisionField([toVisionArea(area)]);
+      for (const { id, points } of paths) {
+        const crossed = points.some((p, k) => k > 0 && blocker.blocked(points[k - 1] as Point, p));
+        if (crossed) add(file, `vision.${i}`, `blocker "${area.id}" stands across route "${id}"`);
+      }
+      for (const node of level.map.nodes)
+        if (blocker.contains(blocker.areas[0] as VisionArea, node))
+          add(file, `vision.${i}`, `node "${node.id}" lies inside the blocker "${area.id}"`);
+    });
+    level.hints.forEach((hint, i) => {
+      useText(hint.text, file);
+      if (hint.when === 'area' && !level.vision.some((area) => area.kind === hint.area))
+        add(file, `hints.${i}.area`, `no vision area of kind "${hint.area ?? ''}" on this level`);
+    });
+    findDuplicates(level.hints.map((hint) => hint.id)).forEach((dup) =>
+      add(file, 'hints', `hint "${dup}" is defined twice`),
+    );
   });
 
   // Catalog
@@ -263,4 +295,13 @@ function findDuplicates(values: string[]): string[] {
   const duplicates = new Set<string>();
   for (const value of values) (seen.has(value) ? duplicates : seen).add(value);
   return [...duplicates];
+}
+
+/** Every route as the walkable line of points the simulation moves groups along. */
+function routePaths(level: Level): { id: string; points: Point[] }[] {
+  const graph = new RouteGraph({ nodes: level.map.nodes, edges: level.map.edges, routes: level.routes });
+  return level.routes.map((route) => ({
+    id: route.id,
+    points: graph.routeLegs(route.id).flatMap((leg, i) => (i === 0 ? leg.points : leg.points.slice(1))),
+  }));
 }

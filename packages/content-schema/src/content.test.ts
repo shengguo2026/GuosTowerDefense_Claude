@@ -62,6 +62,49 @@ describe('stage pack loader', () => {
     expect(found).toMatch(/landmark\.nowhere/);
   });
 
+  it('loads Leopard after Lion with three routes, its Concealment Zones and its hints', async () => {
+    const result = await loadStageDirectory(join(STAGES, 'stage-01-big-five'));
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const leopard = result.pack.levels.find((level) => level.id === 'leopard');
+    expect(leopard?.unlockedBy).toBe('lion');
+    expect(leopard?.routes.map((route) => route.id)).toEqual(['woodland', 'rocky', 'ravine']);
+    expect(new Set(leopard?.vision.map((area) => area.kind))).toEqual(
+      new Set(['brush', 'rockWall', 'ledge', 'clearing']),
+    );
+    expect(new Set(leopard?.vision.map((area) => area.los))).toEqual(new Set(['partial', 'blocker', 'none']));
+    const setup = createMatchSetup(result.pack, {
+      levelId: 'leopard',
+      attackerProfileId: 'explorer',
+      defenderProfileId: 'ranger',
+      seed: 1,
+    });
+    const wall = setup.level.vision?.find((area) => area.id === 'ravine-north-wall');
+    expect(wall?.wall?.points[0]).toEqual({ x: -19, z: 8.5 });
+    expect(leopard?.hints.length).toBeGreaterThan(3);
+  });
+
+  it('reports a rock wall across a route, a node inside one and an area hint without such an area', async () => {
+    const result = await loadWithChange('levels/canyon.json', (json) => {
+      const vision = json.vision as { id: string; wall?: { points: number[][] } }[];
+      vision[0]!.wall!.points = [
+        [20, -4],
+        [20, 4],
+      ];
+      vision.push({
+        id: 'pillar',
+        kind: 'boulder',
+        circle: { x: 14, z: 0, radius: 1 },
+        los: 'blocker',
+      } as never);
+      json.hints = [{ id: 'cave', text: 'level.canyon.title', when: 'area', area: 'cave' }];
+    });
+    const found = messages(result).join('\n');
+    expect(found).toContain('blocker "canyon-wall" stands across route "narrows-west"');
+    expect(found).toContain('node "narrows" lies inside the blocker "pillar"');
+    expect(found).toContain('no vision area of kind "cave"');
+  });
+
   it('loads the test stage with its own level and profile counts', async () => {
     const result = await loadStageDirectory(TEST_STAGE);
     expect(result.ok).toBe(true);

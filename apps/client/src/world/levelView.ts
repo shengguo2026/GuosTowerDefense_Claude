@@ -8,9 +8,10 @@ import { EffectsView } from './effectsView';
 import { EntityView, createBlobTexture } from './entityView';
 import { ROUTE_COLORS, createMarkers } from './markers';
 import type { Point2 } from './paths';
-import { sampleAlong, pathLength } from './paths';
+import { distanceToPath, sampleAlong, pathLength } from './paths';
 import type { PresetSettings } from './presets';
 import { buildSavanna } from './savanna/buildSavanna';
+import type { VisionShape } from './savanna/terrain';
 import { SelectionView, type MapOverlay } from './selectionView';
 import { SnapshotBuffer, type InterpolatedEntity } from './snapshotBuffer';
 
@@ -77,6 +78,22 @@ declare global {
   }
 }
 
+/** The level's Concealment Zones in the shape the world builder and the view-area overlay use. */
+export function visionShapes(level: Level): VisionShape[] {
+  return level.vision.map((area) => ({
+    kind: area.kind,
+    ...(area.circle ? { circle: area.circle } : {}),
+    ...(area.wall
+      ? { wall: { width: area.wall.width, points: area.wall.points.map(([x, z]) => ({ x, z })) } }
+      : {}),
+  }));
+}
+
+function labelPoint(points: [number, number][]): Point2 {
+  const middle = points[Math.floor(points.length / 2)] ?? [0, 0];
+  return { x: middle[0], z: middle[1] };
+}
+
 /** Route paths of a level, expanded with their bend points, in route order. */
 export function levelRoutePaths(level: Level): { id: string; name?: string; path: Point2[] }[] {
   const nodes = new Map(level.map.nodes.map((n) => [n.id, { id: n.id, x: n.x, z: n.z }]));
@@ -125,7 +142,14 @@ export class LevelView {
 
   constructor(private readonly options: LevelViewOptions) {
     const { canvas, level, preset } = options;
-    const scene = level.scene ?? { kit: 'savanna', seed: 1, size: 200, landmarks: [], animals: [] };
+    const scene = level.scene ?? {
+      kit: 'savanna',
+      flora: 'savanna' as const,
+      seed: 1,
+      size: 200,
+      landmarks: [],
+      animals: [],
+    };
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -186,6 +210,8 @@ export class LevelView {
         streambed,
         routes: routes.map((r) => r.path),
         keepClear: [...buildZones, ...(objectiveNode ? [{ x: objectiveNode.x, z: objectiveNode.z }] : [])],
+        vision: visionShapes(level),
+        flora: scene.flora,
       },
       preset,
       anisotropy,
@@ -197,7 +223,7 @@ export class LevelView {
         path: route.path,
         color: ROUTE_COLORS[i % ROUTE_COLORS.length] as number,
       })),
-      { x: objectiveNode?.x ?? 0, z: objectiveNode?.z ?? 0, radius: 4.5 },
+      { x: objectiveNode?.x ?? 0, z: objectiveNode?.z ?? 0, radius: level.objective.radius },
       buildZones,
       this.world.heightAt,
       options.highContrastRoutes,
@@ -460,6 +486,13 @@ export class LevelView {
   private createLabels(routes: { id: string; name?: string; path: Point2[] }[]): void {
     const scene = this.options.level.scene;
     const all: WorldLabel[] = [];
+    // Landmark and area names win over route names, so route names keep away from them.
+    const named = [
+      ...(scene?.landmarks ?? []).filter((l) => l.label),
+      ...this.options.level.vision
+        .filter((a) => a.label)
+        .map((a) => a.circle ?? labelPoint(a.wall?.points ?? [])),
+    ];
     for (const landmark of scene?.landmarks ?? []) {
       if (landmark.label)
         all.push({
@@ -469,10 +502,30 @@ export class LevelView {
           z: landmark.z,
         });
     }
+    for (const area of this.options.level.vision) {
+      if (!area.label) continue;
+      const at = area.circle ?? labelPoint(area.wall?.points ?? []);
+      all.push({ text: this.options.stageText(area.label), kind: 'landmark', x: at.x, z: at.z });
+    }
     routes.forEach((route, i) => {
       if (!route.name) return;
-      // Name the route where the two routes are furthest apart, around 40% of the way.
-      const at = sampleAlong(route.path, pathLength(route.path) * 0.42);
+      // Name the route where it is furthest from the others, between a quarter and three quarters of the way.
+      const others = routes.filter((other) => other !== route).map((other) => other.path);
+      const length = pathLength(route.path);
+      let at = sampleAlong(route.path, length * 0.42);
+      let best = -1;
+      for (let share = 0.25; share <= 0.75; share += 0.025) {
+        const p = sampleAlong(route.path, length * share);
+        const gap = Math.min(
+          ...others.map((path) => distanceToPath(p.x, p.z, path)),
+          ...named.map((n) => Math.hypot(n.x - p.x, n.z - p.z)),
+          30,
+        );
+        if (gap > best + 0.5) {
+          best = gap;
+          at = p;
+        }
+      }
       const color = `#${(ROUTE_COLORS[i % ROUTE_COLORS.length] as number).toString(16).padStart(6, '0')}`;
       all.push({ text: this.options.stageText(route.name), kind: 'route', x: at.x, z: at.z, color });
     });

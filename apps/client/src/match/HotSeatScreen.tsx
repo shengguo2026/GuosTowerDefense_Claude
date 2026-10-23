@@ -36,6 +36,7 @@ import { ResultScreen } from '../level/ResultScreen';
 import type { ServerConnection } from '../useServerConnection';
 import type { SettingsState } from '../useSettings';
 import { LevelView, type MapPick } from '../world/levelView';
+import { structureViewArea } from './viewArea';
 import { currentDevice, resolvePreset } from '../world/presets';
 import type { MapOverlay } from '../world/selectionView';
 import type { HotSeatConfig } from './matchConfig';
@@ -130,6 +131,7 @@ export function HotSeatScreen({
   const labelsRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<LevelView | null>(null);
   const [snapshot, setSnapshot] = useState<MatchSnapshot | null>(null);
+  const [hoverSite, setHoverSite] = useState<string | null>(null);
   const [joined, setJoined] = useState(false);
   const [paused, setPaused] = useState(false);
   const [planning, setPlanning] = useState<PlanningPauses | null>(null);
@@ -177,7 +179,10 @@ export function HotSeatScreen({
       hiddenMarkers: true,
     });
     viewRef.current = view;
-    view.onPointer({ tap: (pick, button, screen) => tapRef.current(pick, button, screen) });
+    view.onPointer({
+      tap: (pick, button, screen) => tapRef.current(pick, button, screen),
+      hover: (pick) => hoverRef.current(pick),
+    });
     return () => {
       viewRef.current = null;
       view.dispose();
@@ -622,6 +627,8 @@ export function HotSeatScreen({
   };
   const tapRef = useRef(tap);
   tapRef.current = tap;
+  const hoverRef = useRef((_pick: MapPick) => {});
+  hoverRef.current = (pick: MapPick) => setHoverSite(mode?.type === 'build' ? pick.nodeId : null);
 
   // Marks on the map: the Defender's selection and build sites, the Attacker's group and junction cursor.
   const cursorPoint = level?.map.nodes.find((n) => n.id === cursor) ?? null;
@@ -649,10 +656,29 @@ export function HotSeatScreen({
           .filter((n) => n !== undefined)
           .map((n) => ({ id: n.id, x: n.x, z: n.z }));
     }
-    if (selectedAsset)
-      result.selectedRange = defenseTypes.find((d) => d.id === selectedAsset.defenseTypeId)?.range;
+    if (selectedAsset) {
+      const type = defenseTypes.find((d) => d.id === selectedAsset.defenseTypeId);
+      result.selectedRange = type?.range;
+      result.viewArea = structureViewArea(level, type, selectedAsset, selectedAsset.level);
+    } else if (mode?.type === 'build' && hoverSite) {
+      // Placing on a level with Concealment Zones: what the structure would see from the site under the pointer.
+      const site = level.map.nodes.find((n) => n.id === hoverSite);
+      const type = defenseTypes.find((d) => d.id === mode.defenseTypeId);
+      if (site && result.buildSites?.some((s) => s.id === site.id))
+        result.viewArea = structureViewArea(level, type, site);
+    }
     return result;
-  }, [level, mode, selectedAsset, selectedGroup, cursorPoint, defenses, defenseTypes, defenderAbilities]);
+  }, [
+    level,
+    mode,
+    selectedAsset,
+    selectedGroup,
+    cursorPoint,
+    defenses,
+    defenseTypes,
+    defenderAbilities,
+    hoverSite,
+  ]);
   useEffect(() => viewRef.current?.setOverlay(overlay), [overlay]);
   const draftRoute = wave.drafts[wave.current]?.routeId ?? null;
   const shownRoute = selectedGroup ? selectedGroup.routeId : draftRoute;

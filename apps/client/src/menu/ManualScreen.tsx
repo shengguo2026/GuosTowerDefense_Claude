@@ -13,6 +13,7 @@ const RULE_PAGES = [
   'attacker',
   'defender',
   'detection',
+  'terrain',
   'effects',
   'hotseat',
   'devices',

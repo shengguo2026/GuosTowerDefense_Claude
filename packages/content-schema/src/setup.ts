@@ -1,5 +1,5 @@
-import type { MatchSetup, SimAbility, SimEffect } from '@gtd/sim';
-import type { Action, Effect, Profile, Rank, StagePack } from './schema';
+import type { MatchSetup, SimAbility, SimEffect, VisionArea } from '@gtd/sim';
+import type { Action, Effect, Profile, Rank, StagePack, VisionAreaData } from './schema';
 
 export interface MatchChoice {
   levelId: string;
@@ -94,6 +94,7 @@ export function createMatchSetup(basePack: StagePack, choice: MatchChoice): Matc
       pointsPerSecond: level.pointsPerSecond,
       bonuses: level.bonuses,
       terrain: level.terrain,
+      vision: level.vision.map(toVisionArea),
     },
     attacker: {
       profileId: attacker.id,
@@ -129,6 +130,20 @@ export function createMatchSetup(basePack: StagePack, choice: MatchChoice): Matc
       commands: commandsOf(pack, defender.commands),
       passive: defender.passive.effects.map(effectOf),
     },
+  };
+}
+
+export function toVisionArea(area: VisionAreaData): VisionArea {
+  const { id, kind, circle, wall, los, cover, exposure, vantage } = area;
+  return {
+    id,
+    kind,
+    ...(circle ? { circle } : {}),
+    ...(wall ? { wall: { width: wall.width, points: wall.points.map(([x, z]) => ({ x, z })) } } : {}),
+    los,
+    cover,
+    exposure,
+    vantage,
   };
 }
 

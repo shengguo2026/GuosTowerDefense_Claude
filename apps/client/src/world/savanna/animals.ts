@@ -44,3 +44,67 @@ export function lionGeometry(male: boolean, lying: boolean): THREE.BufferGeometr
   b.add(new THREE.IcosahedronGeometry(0.1, 0), MANE, transform(-2.25, y - 0.38, 0));
   return b.build();
 }
+
+const LEOPARD = 0xd9a44e;
+const LEOPARD_BELLY = 0xead2a0;
+const ROSETTE = 0x3a2a18;
+
+/**
+ * A resting leopard, long and low, with dark rosettes and a tail hanging over the rock edge. Scenery only, like every
+ * animal in the game.
+ */
+export function leopardGeometry(lying: boolean): THREE.BufferGeometry {
+  const b = new ColorGeometryBuilder();
+  const y = lying ? 0.45 : 0.95;
+  b.add(new THREE.IcosahedronGeometry(1, 1), LEOPARD, transform(0, y, 0, [0, 0, 0], [1.3, 0.42, 0.45]));
+  b.add(
+    new THREE.IcosahedronGeometry(0.7, 1),
+    LEOPARD_BELLY,
+    transform(0, y - 0.15, 0, [0, 0, 0], [1.6, 0.4, 0.55]),
+  );
+  b.add(
+    new THREE.IcosahedronGeometry(0.36, 1),
+    LEOPARD,
+    transform(1.45, y + 0.25, 0, [0, 0, 0], [1.1, 0.9, 0.9]),
+  );
+  b.add(new THREE.BoxGeometry(0.24, 0.18, 0.24), LEOPARD_BELLY, transform(1.78, y + 0.18, 0));
+  for (const side of [-0.18, 0.18])
+    b.add(new THREE.ConeGeometry(0.08, 0.14, 4), LEOPARD, transform(1.4, y + 0.58, side));
+  // Rosettes along the back and flanks.
+  const spots: [number, number, number][] = [
+    [-0.9, 0.28, 0.2],
+    [-0.5, 0.36, -0.15],
+    [-0.1, 0.38, 0.22],
+    [0.3, 0.36, -0.2],
+    [0.7, 0.3, 0.18],
+    [-0.7, 0.18, 0.4],
+    [0.1, 0.2, -0.42],
+    [0.5, 0.15, 0.42],
+    [-0.3, 0.12, -0.44],
+  ];
+  for (const [sx, sy, sz] of spots)
+    b.add(
+      new THREE.IcosahedronGeometry(0.09, 0),
+      ROSETTE,
+      transform(sx, y + sy, sz, [0, 0, 0], [1.3, 0.5, 1.3]),
+    );
+  const legY = lying ? 0.14 : 0.42;
+  const legH = lying ? 0.26 : 0.85;
+  for (const [lx, lz] of [
+    [0.85, 0.25],
+    [0.85, -0.25],
+    [-0.85, 0.25],
+    [-0.85, -0.25],
+  ] as const) {
+    const front = lying && lx > 0;
+    b.add(
+      new THREE.CylinderGeometry(0.1, 0.08, legH, 5),
+      LEOPARD,
+      transform(lx + (front ? 0.4 : 0), legY, lz, [0, 0, front ? Math.PI / 2 : 0]),
+    );
+  }
+  // The long tail hangs down over the edge, its tip curled up.
+  b.add(new THREE.CylinderGeometry(0.07, 0.05, 1.6, 5), LEOPARD, transform(-1.75, y - 0.45, 0, [0, 0, 0.35]));
+  b.add(new THREE.IcosahedronGeometry(0.1, 0), ROSETTE, transform(-2.05, y - 1.2, 0));
+  return b.build();
+}

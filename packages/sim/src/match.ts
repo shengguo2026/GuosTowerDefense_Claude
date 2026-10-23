@@ -33,6 +33,7 @@ import {
   secondsToTicks,
 } from './constants';
 import { EntityStore } from './entityStore';
+import { VisionField } from './vision';
 import { EventLog } from './eventLog';
 import {
   RouteGraph,
@@ -170,6 +171,8 @@ function boostKey(effect: SimEffect): string {
 export class Match {
   readonly events = new EventLog();
   readonly graph: RouteGraph;
+  /** Line of sight on this level: Concealment Zones and environment objects. */
+  readonly vision: VisionField;
   private readonly commands = new CommandQueue();
   private readonly entities = new EntityStore<MatchEntity>();
   private readonly rng: Rng;
@@ -236,6 +239,7 @@ export class Match {
     const { level } = setup;
     this.rng = new Rng(setup.seed);
     this.graph = new RouteGraph(level);
+    this.vision = new VisionField(level.vision ?? []);
     this.unitTypes = new Map(setup.attacker.units.map((unit) => [unit.id, unit]));
     this.defenseTypes = new Map(setup.defender.defenses.map((defense) => [defense.id, defense]));
     this.abilities = {
@@ -1562,12 +1566,20 @@ export class Match {
         VISIBILITY_FACTORS[data.unit.visibility] *
         (1 - this.status.magnitude(group.id, 'concealed', this.tickCount)) *
         (1 - lowProfile);
+      const exposure = this.vision.exposureAt(group);
       const seen =
         this.status.active(group.id, 'revealed', this.tickCount) ||
-        defenses.some(
-          (d) =>
-            distance(d, group) <=
-            this.detectionRange(d) * detectionBonus * plain * (this.defenseType(d).seesHidden ? 1 : hidden),
+        defenses.some((d) =>
+          this.vision.sees(
+            d,
+            group,
+            this.detectionRange(d) *
+              this.vision.vantageAt(d) *
+              detectionBonus *
+              plain *
+              exposure *
+              (this.defenseType(d).seesHidden ? 1 : hidden),
+          ),
         );
       if (seen) {
         data.unseenTicks = 0;
@@ -1596,7 +1608,7 @@ export class Match {
     for (const defense of this.defenses()) {
       const revealed = this.status.active(defense.id, 'revealed', this.tickCount);
       const cover = 1 - this.status.magnitude(defense.id, 'concealed', this.tickCount);
-      const inSight = revealed || lookers.some((g) => distance(g, defense) <= this.sightRange(g) * cover);
+      const inSight = revealed || lookers.some((g) => this.inSight(g, defense, cover));
       if (!inSight) continue;
       this.visibleToAttacker.add(defense.id);
       if (!this.seenDefenses.has(defense.id))
@@ -1606,8 +1618,13 @@ export class Match {
     // A remembered structure that is gone is forgotten once a group sees the spot again.
     for (const [id, memory] of this.seenDefenses) {
       if (this.entities.get(id)) continue;
-      if (lookers.some((g) => distance(g, memory) <= this.sightRange(g))) this.seenDefenses.delete(id);
+      if (lookers.some((g) => this.inSight(g, memory))) this.seenDefenses.delete(id);
     }
+  }
+
+  /** Whether a group sees a spot: its sight range, from a vantage point further, cut by what the line crosses. */
+  private inSight(group: GroupEntity, at: Point, cover = 1): boolean {
+    return this.vision.sees(group, at, this.sightRange(group) * this.vision.vantageAt(group) * cover);
   }
 
   private sightRange(group: GroupEntity): number {
@@ -1627,7 +1644,11 @@ export class Match {
       if (!this.isActive(defense)) continue;
       const reach = this.reach(defense);
       const candidates = this.groups().filter(
-        (g) => ON_FIELD.has(g.state) && g.detection !== 'unknown' && distance(g, defense) <= reach,
+        (g) =>
+          ON_FIELD.has(g.state) &&
+          g.detection !== 'unknown' &&
+          distance(g, defense) <= reach &&
+          !this.vision.blocked(defense, g),
       );
       if (defense.focusGroupId !== null && !this.entities.get(defense.focusGroupId))
         defense.focusGroupId = null;
@@ -1892,7 +1913,7 @@ export class Match {
     const lookers = viewer === 'attacker' ? this.fieldGroups() : [];
     for (const [nodeId, until] of this.closures) {
       const node = this.graph.node(nodeId);
-      if (viewer === 'attacker' && !lookers.some((g) => distance(g, node) <= this.sightRange(g))) continue;
+      if (viewer === 'attacker' && !lookers.some((g) => this.inSight(g, node))) continue;
       out.push({ nodeId, x: node.x, z: node.z, remainingTicks: until - this.tickCount });
     }
     return out;

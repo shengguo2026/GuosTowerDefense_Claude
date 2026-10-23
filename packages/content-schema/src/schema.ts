@@ -58,6 +58,8 @@ export const SceneSchema = z.object({
   seed: z.number().int(),
   /** Width and depth of the terrain in map units. */
   size: z.number().positive(),
+  /** Plant mix of the kit: open savanna (acacias, grass) or woodland (dense broad-leaf trees and thickets). */
+  flora: z.enum(['savanna', 'woodland']).default('savanna'),
   /** Route whose path carves a dry streambed into the terrain. */
   streambedRoute: id.optional(),
   landmarks: z
@@ -97,6 +99,35 @@ export const SceneSchema = z.object({
 });
 
 export const TERRAINS = ['open', 'cover'] as const;
+
+/** What an environment object does to sight lines through it (spec §8): full blocker, partial cover or decoration. */
+export const LOS_TYPES = ['blocker', 'partial', 'none'] as const;
+
+/**
+ * A Concealment Zone or environment object (masterplan §28, §52): dense brush hides and shortens sight lines, a rock
+ * wall stops them, a ledge sees further, a clearing exposes. Either a circle or a wall (a line of points).
+ */
+export const VisionAreaSchema = z
+  .object({
+    id,
+    /** How the client draws it: `brush`, `rockWall`, `ledge`, `clearing`; unknown kinds are drawn as a plain patch. */
+    kind: z.string().min(1),
+    /** Name shown on the map and in the legend. */
+    label: textKey.optional(),
+    circle: z.object({ x: z.number(), z: z.number(), radius: z.number().positive() }).optional(),
+    wall: z.object({ points: z.array(point).min(2), width: z.number().positive().default(2.5) }).optional(),
+    los: z.enum(LOS_TYPES).default('none'),
+    /** For `partial`: share of the distance a sight line through it still reaches. */
+    cover: z.number().min(0).max(1).default(0.6),
+    /** Factor on how far away a group standing in it is detected (above 1 exposes, below 1 hides). */
+    exposure: z.number().positive().default(1),
+    /** Factor on how far whoever stands in it sees (a ledge: above 1). */
+    vantage: z.number().positive().default(1),
+  })
+  .refine((area) => (area.circle === undefined) !== (area.wall === undefined), {
+    message: 'needs either a circle or a wall',
+    path: ['circle'],
+  });
 
 /** Anti-stalemate timer when a level does not set its own (spec §6.2). */
 export const DEFAULT_TIMER_SECONDS = 20 * 60;
@@ -190,6 +221,24 @@ export const LevelSchema = z.object({
   terrain: z
     .object({ open: terrainModifiers, cover: terrainModifiers })
     .default({ open: { speed: 1.15, detection: 1.3 }, cover: { speed: 0.85, detection: 0.6 } }),
+  /** Concealment Zones and line-of-sight objects (none on open levels like Lion). */
+  vision: z.array(VisionAreaSchema).default([]),
+  /**
+   * First-time hints for this level, shown once each outside tutorials: at the start of a match on it, or when the
+   * player first meets one of its areas (`area`: a group of theirs enters it, or, for the Defender, builds in it).
+   */
+  hints: z
+    .array(
+      z.object({
+        id,
+        text: textKey,
+        side: z.enum(['attacker', 'defender']).optional(),
+        when: z.enum(['start', 'combat', 'area']).default('start'),
+        /** For `area`: the kind of vision area that raises it (e.g. `ledge`). */
+        area: z.string().min(1).optional(),
+      }),
+    )
+    .default([]),
 });
 
 /** Generic building blocks that abilities and commands are composed of (spec §2.1). */
@@ -412,6 +461,8 @@ export const TextsSchema = z.record(z.string(), z.string());
 export type StageManifest = z.infer<typeof StageManifestSchema>;
 export type Level = z.infer<typeof LevelSchema>;
 export type Scene = z.infer<typeof SceneSchema>;
+export type VisionAreaData = z.infer<typeof VisionAreaSchema>;
+export type LevelHint = Level['hints'][number];
 export type Catalog = z.infer<typeof CatalogSchema>;
 export type Profile = z.infer<typeof ProfileSchema>;
 export type Action = z.infer<typeof ActionSchema>;

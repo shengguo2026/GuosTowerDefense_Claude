@@ -81,5 +81,41 @@
   "incomePerSecond": {
     "attacker": 2,
     "defender": 2.5
-  }
+  },
+  "vision": [
+    {
+      "id": "canyon-wall",
+      "kind": "rockWall",
+      "wall": {
+        "points": [
+          [20, 4],
+          [30, 4]
+        ],
+        "width": 2
+      },
+      "los": "blocker"
+    },
+    {
+      "id": "scrub",
+      "kind": "brush",
+      "circle": {
+        "x": 8,
+        "z": -4,
+        "radius": 4
+      },
+      "los": "partial",
+      "cover": 0.5,
+      "exposure": 0.8
+    },
+    {
+      "id": "overlook",
+      "kind": "ledge",
+      "circle": {
+        "x": 26,
+        "z": 12,
+        "radius": 3
+      },
+      "vantage": 1.3
+    }
+  ]
 }

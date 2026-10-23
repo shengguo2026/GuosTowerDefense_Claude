@@ -31,6 +31,8 @@ import { cleanCode, WifiScreen } from './wifi/WifiScreen';
 
 /** The first stage and level: the tutorials and the demo run there. */
 const LION = { stageId: 'stage-01-big-five', levelId: 'lion' };
+/** Levels the developer hashes can open (spec: Big Five). */
+const STAGE_ONE_LEVELS = ['lion', 'leopard', 'elephant', 'rhinoceros', 'buffalo'];
 
 type Screen =
   | { name: 'menu' }
@@ -43,8 +45,11 @@ type Screen =
   | { name: 'share' }
   /** Wi-Fi play: host or join; `code` came with the QR code. */
   | { name: 'wifi'; code?: string }
-  /** The M2/M3 level screen: the server's demo match, or the debug seat picker (`#lion-match`). */
-  | { name: 'level'; mode: 'demo' | 'play' };
+  /**
+   * The M2/M3 level screen: the server's demo match, or the debug seat picker (`#lion-match`). `#leopard` and
+   * `#leopard-match` open another level of Stage 1 the same way.
+   */
+  | { name: 'level'; mode: 'demo' | 'play'; levelId?: string };
 
 function initialScreen(): Screen {
   // The QR code of a Wi-Fi lobby opens `/?join=247433`; another PC's "Join" opens `/?wifi=join`.
@@ -54,6 +59,9 @@ function initialScreen(): Screen {
     history.replaceState(null, '', location.pathname + location.hash);
     return join.length === 6 ? { name: 'wifi', code: join } : { name: 'wifi' };
   }
+  const level = /^#([a-z]+)(-match)?$/.exec(location.hash);
+  if (level?.[1] && level[1] !== 'lion' && STAGE_ONE_LEVELS.includes(level[1]))
+    return { name: 'level', mode: level[2] ? 'play' : 'demo', levelId: level[1] };
   if (location.hash === '#lion') return { name: 'level', mode: 'demo' };
   if (location.hash === '#lion-match') return { name: 'level', mode: 'play' };
   return { name: 'menu' };
@@ -274,7 +282,7 @@ export function App() {
           {!inRoom && screen.name === 'level' && (
             <LevelScreen
               stageId={LION.stageId}
-              levelId={LION.levelId}
+              levelId={screen.levelId ?? LION.levelId}
               mode={screen.mode}
               language={language}
               graphics={current.graphics}
