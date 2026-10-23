@@ -242,7 +242,7 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
       }
       props.addColored(
         broadleaf(rng, 1.3),
-        place(landmark.x - landmark.radius * 0.6, landmark.z + landmark.radius * 0.5, 0.4),
+        place(landmark.x + landmark.radius * 0.7, landmark.z - landmark.radius * 0.6, 0.4),
       );
     } else if (landmark.kind === 'figTree') {
       props.addColored(broadleaf(rng, 2), place(landmark.x, landmark.z, rng.range(0, 6)));
@@ -356,7 +356,8 @@ export function buildSavanna(input: SavannaInput, preset: PresetSettings, anisot
     let geometry: THREE.BufferGeometry;
     if (animal.kind === 'lion' || animal.kind === 'lioness')
       geometry = lionGeometry(animal.kind === 'lion', lying);
-    else if (animal.kind === 'leopard') geometry = leopardGeometry(lying);
+    // The leopard is drawn a little larger than life so it reads on its rock from the usual camera height.
+    else if (animal.kind === 'leopard') geometry = leopardGeometry(lying).scale(1.6, 1.6, 1.6);
     else continue;
     const mesh = new THREE.Mesh(own(geometry), propMaterial);
     // An animal on a kopje lies on the flat rock at its top.
