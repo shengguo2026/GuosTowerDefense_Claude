@@ -1,7 +1,8 @@
+import type { Difficulty } from '@gtd/ai';
 import type { StagePack } from '@gtd/content-schema';
 import type { NetworkInfo } from '@gtd/protocol';
 import type { Side } from '@gtd/sim';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api';
 import { ArtProvider } from './art/Art';
 import { sounds } from './audio/sound';
@@ -23,6 +24,9 @@ import { SinglePlayerSetup } from './menu/SinglePlayerSetup';
 import { WorldCanvas } from './scene/WorldCanvas';
 import { useServerConnection } from './useServerConnection';
 import { useSettings } from './useSettings';
+import { LobbyScreen, slotName } from './wifi/LobbyScreen';
+import { readGuestName, useWifiRoom, writeGuestName } from './wifi/useWifiRoom';
+import { cleanCode, WifiScreen } from './wifi/WifiScreen';
 
 /** The first stage and level: the tutorials and the demo run there. */
 const LION = { stageId: 'stage-01-big-five', levelId: 'lion' };
@@ -35,10 +39,19 @@ type Screen =
   | { name: 'hotseat'; config: HotSeatConfig }
   | { name: 'manual' }
   | { name: 'share' }
+  /** Wi-Fi play: host or join; `code` came with the QR code. */
+  | { name: 'wifi'; code?: string }
   /** The M2/M3 level screen: the server's demo match, or the debug seat picker (`#lion-match`). */
   | { name: 'level'; mode: 'demo' | 'play' };
 
 function initialScreen(): Screen {
+  // The QR code of a Wi-Fi lobby opens `/?join=247433`; another PC's "Join" opens `/?wifi=join`.
+  const params = new URLSearchParams(location.search);
+  const join = cleanCode(params.get('join') ?? '');
+  if (join.length === 6 || params.get('wifi') === 'join') {
+    history.replaceState(null, '', location.pathname + location.hash);
+    return join.length === 6 ? { name: 'wifi', code: join } : { name: 'wifi' };
+  }
   if (location.hash === '#lion') return { name: 'level', mode: 'demo' };
   if (location.hash === '#lion-match') return { name: 'level', mode: 'play' };
   return { name: 'menu' };
@@ -61,6 +74,7 @@ export function App() {
   const settings = useSettings();
   const { settings: current, language, suggested, needsLanguageChoice, t, update, loaded } = settings;
   const connection = useServerConnection();
+  const wifi = useWifiRoom(connection);
   const [screen, setScreen] = useState<Screen>(initialScreen);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [manualOver, setManualOver] = useState(false);
@@ -72,7 +86,16 @@ export function App() {
   const [hasMouse] = useState(() => isPcWithMouse());
   const [network, setNetwork] = useState<NetworkInfo | null>(null);
   const lionAvailable = connection.stages.some((stage) => stage.id === LION.stageId);
-  const matchStage = screen.name === 'match' || screen.name === 'hotseat' ? screen.config.stageId : null;
+  const room = wifi.room;
+  const wifiMatch = room && room.phase !== 'lobby' && room.matchId ? room : null;
+  const matchStage = wifiMatch
+    ? wifiMatch.stageId
+    : screen.name === 'match' || screen.name === 'hotseat'
+      ? screen.config.stageId
+      : null;
+  const pcBrowser = network?.host === true && hasMouse;
+  const [guestName, setGuestName] = useState(readGuestName);
+  const wifiName = pcBrowser ? current.playerName : guestName;
 
   const toMenu = useCallback(() => {
     setScreen({ name: 'menu' });
@@ -107,11 +130,34 @@ export function App() {
     };
   }, [screen.name]);
 
+  // Network info also on the Wi-Fi screen (is the PC sharing, is a game open).
+  useEffect(() => {
+    if (screen.name !== 'wifi') return;
+    let cancelled = false;
+    api.network().then(
+      (info) => !cancelled && setNetwork(info),
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [screen.name, room]);
+
+  // The host closed the room: say so on the Wi-Fi screen.
+  useEffect(() => {
+    if (wifi.error === 'closed') setScreen({ name: 'wifi' });
+  }, [wifi.error]);
+
+  const leaveRoom = useCallback(() => {
+    wifi.leave();
+    setScreen({ name: 'wifi' });
+  }, [wifi]);
+
   // First launch: offer a tutorial once, after the language is chosen.
   const firstLaunch = loaded && !needsLanguageChoice && !current.onboarding.tutorialOffered && lionAvailable;
   useEffect(() => {
-    if (firstLaunch && screen.name === 'menu') setOfferOpen(true);
-  }, [firstLaunch, screen.name]);
+    if (firstLaunch && screen.name === 'menu' && !wifi.room && !wifi.rejoining) setOfferOpen(true);
+  }, [firstLaunch, screen.name, wifi.room, wifi.rejoining]);
 
   const closeOffer = useCallback(() => {
     setOfferOpen(false);
@@ -140,11 +186,90 @@ export function App() {
   }, []);
 
   const overlayOpen = settingsOpen || manualOver;
+  const mySlot = wifiMatch?.slots.find((slot) => slot.playerId === wifi.playerId);
+  // Every room update is a new object: keep the match's config the same object while its content stays the same.
+  const wifiKey =
+    wifiMatch && mySlot
+      ? [
+          wifiMatch.stageId,
+          wifiMatch.levelId,
+          mySlot.side,
+          wifiMatch.slots.find((s) => s.side === 'attacker')?.profileId ?? '',
+          wifiMatch.slots.find((s) => s.side === 'defender')?.profileId ?? '',
+          wifiMatch.difficulty,
+        ].join('|')
+      : null;
+  const wifiConfig: MatchConfig | null = useMemo(() => {
+    if (!wifiKey) return null;
+    const [stageId = '', levelId = '', side, attackerProfileId = '', defenderProfileId = '', difficulty] =
+      wifiKey.split('|');
+    return {
+      stageId,
+      levelId,
+      side: side as Side,
+      attackerProfileId,
+      defenderProfileId,
+      difficulty: difficulty as Difficulty,
+      tutorial: false,
+      showAiReasoning: false,
+    };
+  }, [wifiKey]);
+  const sideName = (side: Side) => {
+    const slot = wifiMatch?.slots.find((s) => s.side === side);
+    return slot ? (slot.playerId ? slotName(slot, t) : t('wifi.computer')) : '';
+  };
+  // After a reload in a Wi-Fi game: go straight back without building the menu's 3D scene first.
+  const returning = wifi.rejoining && !room && screen.name === 'menu';
+  const inRoom = room !== null || returning;
   return (
     <ArtProvider>
       <KeysProvider bindings={settings.bindings} show={!touch}>
         <div className="app">
-          {screen.name === 'level' && (
+          {wifiMatch && wifiConfig && pack?.manifest.id === wifiConfig.stageId && (
+            <MatchScreen
+              key={`wifi/${wifiMatch.matchId}`}
+              config={wifiConfig}
+              pack={pack}
+              connection={connection}
+              settings={settings}
+              overlayOpen={overlayOpen}
+              onQuit={leaveRoom}
+              onManual={() => setManualOver(true)}
+              onSettings={() => setSettingsOpen(true)}
+              wifi={{
+                host: wifi.host,
+                names: { attacker: sideName('attacker'), defender: sideName('defender') },
+                away: wifiMatch.slots
+                  .filter((slot) => slot.playerId && !slot.connected)
+                  .map((slot) => slot.side),
+                resync: wifi.resync,
+                onRematch: wifi.start,
+                onLobby: wifi.toLobby,
+              }}
+            />
+          )}
+          {returning && (
+            <main className="main-menu panel" data-testid="wifi-returning">
+              <h1>{t('app.title')}</h1>
+              <p className="tagline">{t('wifi.returning')}</p>
+              <button type="button" className="action secondary" onClick={leaveRoom}>
+                {t('wifi.leave')}
+              </button>
+            </main>
+          )}
+          {room?.phase === 'lobby' && (
+            <>
+              <WorldCanvas />
+              <LobbyScreen
+                t={t}
+                language={language}
+                stages={connection.stages}
+                wifi={{ ...wifi, room }}
+                onLeave={leaveRoom}
+              />
+            </>
+          )}
+          {!inRoom && screen.name === 'level' && (
             <LevelScreen
               stageId={LION.stageId}
               levelId={LION.levelId}
@@ -157,7 +282,7 @@ export function App() {
               onSettings={() => setSettingsOpen(true)}
             />
           )}
-          {screen.name === 'match' && pack?.manifest.id === screen.config.stageId && (
+          {!inRoom && screen.name === 'match' && pack?.manifest.id === screen.config.stageId && (
             <MatchScreen
               key={`${screen.config.stageId}/${screen.config.levelId}/${screen.config.side}/${screen.config.tutorial}`}
               config={screen.config}
@@ -170,7 +295,7 @@ export function App() {
               onSettings={() => setSettingsOpen(true)}
             />
           )}
-          {screen.name === 'hotseat' && pack?.manifest.id === screen.config.stageId && (
+          {!inRoom && screen.name === 'hotseat' && pack?.manifest.id === screen.config.stageId && (
             <HotSeatScreen
               key={`${screen.config.stageId}/${screen.config.levelId}`}
               config={screen.config}
@@ -183,13 +308,15 @@ export function App() {
               onSettings={() => setSettingsOpen(true)}
             />
           )}
-          {(screen.name === 'menu' ||
-            screen.name === 'setup' ||
-            screen.name === 'hotseat-setup' ||
-            screen.name === 'share' ||
-            screen.name === 'manual') && <WorldCanvas />}
+          {!inRoom &&
+            (screen.name === 'menu' ||
+              screen.name === 'setup' ||
+              screen.name === 'hotseat-setup' ||
+              screen.name === 'share' ||
+              screen.name === 'wifi' ||
+              screen.name === 'manual') && <WorldCanvas />}
 
-          {screen.name === 'menu' && (
+          {!inRoom && screen.name === 'menu' && (
             <header className="top-bar">
               <div className="brand">
                 <img src="/favicon.svg" alt="" width={32} height={32} />
@@ -204,7 +331,7 @@ export function App() {
             </header>
           )}
 
-          {screen.name === 'menu' && (
+          {!inRoom && screen.name === 'menu' && (
             <MainMenu
               t={t}
               connection={connection}
@@ -215,12 +342,13 @@ export function App() {
               onTutorial={() => setOfferOpen(true)}
               onTwoPlayers={() => setScreen({ name: 'hotseat-setup' })}
               onShare={() => setScreen({ name: 'share' })}
+              onWifi={() => setScreen({ name: 'wifi' })}
               onManual={() => setScreen({ name: 'manual' })}
               onSettings={() => setSettingsOpen(true)}
               onDemo={() => setScreen({ name: 'level', mode: 'demo' })}
             />
           )}
-          {screen.name === 'setup' && (
+          {!inRoom && screen.name === 'setup' && (
             <SinglePlayerSetup
               stages={connection.stages}
               language={language}
@@ -235,7 +363,7 @@ export function App() {
               onBack={toMenu}
             />
           )}
-          {screen.name === 'hotseat-setup' && (
+          {!inRoom && screen.name === 'hotseat-setup' && (
             <HotSeatSetup
               stages={connection.stages}
               language={language}
@@ -248,8 +376,30 @@ export function App() {
               onBack={toMenu}
             />
           )}
-          {screen.name === 'share' && <ShareScreen t={t} onBack={toMenu} />}
-          {screen.name === 'manual' && (
+          {!inRoom && screen.name === 'share' && <ShareScreen t={t} onBack={toMenu} />}
+          {!inRoom && screen.name === 'wifi' && (
+            <WifiScreen
+              t={t}
+              wifi={wifi}
+              network={network}
+              pc={hasMouse}
+              name={wifiName}
+              {...(screen.code ? { code: screen.code } : {})}
+              onName={(name) => {
+                if (pcBrowser) {
+                  if (name !== current.playerName) void update({ playerName: name });
+                } else {
+                  setGuestName(name);
+                  writeGuestName(name);
+                }
+              }}
+              onBack={() => {
+                wifi.clearError();
+                toMenu();
+              }}
+            />
+          )}
+          {!inRoom && screen.name === 'manual' && (
             <ManualScreen stageId={LION.stageId} language={language} t={t} onBack={toMenu} />
           )}
           {manualOver && (

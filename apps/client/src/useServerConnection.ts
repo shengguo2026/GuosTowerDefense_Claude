@@ -23,6 +23,10 @@ export interface ServerConnection {
 }
 
 const RETRY_DELAYS_MS = [500, 1000, 2000, 4000];
+/** The client asks the server this often whether it is still there... */
+const PING_MS = 3000;
+/** ...and gives up on a connection that said nothing for this long (the PC left the Wi-Fi, the phone slept). */
+const SILENT_MS = 10_000;
 
 /**
  * `crypto.randomUUID` only exists on secure pages (https or localhost); phones and tablets open the game over plain
@@ -52,14 +56,44 @@ export function useServerConnection(): ServerConnection {
     let stopped = false;
     const clientId = newClientId();
 
+    let watchdog: number | undefined;
+
     const connect = () => {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const socket = new WebSocket(`${protocol}//${location.host}${WEBSOCKET_PATH}`);
       socketRef.current = socket;
+      let lastHeard = performance.now();
+      let closed = false;
+      // A connection can die without a close (Wi-Fi gone): the browser would wait minutes, so give up on it sooner.
+      const dropped = () => {
+        if (closed) return;
+        closed = true;
+        window.clearInterval(watchdog);
+        if (socketRef.current === socket) socketRef.current = null;
+        socket.close();
+        if (stopped) return;
+        setState((previous) => ({ ...previous, status: 'disconnected' }));
+        const delay = RETRY_DELAYS_MS[Math.min(attempts++, RETRY_DELAYS_MS.length - 1)];
+        retryTimer = window.setTimeout(connect, delay);
+      };
       socket.addEventListener('open', () => {
         socket.send(JSON.stringify({ type: 'hello', protocolVersion: PROTOCOL_VERSION, clientId }));
+        lastHeard = performance.now();
+        window.clearInterval(watchdog);
+        let lastCheck = performance.now();
+        watchdog = window.setInterval(() => {
+          const now = performance.now();
+          // A late check means this page was busy (building the 3D view) or asleep, not that the server went quiet:
+          // messages that arrived meanwhile wait behind the check, so count the silence from now.
+          if (now - lastCheck > PING_MS * 2) lastHeard = now;
+          lastCheck = now;
+          if (now - lastHeard > SILENT_MS) return dropped();
+          if (socket.readyState === WebSocket.OPEN)
+            socket.send(JSON.stringify({ type: 'ping', sentAt: Date.now() }));
+        }, PING_MS);
       });
       socket.addEventListener('message', (event) => {
+        lastHeard = performance.now();
         const message = JSON.parse(String(event.data)) as ServerMessage;
         if (message.type === 'welcome') {
           attempts = 0;
@@ -74,18 +108,14 @@ export function useServerConnection(): ServerConnection {
         }
         listeners.current.forEach((listener) => listener(message));
       });
-      socket.addEventListener('close', () => {
-        if (stopped) return;
-        setState((previous) => ({ ...previous, status: 'disconnected' }));
-        const delay = RETRY_DELAYS_MS[Math.min(attempts++, RETRY_DELAYS_MS.length - 1)];
-        retryTimer = window.setTimeout(connect, delay);
-      });
+      socket.addEventListener('close', dropped);
     };
 
     connect();
     return () => {
       stopped = true;
       window.clearTimeout(retryTimer);
+      window.clearInterval(watchdog);
       socketRef.current?.close();
     };
   }, []);

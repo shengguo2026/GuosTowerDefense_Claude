@@ -14,6 +14,10 @@ interface Props {
   paused: boolean;
   speed: MatchSpeed;
   canControlClock: boolean;
+  /** Wi-Fi: the speed stays 1× (only pause is offered, to the host). */
+  fixedSpeed?: boolean;
+  /** Wi-Fi: the other player's name. */
+  opponent?: string;
   compact: boolean;
   names?: ResourceNames;
   t: Translate;
@@ -31,6 +35,8 @@ export function TopBar({
   paused,
   speed,
   canControlClock,
+  fixedSpeed = false,
+  opponent,
   compact,
   names,
   t,
@@ -76,6 +82,11 @@ export function TopBar({
               {t('hud.vsComputer', { difficulty: t(`difficulty.${computer.difficulty}`) })}
             </span>
           )}
+          {opponent !== undefined && (
+            <span className="badge opponent" data-testid="opponent-badge">
+              {t('hud.vsPlayer', { name: opponent })}
+            </span>
+          )}
         </div>
       )}
       {snapshot && <MatchClock snapshot={snapshot} t={t} />}
@@ -83,19 +94,21 @@ export function TopBar({
       {snapshot && <SideNumbers snapshot={snapshot} side={side} t={t} names={names} />}
       {canControlClock && (
         <div className="hud-group clock-buttons">
-          <Tooltip text={t('hud.tip.speed')}>
-            <button
-              type="button"
-              className={`hud-button ${speed === 2 ? 'active' : ''}`}
-              onClick={onSpeed}
-              aria-pressed={speed === 2}
-              aria-label={t('hud.speed', { speed })}
-              data-testid="speed"
-            >
-              {speed}×
-              <KeyHint action="match.speed" />
-            </button>
-          </Tooltip>
+          {!fixedSpeed && (
+            <Tooltip text={t('hud.tip.speed')}>
+              <button
+                type="button"
+                className={`hud-button ${speed === 2 ? 'active' : ''}`}
+                onClick={onSpeed}
+                aria-pressed={speed === 2}
+                aria-label={t('hud.speed', { speed })}
+                data-testid="speed"
+              >
+                {speed}×
+                <KeyHint action="match.speed" />
+              </button>
+            </Tooltip>
+          )}
           <Tooltip text={t('hud.tip.pause')}>
             <button
               type="button"

@@ -17,9 +17,11 @@ import {
 } from '@gtd/protocol';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { DemoMatches } from './demoMatches';
+import { Discovery } from './discovery';
 import { isLoopback, lanAddresses, LanSharing } from './network';
 import { PlayerMatches } from './playerMatches';
 import type { SaveManager } from './saveManager';
+import { WifiRooms } from './wifiRooms';
 
 export interface GameServerOptions {
   version: string;
@@ -37,6 +39,10 @@ export interface GameServerOptions {
   listensEverywhere?: boolean;
   /** Operating system of the PC (for the Windows firewall explainer); defaults to this one. */
   platform?: NodeJS.Platform;
+  /** Announces open Wi-Fi games to other PCs and lists theirs; defaults to UDP port 41779. */
+  discovery?: (announce: () => { port: number; hostNames: string[] } | null) => Discovery;
+  /** How long a Wi-Fi player who dropped out of the lobby keeps their place (tests shorten it). */
+  roomAwaySeconds?: number;
 }
 
 export interface RunningGameServer {
@@ -61,6 +67,9 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 const MAX_BODY_BYTES = 64 * 1024;
+/** The server checks every connection this often and drops one that did not answer this many checks in a row. */
+const HEARTBEAT_MS = 5000;
+const MISSED_CHECKS = 3;
 
 export function createGameServer(options: GameServerOptions): Server {
   const visibleStages = options.stages.filter((stage) => options.showDevStages || !stage.manifest.devOnly);
@@ -90,6 +99,19 @@ export function createGameServer(options: GameServerOptions): Server {
   /** Phones and tablets connected over the WebSocket, by network address. */
   const guestSockets = new Map<WebSocket, string>();
   const port = () => (server.address() as AddressInfo | null)?.port ?? 0;
+  const sharedAddresses = () =>
+    (options.listensEverywhere ? lanAddresses() : lan.open).map((address) => `http://${address}:${port()}/`);
+  const rooms = new WifiRooms(visibleStages, players, {
+    addresses: sharedAddresses,
+    progress: () => options.saves.progress,
+    ...(options.roomAwaySeconds !== undefined ? { awaySeconds: options.roomAwaySeconds } : {}),
+  });
+  // Other PCs with the game find open Wi-Fi games here; only games phones and tablets can reach are announced.
+  const announce = () =>
+    rooms.open && sharedAddresses().length > 0 ? { port: port(), hostNames: rooms.openHosts } : null;
+  const discovery =
+    options.discovery?.(announce) ?? new Discovery({ announce, ownAddresses: sharedAddresses });
+  discovery.start();
 
   function networkInfo(req: IncomingMessage): NetworkInfo {
     const everywhere = options.listensEverywhere === true;
@@ -99,11 +121,12 @@ export function createGameServer(options: GameServerOptions): Server {
       sharing: everywhere || lan.active,
       fixed: everywhere,
       port: port(),
-      addresses: (everywhere ? lanAddresses() : lan.open).map((address) => `http://${address}:${port()}/`),
+      addresses: sharedAddresses(),
       failed: everywhere ? [] : lan.failed,
       windows: (options.platform ?? process.platform) === 'win32',
       firewallExplained: save.firewallExplained,
       guests: new Set(guestSockets.values()).size,
+      room: rooms.open,
     };
   }
 
@@ -157,6 +180,11 @@ export function createGameServer(options: GameServerOptions): Server {
       await options.saves.setSharing(patch.data.sharing);
       return sendJson(res, 200, networkInfo(req));
     }
+    if (route === 'GET /api/nearby') {
+      // Only the PC's own browser looks for games on other PCs (a phone opens the address it was given).
+      if (!isLoopback(req.socket.remoteAddress)) return sendJson(res, 403, { error: 'hostOnly' });
+      return sendJson(res, 200, await discovery.nearby());
+    }
     if (route === 'GET /api/progress') return sendJson(res, 200, options.saves.progress);
     if (route === 'GET /api/art') return sendJson(res, 200, await listArt(options.artDir));
     if (url.pathname.startsWith('/api/')) return sendJson(res, 404, { error: 'notFound' });
@@ -181,27 +209,52 @@ export function createGameServer(options: GameServerOptions): Server {
       return;
     }
     sockets.handleUpgrade(req, socket, head, (ws) => {
-      if (!isLoopback(req.socket.remoteAddress)) {
+      const local = isLoopback(req.socket.remoteAddress);
+      if (!local) {
         guestSockets.set(ws, (req.socket.remoteAddress ?? '').replace(/^::ffff:/, ''));
         ws.once('close', () => guestSockets.delete(ws));
       }
-      handleSocket(ws);
+      handleSocket(ws, local);
     });
   });
+  // A phone that went to sleep or left the Wi-Fi never says goodbye: a connection that misses a few checks in a row is
+  // dropped, so the computer takes over its side within seconds instead of after the system's own long timeout. A
+  // few, because a busy browser (building the 3D view in software) answers late.
+  const missed = new Map<WebSocket, number>();
+  const heartbeat = setInterval(() => {
+    for (const ws of sockets.clients) {
+      const count = missed.get(ws) ?? 0;
+      if (count >= MISSED_CHECKS) {
+        ws.terminate();
+        continue;
+      }
+      missed.set(ws, count + 1);
+      ws.ping();
+    }
+  }, HEARTBEAT_MS);
+  heartbeat.unref();
   server.on('close', () => {
+    clearInterval(heartbeat);
+    discovery.stop();
     void lan.stop();
+    rooms.closeAll();
     demos.stopAll();
     players.stopAll();
     sockets.close();
   });
 
-  function handleSocket(ws: WebSocket): void {
+  function handleSocket(ws: WebSocket, local: boolean): void {
     const send = (message: ServerMessage) => {
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(message));
     };
+    ws.on('pong', () => missed.set(ws, 0));
+    // Any message also shows the connection is alive.
+    ws.on('message', () => missed.set(ws, 0));
     ws.on('close', () => {
+      missed.delete(ws);
       demos.unwatch(send);
       players.leave(send);
+      rooms.disconnected(send);
     });
     ws.on('message', (data) => {
       const message = parseClientMessage(String(data));
@@ -268,6 +321,36 @@ export function createGameServer(options: GameServerOptions): Server {
           if (!done.ok) send(done.message);
           return;
         }
+        case 'hostRoom':
+          // The PC always hosts (spec §3); a tablet or phone joins.
+          if (!local) return send({ type: 'roomError', code: 'hostOnly' });
+          demos.unwatch(send);
+          players.leave(send);
+          return rooms.host(message.name, send);
+        case 'joinRoom':
+          demos.unwatch(send);
+          return rooms.join(message.code, message.name, send);
+        case 'rejoinRoom':
+          demos.unwatch(send);
+          return rooms.rejoin(message.code, message.token, send);
+        case 'leaveRoom':
+          return rooms.leave(send);
+        case 'roomSettings':
+          return rooms.settings(send, message.stageId, message.levelId, message.difficulty);
+        case 'roomSlotController':
+          return rooms.slotController(send, message.slotId, message.controller);
+        case 'roomSwap':
+          return rooms.swap(send);
+        case 'roomTakeSlot':
+          return rooms.takeSlot(send, message.slotId);
+        case 'roomChoose':
+          return rooms.choose(send, message);
+        case 'roomReady':
+          return rooms.ready(send, message.ready);
+        case 'roomStart':
+          return rooms.start(send);
+        case 'roomLobby':
+          return rooms.toLobby(send);
       }
     });
   }

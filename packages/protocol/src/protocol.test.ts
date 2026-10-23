@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { SettingsPatchSchema, SettingsSchema, parseClientMessage } from './index';
+import { SettingsPatchSchema, SettingsSchema, formatRoomCode, joinUrl, parseClientMessage } from './index';
 
 describe('client messages', () => {
   it('accepts a valid hello and rejects junk', () => {
@@ -50,5 +50,25 @@ describe('settings', () => {
     expect(SettingsPatchSchema.safeParse({ keyBindings: { 'match.pause': 'Key P' } }).success).toBe(false);
     expect(SettingsPatchSchema.safeParse({ accessibility: { uiScale: 3 } }).success).toBe(false);
     expect(SettingsPatchSchema.safeParse({ keyBindings: { 'match.pause': 'KeyO' } }).success).toBe(true);
+  });
+});
+
+describe('Wi-Fi rooms', () => {
+  it('shows a room code in two groups and puts it into the QR address', () => {
+    expect(formatRoomCode('247433')).toBe('247 433');
+    expect(joinUrl('http://192.168.1.20:3000/', '007433')).toBe('http://192.168.1.20:3000/?join=007433');
+    expect(joinUrl('http://192.168.1.20:3000', '007433')).toBe('http://192.168.1.20:3000/?join=007433');
+  });
+
+  it('takes room codes and tokens only in their exact shape', () => {
+    const join = (code: string) =>
+      parseClientMessage(JSON.stringify({ type: 'joinRoom', code, name: 'Mia' }));
+    expect(join('247433')).not.toBeNull();
+    expect(join('247 433')).toBeNull();
+    expect(join('24743')).toBeNull();
+    const rejoin = (token: string) =>
+      parseClientMessage(JSON.stringify({ type: 'rejoinRoom', code: '247433', token }));
+    expect(rejoin('0123456789abcdef0123456789abcdef')).not.toBeNull();
+    expect(rejoin('not-a-token')).toBeNull();
   });
 });

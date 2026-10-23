@@ -4,6 +4,7 @@ import { createTranslator, type Translate } from '@gtd/i18n';
 import type { ComputerPlayer, MatchCommand, MatchSpeed } from '@gtd/protocol';
 import {
   TARGET_PRIORITIES,
+  type Side,
   type DefenseEntity,
   type GroupEntity,
   type MatchSnapshot,
@@ -36,7 +37,7 @@ import type { SettingsState } from '../useSettings';
 import type { MapOverlay } from '../world/selectionView';
 import { LevelView, type MapPick } from '../world/levelView';
 import { currentDevice, resolvePreset } from '../world/presets';
-import type { MatchConfig } from './matchConfig';
+import { otherSide, type MatchConfig } from './matchConfig';
 import { nextStep, noActions, type PlayerActions } from './tutorial';
 import { useWaveDrafts } from './useWaveDrafts';
 
@@ -54,6 +55,19 @@ interface Props {
   onQuit(): void;
   onManual(): void;
   onSettings(): void;
+  /** A Wi-Fi match (spec §14): the room started it, only the host pauses, and the host decides what comes next. */
+  wifi?: WifiMatch;
+}
+
+export interface WifiMatch {
+  host: boolean;
+  names: Record<Side, string>;
+  /** Sides whose person's device is away: the computer plays for them until they are back. */
+  away: Side[];
+  /** Asks the server to seat this device in the room's match again (and send the current state). */
+  resync(): void;
+  onRematch(): void;
+  onLobby(): void;
 }
 
 /** First-time hints (spec §6.3): shown once each, outside tutorials, one at a time. */
@@ -82,6 +96,7 @@ export function MatchScreen({
   onQuit,
   onManual,
   onSettings,
+  wifi,
 }: Props) {
   const { t, bindings, update } = settings;
   const { accessibility, onboarding, graphics } = settings.settings;
@@ -163,7 +178,12 @@ export function MatchScreen({
   }, [pack, level, preset, stageText, accessibility.reducedEffects, accessibility.highContrastRoutes]);
 
   // ── Match messages ───────────────────────────────────────────────────
+  const wifiRef = useRef(wifi);
+  wifiRef.current = wifi;
+  const isWifi = wifi !== undefined;
   const startMatch = useCallback(() => {
+    // A Wi-Fi match is already running on the PC: this device only takes its seat again.
+    if (isWifi) return wifiRef.current?.resync();
     send({
       type: 'createMatch',
       stageId: config.stageId,
@@ -175,7 +195,7 @@ export function MatchScreen({
       showAiReasoning: config.showAiReasoning,
       tutorial: config.tutorial,
     });
-  }, [send, config]);
+  }, [send, config, isWifi]);
 
   useEffect(() => {
     let lastHud = 0;
@@ -223,10 +243,11 @@ export function MatchScreen({
     if (status !== 'connected') return;
     startMatch();
     return () => {
-      send({ type: 'leaveMatch' });
+      // Leaving a Wi-Fi match goes through its room (the computer takes over the side).
+      if (!isWifi) send({ type: 'leaveMatch' });
       setJoined(false);
     };
-  }, [status, startMatch, send]);
+  }, [status, startMatch, send, isWifi]);
 
   useEffect(() => {
     if (!notice) return;
@@ -912,6 +933,8 @@ export function MatchScreen({
         paused={paused}
         speed={speed}
         canControlClock={canControlClock}
+        fixedSpeed={isWifi}
+        {...(wifi ? { opponent: wifi.names[otherSide(side)] } : {})}
         compact={compact}
         names={{
           supplies: profile ? stageText(profile.resource.name) : undefined,
@@ -983,7 +1006,14 @@ export function MatchScreen({
       )}
       {paused && !menuOpen && !waitsForNext && !ended && (
         <p className="paused-banner panel" role="status" data-testid="paused-banner">
-          {t('pause.paused')}
+          {wifi && !wifi.host ? t('wifi.pausedByHost') : t('pause.paused')}
+        </p>
+      )}
+      {wifi && !ended && (status !== 'connected' || wifi.away.includes(otherSide(side))) && (
+        <p className="wifi-banner panel" role="status" data-testid="wifi-away">
+          {status !== 'connected'
+            ? t('wifi.lostHost')
+            : t('wifi.opponentAway', { name: wifi.names[otherSide(side)] })}
         </p>
       )}
       {notice && (
@@ -1019,10 +1049,14 @@ export function MatchScreen({
           onResume={closeMenu}
           onManual={onManual}
           onSettings={onSettings}
-          onRestart={() => {
-            setMenuOpen(false);
-            startMatch();
-          }}
+          {...(wifi
+            ? {}
+            : {
+                onRestart: () => {
+                  setMenuOpen(false);
+                  startMatch();
+                },
+              })}
           onQuit={onQuit}
         />
       )}
@@ -1035,6 +1069,38 @@ export function MatchScreen({
           t={t}
           onPlayAgain={startMatch}
           onBack={onQuit}
+          {...(wifi
+            ? {
+                names: wifi.names,
+                actions: wifi.host ? (
+                  <>
+                    <button type="button" className="action" onClick={wifi.onRematch} data-testid="rematch">
+                      {t('wifi.rematch')}
+                    </button>
+                    <button
+                      type="button"
+                      className="action secondary"
+                      onClick={wifi.onLobby}
+                      data-testid="to-lobby"
+                    >
+                      {t('wifi.toLobby')}
+                    </button>
+                    <button type="button" className="action secondary" onClick={onQuit}>
+                      {t('wifi.close')}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p className="hint" data-testid="wait-host">
+                      {t('wifi.waitHostNext')}
+                    </p>
+                    <button type="button" className="action secondary" onClick={onQuit}>
+                      {t('wifi.leave')}
+                    </button>
+                  </>
+                ),
+              }
+            : {})}
           quip={{
             name: t('guo.name'),
             won,

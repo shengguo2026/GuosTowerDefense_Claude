@@ -36,6 +36,27 @@ interface PlayerMatch {
   };
   /** Where the match's event log was last read, to tell players about their rejected commands. */
   eventIndex: number;
+  /** A Wi-Fi match (spec §14): its room seats the players, and only the host may pause. */
+  wifi?: {
+    host: Send | null;
+    difficulty: Difficulty;
+    seed: number;
+    onEnd(): void;
+  };
+}
+
+/** A Wi-Fi match as its room starts it: who plays which side, and which sides the computer plays. */
+export interface WifiMatchRequest {
+  stageId: string;
+  levelId: string;
+  attackerProfileId: string;
+  defenderProfileId: string;
+  /** How well the computer plays its sides (an AI slot, or a person's side while they are away). */
+  difficulty: Difficulty;
+  players: [Send, Side][];
+  computer: Side[];
+  host: Send | null;
+  onEnd(): void;
 }
 
 /** A person beat the computer: the stage, level, the person's side and the difficulty. */
@@ -150,11 +171,105 @@ export class PlayerMatches {
     return true;
   }
 
+  /** Starts a Wi-Fi match for a room; returns its id, or null if the level or a profile does not exist. */
+  createWifi(request: WifiMatchRequest): string | null {
+    const pack = this.stages.find((stage) => stage.manifest.id === request.stageId);
+    let setup;
+    try {
+      if (!pack) return null;
+      setup = createMatchSetup(pack, {
+        levelId: request.levelId,
+        attackerProfileId: request.attackerProfileId,
+        defenderProfileId: request.defenderProfileId,
+        seed: this.options.seed?.() ?? Date.now() % 1_000_000,
+      });
+    } catch {
+      return null;
+    }
+    for (const [send] of request.players) this.leave(send);
+    const matchId = `match-${++this.counter}`;
+    const controllers: { attacker?: Controller; defender?: Controller } = {};
+    for (const side of request.computer) controllers[side] = createAi(side, request.difficulty, setup.seed);
+    const match: PlayerMatch = {
+      matchId,
+      stageId: request.stageId,
+      levelId: request.levelId,
+      players: new Map(),
+      tutorial: false,
+      eventIndex: 0,
+      wifi: { host: request.host, difficulty: request.difficulty, seed: setup.seed, onEnd: request.onEnd },
+      started: {
+        type: 'matchStarted',
+        matchId,
+        stageId: request.stageId,
+        levelId: request.levelId,
+        attackerProfileId: request.attackerProfileId,
+        defenderProfileId: request.defenderProfileId,
+      },
+      host: new MatchHost({
+        setup,
+        ...controllers,
+        onFrame: (m) => this.frame(match, m),
+        onEnd: () => this.ended(match),
+        ...(this.options.now ? { now: this.options.now } : {}),
+      }),
+    };
+    this.matches.set(matchId, match);
+    for (const [send, side] of request.players) this.seat(match, side, send);
+    match.host.start();
+    return matchId;
+  }
+
+  /** Wi-Fi: a player comes back into their room's match (after a dropped connection) and gets the current state. */
+  seatWifi(matchId: string, side: Side, send: Send): boolean {
+    const match = this.matches.get(matchId);
+    if (!match?.wifi) return false;
+    this.leave(send);
+    this.seat(match, side, send);
+    send({ type: 'snapshot', matchId, snapshot: match.host.match.snapshot(side) });
+    return true;
+  }
+
+  /** Wi-Fi: the computer plays a side while its person is away (`true`), or hands it back (`false`). */
+  setComputer(matchId: string, side: Side, computer: boolean): void {
+    const match = this.matches.get(matchId);
+    if (!match?.wifi || match.host.controls(side) === computer) return;
+    match.host.setController(
+      side,
+      computer ? createAi(side, match.wifi.difficulty, match.wifi.seed + match.host.match.tick) : undefined,
+    );
+  }
+
+  /** Wi-Fi: the host's connection (who may pause); a host who drops out cannot leave the match paused. */
+  setWifiHost(matchId: string, host: Send | null): void {
+    const match = this.matches.get(matchId);
+    if (!match?.wifi) return;
+    match.wifi.host = host;
+    if (!host && match.host.paused) match.host.paused = false;
+    this.broadcastClock(match);
+  }
+
+  /** Ends a match at once (its Wi-Fi room closed or went back to the lobby). */
+  stop(matchId: string): void {
+    const match = this.matches.get(matchId);
+    if (!match) return;
+    match.host.stop();
+    this.matches.delete(matchId);
+  }
+
   /** Pause or resume a single-player match (a person against the computer); in hot-seat, end a planning pause. */
   setPaused(paused: boolean, send: Send): Result<null> {
     const hotSeat = this.matchOf(send);
     if (hotSeat?.hotSeat && !paused && hotSeat.players.get(send) !== 'spectator') {
       this.endPlanningPause(hotSeat);
+      return { ok: true, value: null };
+    }
+    const wifi = this.matchOf(send);
+    if (wifi?.wifi) {
+      if (wifi.wifi.host !== send)
+        return { ok: false, message: error('hostOnly', 'Only the host can pause.') };
+      wifi.host.paused = paused;
+      this.broadcastClock(wifi);
       return { ok: true, value: null };
     }
     const match = this.singlePlayerMatchOf(send);
@@ -192,7 +307,9 @@ export class PlayerMatches {
 
   join(matchId: string, seat: Seat, send: Send): Result<null> {
     const match = this.matches.get(matchId);
-    if (!match) return { ok: false, message: error('unknownMatch', 'This match is no longer running.') };
+    // A Wi-Fi match is only entered through its room (room code and session token).
+    if (!match || match.wifi)
+      return { ok: false, message: error('unknownMatch', 'This match is no longer running.') };
     if (match.computer && seat !== 'spectator' && seatControls(seat, match.computer.side))
       return { ok: false, message: error('seatTaken', 'The computer plays that side.') };
     this.leave(send);
@@ -216,7 +333,8 @@ export class PlayerMatches {
   leave(send: Send): void {
     for (const [id, match] of this.matches) {
       if (!match.players.delete(send)) continue;
-      if (match.players.size === 0) {
+      // A Wi-Fi match keeps running for players who come back; its room stops it.
+      if (match.players.size === 0 && !match.wifi) {
         match.host.stop();
         this.matches.delete(id);
       }
@@ -224,15 +342,17 @@ export class PlayerMatches {
   }
 
   list(): MatchSummary[] {
-    return [...this.matches.values()].map((match) => ({
-      matchId: match.matchId,
-      stageId: match.stageId,
-      levelId: match.levelId,
-      seats: [...match.players.values()],
-      ...(match.computer ? { computer: match.computer } : {}),
-      ...(match.hotSeat ? { hotSeat: true as const } : {}),
-      phase: match.host.match.phase,
-    }));
+    return [...this.matches.values()]
+      .filter((match) => !match.wifi)
+      .map((match) => ({
+        matchId: match.matchId,
+        stageId: match.stageId,
+        levelId: match.levelId,
+        seats: [...match.players.values()],
+        ...(match.computer ? { computer: match.computer } : {}),
+        ...(match.hotSeat ? { hotSeat: true as const } : {}),
+        phase: match.host.match.phase,
+      }));
   }
 
   stopAll(): void {
@@ -253,7 +373,7 @@ export class PlayerMatches {
     match.players.set(send, seat);
     send(match.started);
     send({ type: 'joined', matchId: match.matchId, seat });
-    send(this.clockOf(match));
+    send(this.clockOf(match, send));
   }
 
   /** Single player: the computer plays one side and the person holds the other (pause and speed are allowed). */
@@ -261,19 +381,22 @@ export class PlayerMatches {
     const match = this.matchOf(send);
     if (!match) return { ok: false, message: error('notInMatch', 'Join a match first.') };
     const seat = match.players.get(send) as Seat;
+    if (match.wifi)
+      return { ok: false, message: error('notSinglePlayer', 'The speed is fixed in Wi-Fi play.') };
     if (!match.computer || seat === 'spectator')
       return { ok: false, message: error('notSinglePlayer', 'Only a match against the computer can pause.') };
     return { ok: true, value: match };
   }
 
-  private clockOf(match: PlayerMatch): ServerMessage {
+  private clockOf(match: PlayerMatch, player: Send): ServerMessage {
     const state = match.hotSeat;
     return {
       type: 'clock',
       matchId: match.matchId,
       paused: match.host.paused,
       speed: match.host.speed,
-      canControl: match.computer !== undefined,
+      canControl: match.computer !== undefined || (match.wifi !== undefined && match.wifi.host === player),
+      ...(match.wifi ? { wifi: true as const } : {}),
       ...(state
         ? {
             planning: {
@@ -302,11 +425,11 @@ export class PlayerMatches {
   }
 
   private broadcastClock(match: PlayerMatch): void {
-    const message = this.clockOf(match);
-    for (const player of match.players.keys()) player(message);
+    for (const player of match.players.keys()) player(this.clockOf(match, player));
   }
 
   private ended(match: PlayerMatch): void {
+    match.wifi?.onEnd();
     const result = match.host.match.result;
     if (!result || !match.computer || match.tutorial || result.winner === match.computer.side) return;
     this.options.onWin?.({
@@ -356,7 +479,8 @@ function error(
     | 'seatTaken'
     | 'notSinglePlayer'
     | 'notHotSeat'
-    | 'noPausesLeft',
+    | 'noPausesLeft'
+    | 'hostOnly',
   message: string,
 ): ServerMessage {
   return { type: 'error', code, message };
