@@ -95,6 +95,7 @@ export function createMatchSetup(basePack: StagePack, choice: MatchChoice): Matc
       bonuses: level.bonuses,
       terrain: level.terrain,
       vision: level.vision.map(toVisionArea),
+      ...(level.closeContact ? { closeContact: level.closeContact } : {}),
     },
     attacker: {
       profileId: attacker.id,
@@ -134,7 +135,7 @@ export function createMatchSetup(basePack: StagePack, choice: MatchChoice): Matc
 }
 
 export function toVisionArea(area: VisionAreaData): VisionArea {
-  const { id, kind, circle, wall, los, cover, exposure, vantage } = area;
+  const { id, kind, circle, wall, los, cover, exposure, vantage, ambush } = area;
   return {
     id,
     kind,
@@ -144,6 +145,7 @@ export function toVisionArea(area: VisionAreaData): VisionArea {
     cover,
     exposure,
     vantage,
+    ...(ambush ? { ambush } : {}),
   };
 }
 

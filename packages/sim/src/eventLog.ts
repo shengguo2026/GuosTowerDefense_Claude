@@ -34,6 +34,8 @@ export type MatchEvent =
   | { tick: number; type: 'groupLost'; groupId: number }
   /** Non-lethal: one member was stopped and walks off the map. */
   | { tick: number; type: 'memberTurnedBack'; groupId: number; byDefenseId: number; remaining: number }
+  /** An asset hidden in an Ambush Zone caught the group by surprise (Rhinoceros). */
+  | { tick: number; type: 'groupAmbushed'; groupId: number; byDefenseId: number }
   | { tick: number; type: 'groupStopped'; groupId: number; byDefenseId: number }
   | { tick: number; type: 'waveStopped'; waveId: number; bonus: number }
   | { tick: number; type: 'defensePlaced'; defenseId: number; defenseTypeId: string; nodeId: string }

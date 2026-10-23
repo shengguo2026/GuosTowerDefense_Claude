@@ -23,8 +23,8 @@ export interface TerrainInput {
   landmarks: Landmark[];
   /** Concealment Zones: ledges rise as plateaus, rock walls on ridges, brush and clearings tint the ground. */
   vision?: VisionShape[];
-  /** Woodland ground is greener than open savanna. */
-  flora?: 'savanna' | 'woodland';
+  /** Woodland ground is greener than open savanna; thornveld between the two. */
+  flora?: 'savanna' | 'woodland' | 'thornveld';
   /** Path of the dry streambed, carved into the ground. */
   streambed: Point2[] | null;
   /** Other route paths, drawn as worn dirt tracks. */
@@ -201,6 +201,7 @@ export function createGround(
       if (Math.hypot(x - hole.x, z - hole.z) < hole.radius + 4) tint.lerp(GREEN_TINT, 0.55);
     }
     if (input.flora === 'woodland') tint.lerp(WOODLAND_TINT, 0.6 + patch * 0.25);
+    else if (input.flora === 'thornveld') tint.lerp(WOODLAND_TINT, 0.3 + patch * 0.15);
     for (const area of input.vision ?? []) {
       const inside = area.circle
         ? Math.hypot(x - area.circle.x, z - area.circle.z) < area.circle.radius
@@ -209,6 +210,7 @@ export function createGround(
           : false;
       if (!inside) continue;
       if (area.kind === 'brush') tint.lerp(THICKET_TINT, 0.5);
+      else if (area.kind === 'thicket') tint.lerp(THICKET_TINT, 0.7);
       else if (area.kind === 'clearing') tint.lerp(CLEARING_TINT, 0.6);
       else if (area.kind === 'ledge' || area.kind === 'rockWall') tint.lerp(GRANITE_TINT, 0.55);
     }

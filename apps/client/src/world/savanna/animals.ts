@@ -157,3 +157,59 @@ export function elephantGeometry(calf: boolean): THREE.BufferGeometry {
   const geometry = b.build();
   return calf ? geometry.scale(0.55, 0.55, 0.55) : geometry;
 }
+
+const RHINO = 0x9a928a;
+const RHINO_DARK = 0x837b73;
+const HORN = 0xcbbfa8;
+
+/**
+ * A white rhinoceros grazing: a barrel body with a shoulder hump, the long head held low with its wide square mouth,
+ * two horns (the front one long), small upright ears and short thick legs. A calf is smaller and has only stubs.
+ */
+export function rhinoGeometry(calf: boolean): THREE.BufferGeometry {
+  const b = new ColorGeometryBuilder();
+  const legH = 0.8;
+  const y = legH + 0.8;
+  b.add(new THREE.IcosahedronGeometry(1, 1), RHINO, transform(0, y, 0, [0, 0, 0], [1.75, 0.95, 0.95]));
+  // The hump over the shoulders.
+  b.add(new THREE.IcosahedronGeometry(0.6, 1), RHINO, transform(0.75, y + 0.55, 0, [0, 0, 0], [1, 0.7, 1.1]));
+  // Neck and the long head, angled down towards the grass.
+  b.add(
+    new THREE.IcosahedronGeometry(0.55, 1),
+    RHINO,
+    transform(1.65, y + 0.05, 0, [0, 0, 0], [1, 0.95, 1.05]),
+  );
+  b.add(
+    new THREE.CylinderGeometry(0.36, 0.48, 1.25, 7),
+    RHINO,
+    transform(2.35, y - 0.45, 0, [0, 0, Math.PI / 2 + 0.75]),
+  );
+  // The wide, square grazing lip.
+  b.add(new THREE.BoxGeometry(0.42, 0.3, 0.62), RHINO_DARK, transform(2.75, y - 0.95, 0));
+  if (!calf) {
+    b.add(new THREE.ConeGeometry(0.17, 0.85, 6), HORN, transform(2.75, y - 0.5, 0, [0, 0, -0.35]));
+    b.add(new THREE.ConeGeometry(0.12, 0.42, 6), HORN, transform(2.38, y - 0.2, 0, [0, 0, -0.25]));
+  } else {
+    b.add(new THREE.ConeGeometry(0.1, 0.25, 6), HORN, transform(2.72, y - 0.62, 0, [0, 0, -0.35]));
+  }
+  for (const side of [-1, 1])
+    b.add(
+      new THREE.ConeGeometry(0.12, 0.38, 5),
+      RHINO_DARK,
+      transform(1.9, y + 0.42, side * 0.3, [side * 0.25, 0, 0]),
+    );
+  for (const [lx, lz] of [
+    [0.95, 0.45],
+    [0.95, -0.45],
+    [-0.95, 0.45],
+    [-0.95, -0.45],
+  ] as const)
+    b.add(new THREE.CylinderGeometry(0.26, 0.3, legH + 0.4, 7), RHINO, transform(lx, legH / 2 + 0.1, lz));
+  b.add(
+    new THREE.CylinderGeometry(0.04, 0.03, 0.7, 4),
+    RHINO_DARK,
+    transform(-1.8, y - 0.1, 0, [0, 0, -0.4]),
+  );
+  const geometry = b.build();
+  return calf ? geometry.scale(0.55, 0.55, 0.55) : geometry;
+}

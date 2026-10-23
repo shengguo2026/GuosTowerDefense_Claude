@@ -286,7 +286,7 @@ export class AttackerAi extends AiBase {
     return cost;
   }
 
-  /** Reveals the spot near the routes where most unseen build sites lie. */
+  /** Reveals the spot near the routes where most unseen build sites lie (those in Ambush Zones first). */
   private reconnoitre(snapshot: MatchSnapshot): Command | null {
     if (!this.tuning.recon) return null;
     const recon = this.ability('reveal');
@@ -300,7 +300,10 @@ export class AttackerAi extends AiBase {
     for (const centre of sites) {
       const last = this.scouted.get(centre.id);
       if (last !== undefined && snapshot.tick - last < RESCOUT_TICKS) continue;
-      const count = sites.filter((s) => distance(s, centre) <= recon.range).length;
+      // Sites in an Ambush Zone count double: what waits there is only seen when it is too late.
+      const count = sites
+        .filter((s) => distance(s, centre) <= recon.range)
+        .reduce((sum, s) => sum + (this.model.vision.ambushAt(s) ? 2 : 1), 0);
       if (!best || count > best.count) best = { x: centre.x, z: centre.z, count, id: centre.id };
     }
     if (!best) return null;

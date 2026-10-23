@@ -1,4 +1,6 @@
 import {
+  AMBUSH_PRESSURE,
+  AMBUSH_SECONDS,
   CROWD_PRESSURE_TAKEN,
   FORMATIONS,
   RouteGraph,
@@ -6,6 +8,7 @@ import {
   UPGRADE_RANGE_BONUS,
   VISIBILITY_FACTORS,
   VisionField,
+  contactFactor,
   crowdSpeed,
   crowding,
   distance,
@@ -254,6 +257,11 @@ export interface ExposureOptions {
   members: number;
   /** Start counting from this distance along the route (a group already under way). */
   from?: number;
+  /**
+   * Count the surprise of assets hidden in Ambush Zones. Only the Defender knows where they wait; the Attacker only
+   * knows assets it has already seen, and those can no longer surprise it.
+   */
+  ambushes?: boolean;
 }
 
 export interface Exposure {
@@ -276,7 +284,7 @@ export function routeExposure(
   defenses: KnownDefense[],
   options: ExposureOptions,
 ): Exposure {
-  const { unit, formation, members, from = 0 } = options;
+  const { unit, formation, members, from = 0, ambushes = false } = options;
   const active = defenses.filter((d) => d.condition > 0);
   const key = [
     route.id,
@@ -284,6 +292,7 @@ export function routeExposure(
     formation,
     members,
     Math.round(from),
+    ambushes ? 'a' : '',
     ...active.map(
       (d) =>
         `${d.type.id}@${Math.round(d.x)},${Math.round(d.z)}:${d.level}:${d.blocking ? Math.round(d.condition) : ''}:${d.boosted ? 1 : 0}`,
@@ -292,7 +301,7 @@ export function routeExposure(
   const cached = model.exposureCache.get(key);
   if (cached) return cached;
   if (model.exposureCache.size > 5000) model.exposureCache.clear();
-  const exposure = computeExposure(model, route, active, unit, formation, members, from);
+  const exposure = computeExposure(model, route, active, unit, formation, members, from, ambushes);
   model.exposureCache.set(key, exposure);
   return exposure;
 }
@@ -305,6 +314,7 @@ function computeExposure(
   formation: Formation,
   members: number,
   from: number,
+  ambushes: boolean,
 ): Exposure {
   // Sensors see hidden units as easily as any other; other assets only see them from closer.
   const hidden = VISIBILITY_FACTORS[unit.visibility] * (1 - model.lowProfile);
@@ -312,6 +322,14 @@ function computeExposure(
   let blockedSeconds = 0;
   const vantage = active.map((d) => model.vision.vantageAt(d));
   const lines = active.map((d) => model.sightLine(d, route));
+  const contact = model.setup.level.closeContact;
+  // A hidden asset catches a group by surprise once: a few seconds of extra pressure, spread over the time the group
+  // spends crossing its reach.
+  const surprise = active.map((d) =>
+    ambushes && model.vision.ambushAt(d)
+      ? 1 + (AMBUSH_PRESSURE * AMBUSH_SECONDS * unit.speed) / (2 * reachOf(d.type, d.level))
+      : 1,
+  );
   for (let index = 0; index < route.samples.length; index++) {
     const sample = route.samples[index] as RouteSample;
     if (sample.along < from) continue;
@@ -329,9 +347,15 @@ function computeExposure(
       const gap = distance(d, sample);
       const sight = detectionOf(d.type, d.level) * model.detectionBonus * visibility * (vantage[k] as number);
       const line = (lines[k] as Float32Array)[index] as number;
+      // Close Contact: within its range a group is seen past any cover (not through a wall).
       if (gap <= sight * (d.type.seesHidden ? 1 : hidden) * line) detected = true;
+      else if (contact && gap <= contact.range && line > 0) detected = true;
       if (gap <= reachOf(d.type, d.level) && line > 0) {
-        pressure += pressureOf(d.type, d.level) * (d.boosted ? 1.5 : 1);
+        pressure +=
+          pressureOf(d.type, d.level) *
+          (d.boosted ? 1.5 : 1) *
+          contactFactor(contact, gap) *
+          (surprise[k] as number);
         slow = Math.max(slow, d.type.slow);
       }
     }
@@ -349,8 +373,11 @@ function computeExposure(
     const wearTime =
       blocker.condition / Math.max(0.01, (blocker.type.wearPerMemberSecond + dismantle) * members);
     let pressure = 0;
-    for (const d of active)
-      if (distance(d, blocker) <= reachOf(d.type, d.level) + 2) pressure += pressureOf(d.type, d.level);
+    for (const d of active) {
+      const gap = distance(d, blocker);
+      if (gap <= reachOf(d.type, d.level) + 2)
+        pressure += pressureOf(d.type, d.level) * contactFactor(model.setup.level.closeContact, gap);
+    }
     blockedSeconds += pressure * wearTime;
   }
   const scaled = pressureSeconds + blockedSeconds * FORMATIONS[formation].pressureTaken;
@@ -368,7 +395,7 @@ export function objectivePressure(
     if (d.condition <= 0) continue;
     const gap = distance(d, model.objective);
     if (gap <= reachOf(d.type, d.level) && !model.vision.blocked(d, model.objective))
-      pressure += pressureOf(d.type, d.level);
+      pressure += pressureOf(d.type, d.level) * contactFactor(model.setup.level.closeContact, gap);
     if (d.type.mobile && gap <= model.objective.radius) contested = true;
   }
   return { pressure, contested };

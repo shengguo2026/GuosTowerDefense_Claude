@@ -107,6 +107,42 @@ describe('stage pack loader', () => {
     expect(elephant?.hints.map((hint) => hint.area).filter(Boolean)).toEqual(['mud', 'crossing', 'crossing']);
   });
 
+  it('loads Rhinoceros after Elephant with Close Contact, ambush thickets and its hints', async () => {
+    const result = await loadStageDirectory(join(STAGES, 'stage-01-big-five'));
+    expect(result.ok, JSON.stringify(result)).toBe(true);
+    if (!result.ok) return;
+    const rhino = result.pack.levels.find((level) => level.id === 'rhinoceros');
+    expect(rhino?.unlockedBy).toBe('elephant');
+    expect(rhino?.picture).toBe('LEVEL-04-RHINOCEROS');
+    expect(rhino?.routes.map((route) => route.id)).toEqual(['thorn-track', 'dry-gully', 'open-scrub']);
+    expect(rhino?.vision.filter((area) => area.ambush)).toHaveLength(4);
+    expect(rhino?.closeContact?.near).toBeGreaterThan(1);
+    expect(rhino?.closeContact?.far).toBeLessThan(1);
+    const setup = createMatchSetup(result.pack, {
+      levelId: 'rhinoceros',
+      attackerProfileId: 'explorer',
+      defenderProfileId: 'ranger',
+      seed: 1,
+    });
+    expect(setup.level.closeContact).toEqual(rhino?.closeContact);
+    expect(setup.level.vision?.filter((area) => area.ambush).map((area) => area.id)).toContain(
+      'acacia-thicket',
+    );
+    expect(rhino?.hints.map((hint) => hint.area).filter(Boolean)).toEqual(['thicket', 'thicket']);
+  });
+
+  it('reports an ambush zone the Defender cannot put anything in', async () => {
+    const result = await loadWithChange('levels/canyon.json', (json) => {
+      (json.vision as Record<string, unknown>[]).push({
+        id: 'empty-thicket',
+        kind: 'thicket',
+        circle: { x: 100, z: 100, radius: 3 },
+        ambush: true,
+      });
+    });
+    expect(messages(result).join('\n')).toContain('ambush zone "empty-thicket" holds no node');
+  });
+
   it('reports heavy ground a level has no numbers for', async () => {
     const result = await loadWithChange('levels/canyon.json', (json) => {
       (json.map as { edges: { terrain?: string }[] }).edges[0]!.terrain = 'mud';

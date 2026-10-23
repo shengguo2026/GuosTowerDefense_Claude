@@ -149,6 +149,16 @@ export function crossCheck(pack: StagePack): ContentIssue[] {
     const paths = routeMapOk && nodeIds.has(level.objective.nodeId) ? routePaths(level) : [];
     level.vision.forEach((area, i) => {
       if (area.label) useText(area.label, file);
+      // An Ambush Zone is only worth its name when the Defender can put something in it.
+      if (area.ambush) {
+        const zone = new VisionField([toVisionArea(area)]);
+        const onRoute = (id: string) => level.routes.some((r) => r.nodes.includes(id) && r.nodes[0] !== id);
+        const usable = level.map.nodes.some(
+          (node) =>
+            (node.buildable === true || onRoute(node.id)) && zone.contains(zone.areas[0] as VisionArea, node),
+        );
+        if (!usable) add(file, `vision.${i}`, `ambush zone "${area.id}" holds no node the Defender can use`);
+      }
       if (area.los !== 'blocker') return;
       const blocker = new VisionField([toVisionArea(area)]);
       for (const { id, points } of paths) {

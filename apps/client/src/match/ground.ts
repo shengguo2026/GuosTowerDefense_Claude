@@ -47,8 +47,8 @@ export function nearGround(level: Level, kind: string, at: Point, reach: number)
 }
 
 /**
- * What a route goes through, in words, for the route chips: heavy ground (Terrain Weight) and narrow crossings with
- * how much they hold (Route Capacity). Empty on routes over plain open ground and cover.
+ * What a route goes through, in words, for the route chips: heavy ground (Terrain Weight), narrow crossings with how
+ * much they hold (Route Capacity) and ambush thickets (Ambush Zones). Empty on routes over plain open ground and cover.
  */
 export function routeNotes(level: Level, routeId: string, t: Translate, stageText: Translate): string[] {
   const route = level.routes.find((r) => r.id === routeId);
@@ -71,6 +71,17 @@ export function routeNotes(level: Level, routeId: string, t: Translate, stageTex
         }),
       );
   });
+  // Ambush Zones (Rhinoceros): thickets the route runs through, where Defender assets may wait unseen.
+  const path = route.nodes.flatMap((id, i) => {
+    const next = route.nodes[i + 1];
+    const edge = next ? edgeBetween(level, id, next) : undefined;
+    return edge ? edgePath(level, edge) : [];
+  });
+  const thickets = level.vision.filter(
+    (area) =>
+      area.ambush && area.circle && distanceToPath(area.circle.x, area.circle.z, path) <= area.circle.radius,
+  ).length;
+  if (thickets > 0) notes.push(t('ground.ambush', { count: thickets }));
   return notes;
 }
 

@@ -85,6 +85,18 @@ export interface SimLevel {
   terrain: Record<'open' | 'cover', TerrainModifiers> & Partial<Record<'mud' | 'water', TerrainModifiers>>;
   /** Concealment Zones and environment objects that shape line of sight (none on open levels). */
   vision?: VisionArea[];
+  /** Close Contact (Rhinoceros): pressure is stronger up close and weaker from further away. */
+  closeContact?: CloseContact;
+}
+
+/**
+ * Close Contact: within `range` an asset presses at `near` times its strength, and it sees and is seen past any cover
+ * (not through a wall); beyond it, at `far` times.
+ */
+export interface CloseContact {
+  range: number;
+  near: number;
+  far: number;
 }
 
 export type Visibility = 'normal' | 'concealed' | 'stealth';
@@ -270,9 +282,11 @@ export type GroupState =
 
 /** Status effects (spec §8). Every status is shown with an icon and a word, never colour alone. */
 /** `crowded`: packed on (or queued in front of) a narrow crossing that is full (Route Capacity). */
+/** `ambushed`: caught by surprise by an asset hidden in an Ambush Zone; it takes more pressure for a moment. */
 export type GroupStatus =
-  'slowed' | 'boosted' | 'concealed' | 'revealed' | 'pinned' | 'protected' | 'crowded';
-export type DefenseStatus = 'disrupted' | 'boosted' | 'protected' | 'revealed' | 'concealed';
+  'slowed' | 'boosted' | 'concealed' | 'revealed' | 'pinned' | 'protected' | 'crowded' | 'ambushed';
+/** `hidden`: stands in an Ambush Zone and the Attacker has not spotted it (the Defender's view only). */
+export type DefenseStatus = 'disrupted' | 'boosted' | 'protected' | 'revealed' | 'concealed' | 'hidden';
 
 export interface GroupEntity {
   id: number;

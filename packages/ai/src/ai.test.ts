@@ -110,6 +110,58 @@ describe('level model on heavy ground and narrow crossings (Elephant)', () => {
   });
 });
 
+describe('level model with Close Contact and Ambush Zones (Rhinoceros)', () => {
+  /** The fixture with a post beside the north route, at the north build zone (20, 13). */
+  function postSetup(level: Partial<MatchSetup['level']> = {}) {
+    const setup = fixtureSetup({}, level);
+    const post = setup.defender.defenses.find((d) => d.id === 'post')!;
+    const defense: KnownDefense = {
+      id: 1,
+      type: post,
+      x: 20,
+      z: 13,
+      level: 1,
+      condition: 100,
+      blocking: false,
+      nodeId: 'north-zone',
+    };
+    const options = { unit: setup.attacker.units[0]!, formation: 'column' as const, members: 5 };
+    return { model: new LevelModel(setup), defense, options };
+  }
+
+  it('expects less pressure from a post that mostly presses from afar', () => {
+    const plain = postSetup();
+    const contact = postSetup({ closeContact: { range: 2, near: 1.3, far: 0.5 } });
+    const expected = (s: ReturnType<typeof postSetup>) =>
+      routeExposure(s.model, s.model.route('north'), [s.defense], s.options).pressure;
+    expect(expected(contact)).toBeLessThan(expected(plain));
+  });
+
+  it('counts the surprise of a hidden asset only for the Defender, who knows where it waits', () => {
+    const s = postSetup({
+      vision: [
+        {
+          id: 'thicket',
+          kind: 'thicket',
+          circle: { x: 20, z: 13, radius: 4 },
+          los: 'none',
+          cover: 1,
+          exposure: 1,
+          vantage: 1,
+          ambush: true,
+        },
+      ],
+    });
+    const north = s.model.route('north');
+    const attackerView = routeExposure(s.model, north, [s.defense], s.options).pressure;
+    const defenderView = routeExposure(s.model, north, [s.defense], {
+      ...s.options,
+      ambushes: true,
+    }).pressure;
+    expect(defenderView).toBeGreaterThan(attackerView);
+  });
+});
+
 describe('AI players', () => {
   it.each(DIFFICULTIES)('play a whole match at %s with only accepted commands', (difficulty) => {
     const setup = fixtureSetup();

@@ -21,7 +21,7 @@ const RULE_PAGES = [
 ] as const;
 type Page = (typeof RULE_PAGES)[number] | `profile:${string}`;
 /** Rule pages with more than the usual three paragraphs. */
-const PARAGRAPHS: Partial<Record<(typeof RULE_PAGES)[number], number>> = { terrain: 5 };
+const PARAGRAPHS: Partial<Record<(typeof RULE_PAGES)[number], number>> = { terrain: 7 };
 
 interface Props {
   stageId: string;
