@@ -12,7 +12,7 @@ non-lethal defenses to stop them. The PC hosts the game; tablets and phones on t
 `npm run package` makes `release/GuosTowerDefense-<version>-win-x64.zip` (add `-- --target linux-x64` or
 `-- --target darwin-arm64` for other systems). The zip holds the game, its own Node.js runtime and `start.bat`: unzip it
 anywhere, double-click `start.bat`, and the browser opens. Nothing needs to be installed. The launcher checks the game
-files and the `user-data` folder, takes the first free port from 3000, waits until the game answers and opens the
+files and the `user-data` folder, takes the first free port from 3001, waits until the game answers and opens the
 browser. Pictures in `assets/art` are packed as they are on the PC that builds the zip.
 
 **Tablets and phones:** main menu › **Tablet or phone** on the PC. The first time on Windows a screen explains the
@@ -36,7 +36,7 @@ Needs [Node.js](https://nodejs.org) 20.19 or newer (LTS).
 
 | Windows | macOS / Linux | What it does |
 |---|---|---|
-| `start.bat` | `./start.sh` | Installs libraries on first run, builds the client, starts the game server on the first free port from 3000, opens the browser |
+| `start.bat` | `./start.sh` | Installs libraries on first run, builds the client, starts the game server on the first free port from 3001, opens the browser |
 | `dev.bat` | `./dev.sh` | Developer mode: game server on port 3100 with auto-restart, client with hot reload on port 5173 |
 
 Progress and settings live in `user-data/` next to the game files, so copying the folder keeps them. The save is

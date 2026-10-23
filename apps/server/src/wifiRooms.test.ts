@@ -58,7 +58,7 @@ function setup(
       : {}),
   });
   const rooms = new WifiRooms(stages, matches, {
-    addresses: () => ['http://192.168.1.20:3000/'],
+    addresses: () => ['http://192.168.1.20:3001/'],
     progress: () => progress,
     awaySeconds,
   });
@@ -107,7 +107,7 @@ describe('Wi-Fi rooms', () => {
       { slotId: 'A1', side: 'attacker', controller: 'human', name: 'Guo', host: true, connected: true },
       { slotId: 'D1', side: 'defender', controller: 'human', name: 'Mia', host: false, connected: true },
     ]);
-    expect(phone.room().addresses).toEqual(['http://192.168.1.20:3000/']);
+    expect(phone.room().addresses).toEqual(['http://192.168.1.20:3001/']);
     expect(rooms.open).toBe(true);
     expect(rooms.openHosts).toEqual(['Guo']);
 
@@ -386,7 +386,7 @@ describe('discovery', () => {
     const port = 40000 + Math.floor(Math.random() * 20000);
     const listener = new Discovery({ announce: () => null, port });
     const announcer = new Discovery({
-      announce: () => ({ port: 3000, hostNames: ['Guo'] }),
+      announce: () => ({ port: 3001, hostNames: ['Guo'] }),
       port,
       targets: () => ['127.0.0.1'],
     });
@@ -396,7 +396,7 @@ describe('discovery', () => {
         async () => {
           announcer.announce();
           expect((await listener.nearby()).games).toEqual([
-            { address: 'http://127.0.0.1:3000/', hostName: 'Guo', seenSecondsAgo: 0 },
+            { address: 'http://127.0.0.1:3001/', hostName: 'Guo', seenSecondsAgo: 0 },
           ]);
         },
         { timeout: 3000, interval: 100 },

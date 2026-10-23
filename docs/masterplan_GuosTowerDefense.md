@@ -3093,14 +3093,14 @@ open default browser
 Default:
 
 ```text
-localhost:3000
+localhost:3001
 ```
 
-If port 3000 is occupied:
+If port 3001 is occupied:
 
 ```text
-try 3001
-then 3002
+try 3002
+then 3003
 etc.
 ```
 

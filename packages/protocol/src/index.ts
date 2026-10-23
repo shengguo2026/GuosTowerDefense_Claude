@@ -222,7 +222,7 @@ export interface NetworkInfo {
   fixed: boolean;
   /** The port the game runs on; join addresses use it. */
   port: number;
-  /** Addresses for phones and tablets, best guess first, such as `http://192.168.1.20:3000/`. */
+  /** Addresses for phones and tablets, best guess first, such as `http://192.168.1.20:3001/`. */
   addresses: string[];
   /** Addresses that could not be opened, for example because another program uses the port there. */
   failed: string[];
@@ -238,7 +238,7 @@ export interface NetworkInfo {
 
 /** `GET /api/nearby`, from the PC only: games other PCs in the network host right now (Wi-Fi discovery). */
 export interface NearbyGame {
-  /** Address to open, such as `http://192.168.1.20:3000/`. */
+  /** Address to open, such as `http://192.168.1.20:3001/`. */
   address: string;
   /** Name of the person who hosts. */
   hostName: string;

@@ -87,7 +87,7 @@ profiles and abilities unlike Stage 1, which must validate, load and play headle
 - Every device plays through that PC: the PC's own browser, and any tablet or phone on the same Wi-Fi, also for
   single player. There is **one save, on the PC**.
 - No Node.js or other install is required from the player; the package bundles its runtime.
-- The launcher picks a free port (3000, then 3001, …), checks the user-data folder is writable, waits for the server,
+- The launcher picks a free port (3001, then 3002, …), checks the user-data folder is writable, waits for the server,
   determines the PC's Wi-Fi address and opens the browser.
 
 **Devices:**

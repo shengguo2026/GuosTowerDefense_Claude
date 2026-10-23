@@ -2,7 +2,7 @@
  * Game server entry point, started by start.bat / start.sh (or `npm start`).
  *
  * Environment:
- *   GTD_PORT       first port to try (default 3000); in dev mode the exact port
+ *   GTD_PORT       first port to try (default 3001); in dev mode the exact port
  *   GTD_STRICT_PORT=1  use exactly GTD_PORT (the launcher has already picked a free one)
  *   GTD_HOST       interface to listen on (default 127.0.0.1: only this PC; phones and tablets join once the player
  *                  turns on "Play on tablet or phone"; 0.0.0.0 opens every network from the start)
@@ -26,7 +26,7 @@ import { prepareUserData } from './userData';
 const gameRoot = resolve(process.env.GTD_ROOT ?? resolve(import.meta.dirname, '../../..'));
 const devMode = process.env.GTD_DEV === '1';
 const host = process.env.GTD_HOST ?? '127.0.0.1';
-const firstPort = Number(process.env.GTD_PORT ?? 3000);
+const firstPort = Number(process.env.GTD_PORT ?? 3001);
 const strictPort = devMode || process.env.GTD_STRICT_PORT === '1';
 const userDataDir = resolve(process.env.GTD_USER_DATA ?? resolve(gameRoot, 'user-data'));
 const clientDir = resolve(process.env.GTD_CLIENT_DIR ?? resolve(gameRoot, 'apps/client/dist'));

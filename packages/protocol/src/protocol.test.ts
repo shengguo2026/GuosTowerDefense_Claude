@@ -56,8 +56,8 @@ describe('settings', () => {
 describe('Wi-Fi rooms', () => {
   it('shows a room code in two groups and puts it into the QR address', () => {
     expect(formatRoomCode('247433')).toBe('247 433');
-    expect(joinUrl('http://192.168.1.20:3000/', '007433')).toBe('http://192.168.1.20:3000/?join=007433');
-    expect(joinUrl('http://192.168.1.20:3000', '007433')).toBe('http://192.168.1.20:3000/?join=007433');
+    expect(joinUrl('http://192.168.1.20:3001/', '007433')).toBe('http://192.168.1.20:3001/?join=007433');
+    expect(joinUrl('http://192.168.1.20:3001', '007433')).toBe('http://192.168.1.20:3001/?join=007433');
   });
 
   it('takes room codes and tokens only in their exact shape', () => {
