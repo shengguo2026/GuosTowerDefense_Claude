@@ -1,5 +1,5 @@
 // The launcher behind start.bat / start.sh (spec §3): checks the game files and the user-data folder, picks a free
-// port (3000, then 3001, …), starts the game server, waits until it answers and opens the browser. The packaged build
+// port (3001, then 3002, …), starts the game server, waits until it answers and opens the browser. The packaged build
 // runs it with the bundled Node runtime; the development build (tools/start.mjs) with the installed one.
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -34,7 +34,7 @@ export async function launch({ root, serverArgs, clientDir, required = [] }) {
     );
   }
 
-  const port = await findFreePort(Number(process.env.GTD_PORT ?? 3000));
+  const port = await findFreePort(Number(process.env.GTD_PORT ?? 3001));
   const server = spawn(process.execPath, serverArgs, {
     cwd: root,
     stdio: 'inherit',

@@ -204,7 +204,7 @@ function OtherPc({ t }: { t: Translate }) {
     const withScheme = /^https?:\/\//.test(target) ? target : `http://${target}`;
     try {
       const url = new URL(withScheme);
-      if (!url.port) url.port = '3000';
+      if (!url.port) url.port = '3001';
       url.pathname = '/';
       url.search = '?wifi=join';
       location.href = url.toString();
@@ -229,7 +229,7 @@ function OtherPc({ t }: { t: Translate }) {
           <input
             type="text"
             value={address}
-            placeholder="192.168.1.20:3000"
+            placeholder="192.168.1.20:3001"
             onChange={(event) => setAddress(event.target.value)}
             data-testid="wifi-address"
           />

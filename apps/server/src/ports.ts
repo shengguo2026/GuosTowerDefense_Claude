@@ -1,6 +1,6 @@
 import { createServer } from 'node:net';
 
-/** Finds the first free port from `start` upward (3000, 3001, …), as the launcher does (spec §3). */
+/** Finds the first free port from `start` upward (3001, 3002, …), as the launcher does (spec §3). */
 export async function findFreePort(start: number, host: string, attempts = 50): Promise<number> {
   for (let port = start; port < start + attempts; port++) {
     if (await isFree(port, host)) return port;
